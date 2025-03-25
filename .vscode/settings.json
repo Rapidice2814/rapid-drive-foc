@@ -1,0 +1,15 @@
+{
+    "files.associations": {
+        "math.h": "c",
+        "main.h": "c",
+        "drv8323_driver.h": "c",
+        "svpwm.h": "c",
+        "cmath": "c",
+        "float_constants.h": "c",
+        "pid.h": "c",
+        "foc_driver.h": "c",
+        "foc_utils.h": "c"
+    },
+    "search.useGlobalIgnoreFiles": false,
+    "search.useIgnoreFiles": false
+}
