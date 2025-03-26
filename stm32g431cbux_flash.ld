@@ -62,8 +62,11 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 MEMORY
 {
 RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 32K
-FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 128K
+FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 120K
+STORAGE_FLASH  (rx) : ORIGIN = ORIGIN(FLASH) + LENGTH(FLASH), LENGTH = 8K
 }
+
+_flashStorageBegin = ORIGIN(STORAGE_FLASH);
 
 /* Define output sections */
 SECTIONS
@@ -92,6 +95,14 @@ SECTIONS
     . = ALIGN(4);
     _etext = .;        /* define a global symbols at end of code */
   } >FLASH
+
+/* .permanent section is used to store data that should not be erased during a firmware update */
+  .permanent :
+  {
+    . = ALIGN(4);
+    KEEP(*(.permanent))
+    . = ALIGN(4);
+  } >STORAGE_FLASH
 
   /* Constant data goes into FLASH */
   .rodata :
@@ -129,6 +140,7 @@ SECTIONS
     KEEP (*(.fini_array*))
     PROVIDE_HIDDEN (__fini_array_end = .);
   } >FLASH
+
 
   /* used by the startup to initialize data */
   _sidata = LOADADDR(.data);

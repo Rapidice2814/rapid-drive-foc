@@ -42,7 +42,7 @@ extern "C" {
 /**
   * @brief  FLASH Erase structure definition
   */
-typedef struct
+typedef struct 
 {
   uint32_t TypeErase;   /*!< Mass erase or page erase.
                              This parameter can be a value of @ref FLASH_Type_Erase */

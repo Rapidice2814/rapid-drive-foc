@@ -128,13 +128,14 @@ int main(void)
   MX_I2C1_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  FOC_Setup();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    FOC_Loop();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

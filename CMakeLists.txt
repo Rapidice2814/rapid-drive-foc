@@ -42,19 +42,19 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
-    # ${CMAKE_SOURCE_DIR}/Core/Src/FOC.c
-    # ${CMAKE_SOURCE_DIR}/Core/Src/Communication.c
+    ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Flash.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC.c
     # ${CMAKE_SOURCE_DIR}/Core/Src/Debug.c
-    # ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Driver.c
-    # ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/PID.c
-    # ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/DRV8323_Driver.c
-    # ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Utils.c
+    ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Driver.c
+    ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/PID.c
+    ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/DRV8323_Driver.c
+    ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Utils.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
-    # ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Inc
+    ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Inc
 )
 
 # Add project symbols (macros)
