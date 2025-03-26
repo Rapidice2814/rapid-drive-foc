@@ -10,13 +10,15 @@ typedef enum {
 
 
 typedef struct {
+    uint8_t contains_data;
     uint32_t banana;
     float apple;
     uint8_t orange;
+    float array[4];
 } FLASH_DataTypeDef;
 
-FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *data);
-FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *data);
+FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata);
+FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata);
 
 
 

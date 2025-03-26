@@ -33,7 +33,8 @@
             "dependsOn": [
                 "CMake: clean rebuild",
                 "CubeProg: Flash project (SWD)"
-            ]
+            ],
+            "problemMatcher": []
         },
         {
             "type": "cmake",

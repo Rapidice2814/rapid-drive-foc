@@ -11,5 +11,6 @@
         "foc_utils.h": "c"
     },
     "search.useGlobalIgnoreFiles": false,
-    "search.useIgnoreFiles": false
+    "search.useIgnoreFiles": false,
+    "cortex-debug.variableUseNaturalFormat": false
 }
