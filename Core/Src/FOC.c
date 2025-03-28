@@ -1,6 +1,7 @@
 #include <math.h>
 #include <stdio.h>
 
+#include "cmsis_os.h"
 #include "FOC.h"
 #include "FOC_Driver.h"
 #include "DRV8323_Driver.h"
@@ -72,23 +73,7 @@ void FOC_Setup(){
 
     WS2812b_Setup(&htim4, TIM_CHANNEL_1);
 
-    // uint8_t colors[4][3] = {
-    //     {255, 0, 0},  // Red
-    //     {0, 255, 0},  // Green
-    //     {0, 0, 255},  // Blue
-    //     {200, 200, 200} // White
-    // };
-
-    // while (1) {
-    //     for (int shift = 0; shift < 4; shift++) {
-    //         for (int i = 0; i < 4; i++) {
-    //             int index = (i + shift) % 4;
-    //             WS2812b_SetColor(i, colors[index][0], colors[index][1], colors[index][2]);
-    //         }
-    //         WS2812b_Send();
-    //         HAL_Delay(50);  // Adjust speed
-    //     }
-    // }
+    
 
 
 
@@ -447,12 +432,47 @@ void Current_Sensor_Calibration_Loop(){
 
 
 
+    void StartDefaultTask(void *argument){
+
+        while(1){
+            HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, GPIO_PIN_SET);
+            osDelay(100);
+            HAL_GPIO_WritePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin, GPIO_PIN_SET);
+            osDelay(100);
+            HAL_GPIO_WritePin(DEBUG_LED2_GPIO_Port, DEBUG_LED2_Pin, GPIO_PIN_SET);
+            osDelay(100);
+            HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, GPIO_PIN_RESET);
+            osDelay(100);
+            HAL_GPIO_WritePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin, GPIO_PIN_RESET);
+            osDelay(100);
+            HAL_GPIO_WritePin(DEBUG_LED2_GPIO_Port, DEBUG_LED2_Pin, GPIO_PIN_RESET);
+            osDelay(100);
+        }
+
+    }
 
 
 
 
+    void StartFocRGBTask(void *argument){
+        uint8_t colors[4][3] = {
+        {5, 0, 0},  // Red
+        {0, 5, 0},  // Green
+        {0, 0, 5},  // Blue
+        {2, 2, 2} // White
+        };
 
-
+        while (1) {
+            for (int shift = 0; shift < 4; shift++) {
+                for (int i = 0; i < 4; i++) {
+                    int index = (i + shift) % 4;
+                    WS2812b_SetColor(i, colors[index][0], colors[index][1], colors[index][2]);
+                }
+                WS2812b_Send();
+                osDelay(50);
+            }
+        }
+    }
 
 
 
@@ -492,17 +512,6 @@ void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc) { //when the adc conv
     }
     
 }
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-    if(htim->Instance == TIM6){
-        // foc_adc1_measurement_flag = 1;
-    } else if(htim->Instance == TIM7){
-        // foc_outer_loop_flag = 1;
-    } else if(htim->Instance == TIM17){
-        // debug_loop_flag = 1;
-    }
-}
-
 void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim){
     if(htim == &htim4){
         WS2812b_PulseFinishedCallback();
