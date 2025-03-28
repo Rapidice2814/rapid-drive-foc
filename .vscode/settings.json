@@ -8,9 +8,10 @@
         "float_constants.h": "c",
         "pid.h": "c",
         "foc_driver.h": "c",
-        "foc_utils.h": "c"
+        "foc_utils.h": "c",
+        "as5047p_driver.h": "c"
     },
     "search.useGlobalIgnoreFiles": false,
     "search.useIgnoreFiles": false,
-    "cortex-debug.variableUseNaturalFormat": false
+    "cortex-debug.variableUseNaturalFormat": true
 }

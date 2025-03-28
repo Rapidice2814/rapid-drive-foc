@@ -5,13 +5,14 @@
 
 typedef enum {
     FOC_STATE_INIT,
+    FOC_CURRENT_SENSOR_CALIBRATION,
     FOC_CALIBRATION,
     FOC_STATE_ALIGNMENT,
     FOC_STATE_RUN
 } FOC_State;
 
 /*Motor parameters for the Maxon motor*/
-#define MOTOR_POLE_PAIRS 6
+#define MOTOR_POLE_PAIRS 1
 #define MOTOR_STATOR_RESISTANCE 0.535f // ohms
 #define MOTOR_STATOR_INDUCTANCE 0.4025e-3f // henries
 #define MOTOR_MAGNET_FLUX_LINKAGE 5.47e-3f // webers

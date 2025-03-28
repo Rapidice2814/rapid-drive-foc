@@ -4,6 +4,7 @@
 #include "main.h"
 #include "PID.h"
 #include "DRV8323_Driver.h"	
+#include "AS5047P_Driver.h"
 
 typedef struct {
     float a;
@@ -53,6 +54,8 @@ typedef struct {
     PhaseCurrents phase_current;                    //measured phase currents [A]
 
     /* Encoder */
+    AS5047P_HandleTypeDef has5047p;         //encoder handle
+
     volatile uint32_t *pencoder_count;      //pointer to the encoder counter
     float encoder_angle_electric;           //angle in radians
     float previous_encoder_angle_electric;  //previous angle in radians
