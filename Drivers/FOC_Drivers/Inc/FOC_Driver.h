@@ -47,11 +47,13 @@ typedef struct {
     uint8_t motor_disable_flag;
 
     /* General */
-    float vin; // input voltage
     float voltage_limit; // max voltage put out by the inverter
 
     /* ADC buffers */
-    PhaseCurrents phase_current;                    //measured phase currents [A]
+    PhaseCurrents phase_current;            //measured phase currents [A]
+    PhaseCurrents phase_current_offset;     //offset for the phase currents [A]
+    float vbus;                             //input voltage [V]
+    float vbus_offset;                      //offset for the input voltage [V]
 
     /* Encoder */
     AS5047P_HandleTypeDef has5047p;         //encoder handle

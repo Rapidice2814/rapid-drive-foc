@@ -9,8 +9,8 @@
 #define sinf _sinf
 
 /* General */
-void FOC_SetInputVoltage(FOC_HandleTypeDef *hfoc, float vin){
-	hfoc->vin = vin;
+void FOC_SetInputVoltage(FOC_HandleTypeDef *hfoc, float vbus){
+	hfoc->vbus = vbus;
 }
 void FOC_SetVoltageLimit(FOC_HandleTypeDef *hfoc, float voltage_limit){
     hfoc->voltage_limit = voltage_limit;
@@ -67,9 +67,9 @@ void FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltages phase_voltages)
     float center = hfoc->voltage_limit / 2.0f;
     center -= (Umax+Umin) / 2;
 
-    float PWMa = (((phase_voltages.a + center) / hfoc->vin) * hfoc->max_ccr);
-    float PWMb = (((phase_voltages.b + center) / hfoc->vin) * hfoc->max_ccr);
-    float PWMc = (((phase_voltages.c + center) / hfoc->vin) * hfoc->max_ccr);
+    float PWMa = (((phase_voltages.a + center) / hfoc->vbus) * hfoc->max_ccr);
+    float PWMb = (((phase_voltages.b + center) / hfoc->vbus) * hfoc->max_ccr);
+    float PWMc = (((phase_voltages.c + center) / hfoc->vbus) * hfoc->max_ccr);
 
     *(hfoc->pCCRa) = (uint32_t)PWMa;
     *(hfoc->pCCRb) = (uint32_t)PWMb;

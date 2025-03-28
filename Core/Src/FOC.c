@@ -28,6 +28,7 @@ extern UART_HandleTypeDef huart3;
 
 extern PCD_HandleTypeDef hpcd_USB_FS;
 
+
 FOC_HandleTypeDef hfoc = {0};
 FOC_State Current_FOC_State = FOC_STATE_INIT;
 FLASH_DataTypeDef flash_data = {0};
@@ -42,19 +43,14 @@ volatile uint8_t foc_adc1_measurement_flag = 0;
 volatile uint8_t foc_outer_loop_flag = 0;
 volatile uint8_t debug_loop_flag = 0;
 
-uint8_t alignment_test_mode = 0;
 
 /* ADC */
-#define ADC_CALIBRATION_ALPHA 0.01f
-#define ADC_LOOP_ALPHA 0.4f
-// #define ADC_CONVERSION_FACTOR 1.0f
-// #define ADC_CONVERSION_FACTOR 0.00201416014f // 4096.0f * 3.3f / (0.02f * 20.0f)
+#define ADC_LOOP_ALPHA (2.0f/(CURRENT_LOOP_CLOCK_DIVIDER+1))
 #define CURRENT_SENSE_CONVERSION_FACTOR 0.00100708007f // 4096.0f * 3.3f / (0.02f * 40.0f)
 #define VOLTAGE_SENSE_CONVERSION_FACTOR 11.0f/1.0f // 100:10 voltage divider
 
 static volatile uint32_t adc1_miss_counter = 0;
 static volatile uint16_t adc1_buffer[ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2] = {0};
-static uint16_t adc_phase_current_offset[3] = {2048, 2048, 2048}; //offsets for the current sensors, initial values are 2048
 
 
 
@@ -251,10 +247,10 @@ void FOC_Loop(){
             int end_index = start_index + CURRENT_LOOP_CLOCK_DIVIDER * ADC1_CHANNELS;
 
             for (int i = start_index; i < end_index; i += ADC1_CHANNELS) {
-                hfoc.phase_current.a = hfoc.phase_current.a * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i] - adc_phase_current_offset[0]);
-                hfoc.phase_current.b = hfoc.phase_current.b * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 1] - adc_phase_current_offset[1]);
-                hfoc.phase_current.c = hfoc.phase_current.c * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 2] - adc_phase_current_offset[2]);
-                hfoc.vin = hfoc.vin * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA *  VOLTAGE_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 3] * 3.3f / 4096.0f); //update the input voltage
+                hfoc.phase_current.a = hfoc.phase_current.a * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 0] - 2048) - hfoc.phase_current_offset.a;
+                hfoc.phase_current.b = hfoc.phase_current.b * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 1] - 2048) - hfoc.phase_current_offset.b;
+                hfoc.phase_current.c = hfoc.phase_current.c * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 2] - 2048) - hfoc.phase_current_offset.c;
+                hfoc.vbus            = hfoc.vbus            * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * VOLTAGE_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 3] * 3.3f / 4096.0f) - hfoc.vbus_offset;
             }
 
             foc_adc1_measurement_flag = 1; //triggered after the adc conversion is complete (either first or second half of the buffer)
@@ -407,15 +403,54 @@ void Current_Loop(){
 
 
 
+uint8_t Current_Sensor_Calibration_Loop(){
 
+    static uint8_t adc1_cal_step = 0;
+    static uint32_t adc1_cal_next_step_time = 0;
+    static uint8_t adc1_cal_step_counter = 0;
+    static uint8_t adc1_cal_step_complete = 0;
 
-static uint32_t tim;
+    switch(adc1_cal_step){
+        case 0:
+            if(!adc1_cal_step_complete){
 
+                DRV8323_CSACALStart(&hfoc.hdrv8323);
 
-void Current_Sensor_Calibration_Loop(){
-    if(foc_adc1_measurement_flag){
+                adc1_cal_step_complete = 1;
+                adc1_cal_next_step_time = HAL_GetTick() + 1; //wait 1ms before the next step
+            }
+            break;
+        case 1:
+            if(!adc1_cal_step_complete){
+                if(foc_adc1_measurement_flag){
+                    adc1_cal_step_counter++;
+    
+                    hfoc.phase_current_offset.a = hfoc.phase_current.a;
+                    hfoc.phase_current_offset.b = hfoc.phase_current.b;
+                    hfoc.phase_current_offset.c = hfoc.phase_current.c;
+    
+                    foc_adc1_measurement_flag = 0;
+                    if(adc1_cal_step_counter >= 100){
 
-        foc_adc1_measurement_flag = 0;
+                        DRV8323_CSACALStop(&hfoc.hdrv8323);
+                        adc1_cal_step_counter = 0; //reset the counter
+
+                        adc1_cal_step_complete = 1;
+                        adc1_cal_next_step_time = HAL_GetTick() + 1; //wait 1ms before the next step
+                    }
+                }
+            }
+            break;
+        case 2:
+            break;
+        default:
+            
+            break;
+    }
+
+    if(adc1_cal_step_complete && (HAL_GetTick() >= adc1_cal_next_step_time)){
+        adc1_cal_step_complete = 0;
+        adc1_cal_step++;
     }
 
 }
