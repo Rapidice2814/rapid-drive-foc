@@ -28,8 +28,6 @@ typedef enum {
 
 // Function prototypes
 void FOC_Setup();
-
-void FOC_RGB();
 void FOC_Loop();
 
 #endif // FOC_H
