@@ -36,4 +36,6 @@ float _cosf(float a);
  */
 float _atan2(float y, float x);
 
+void normalize_angle(float *angle);
+
 #endif // FOC_UTILS_H

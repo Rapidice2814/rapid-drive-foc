@@ -5,6 +5,7 @@
 #include "PID.h"
 #include "DRV8323_Driver.h"	
 #include "AS5047P_Driver.h"
+#include "FOC_Flash.h"
 
 typedef struct {
     float a;
@@ -48,6 +49,7 @@ typedef struct {
 
     /* General */
     float voltage_limit; // max voltage put out by the inverter
+    FLASH_DataTypeDef flash_data; // flash data structure
 
     /* ADC buffers */
     PhaseCurrents phase_current;            //measured phase currents [A]
@@ -57,11 +59,13 @@ typedef struct {
 
     /* Encoder */
     AS5047P_HandleTypeDef has5047p;         //encoder handle
-
     volatile uint32_t *pencoder_count;      //pointer to the encoder counter
-    float encoder_angle_electric;           //angle in radians
-    float previous_encoder_angle_electric;  //previous angle in radians
-    float encoder_speed_electric;           //speed in rad/s
+    float encoder_angle_mechanical;         //angle in radians
+    float encoder_angle_mechanical_offset;  //offset for the encoder angle [radians]
+    
+    float encoder_angle_electrical;           //angle in radians
+    float previous_encoder_angle_electrical;  //previous angle in radians
+    float encoder_speed_electrical;           //speed in rad/s
 
     /* Motor parameters */
     float motor_pole_pairs;                 //number of pole pairs
@@ -112,8 +116,7 @@ void FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltages phase_voltages)
 void FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32_t *encoder_count);
 void FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc);
 void FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc);
-void FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt);
-
+void FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha);
 /* PWM */
 void FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, volatile uint32_t *pCCRb, volatile uint32_t *pCCRc, uint32_t max_ccr);
 

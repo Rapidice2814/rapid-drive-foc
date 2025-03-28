@@ -48,8 +48,8 @@ void Debug_Queue(FOC_HandleTypeDef *hfoc){
     Iq = hfoc->dq_current.q;
     Id_setpoint = hfoc->dq_current_setpoint.d;
     Iq_setpoint = hfoc->dq_current_setpoint.q;
-    Angle = hfoc->encoder_angle_electric;
-    Speed = hfoc->encoder_speed_electric;
+    Angle = hfoc->encoder_angle_electrical;
+    Speed = hfoc->encoder_speed_electrical;
 }
 
 extern uint8_t alignment_test_mode;

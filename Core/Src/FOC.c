@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "FOC.h"
 #include "FOC_Driver.h"
@@ -30,8 +31,16 @@ extern PCD_HandleTypeDef hpcd_USB_FS;
 
 
 FOC_HandleTypeDef hfoc = {0};
-FOC_State Current_FOC_State = FOC_STATE_INIT;
-FLASH_DataTypeDef flash_data = {0};
+FOC_State Current_FOC_State = FOC_INIT;
+
+
+
+static uint8_t Current_Sensor_Calibration_Loop();
+static uint8_t Alignment_Loop();
+static uint8_t General_Test_Loop();
+static uint8_t Alignment_Test_Loop();
+
+
 
 void Current_Loop();
 
@@ -68,27 +77,6 @@ void FOC_Setup(){
 
     WS2812b_Setup(&htim4, TIM_CHANNEL_1);
 
-    // uint8_t colors[4][3] = {
-    //     {255, 0, 0},  // Red
-    //     {0, 255, 0},  // Green
-    //     {0, 0, 255},  // Blue
-    //     {200, 200, 200} // White
-    // };
-
-    // while (1) {
-    //     for (int shift = 0; shift < 4; shift++) {
-    //         for (int i = 0; i < 4; i++) {
-    //             int index = (i + shift) % 4;
-    //             WS2812b_SetColor(i, colors[index][0], colors[index][1], colors[index][2]);
-    //         }
-    //         WS2812b_Send();
-    //         HAL_Delay(50);  // Adjust speed
-    //     }
-    // }
-
-
-
-
     hfoc.motor_pole_pairs = MOTOR_POLE_PAIRS;
     hfoc.motor_stator_resistance = MOTOR_STATOR_RESISTANCE;
     hfoc.motor_stator_inductance = MOTOR_STATOR_INDUCTANCE;
@@ -117,7 +105,11 @@ void FOC_Setup(){
         };
     }
 
-    FOC_SetPWMCCRPointers(&hfoc, &htim1.Instance->CCR1, &htim1.Instance->CCR2, &htim1.Instance->CCR3, PWM_CLOCK_DIVIDER); //set the pwm ccr register pointers
+    FOC_SetEncoderPointer(&hfoc, &htim3.Instance->CNT);
+    HAL_TIM_Base_Start(&htim3); //start encoder timer
+
+
+    FOC_SetPWMCCRPointers(&hfoc, &htim1.Instance->CCR3, &htim1.Instance->CCR2, &htim1.Instance->CCR1, PWM_CLOCK_DIVIDER); //set the pwm ccr register pointers
     FOC_SetInputVoltage(&hfoc, INPUT_VOLTAGE); //set the input voltage, as default
     FOC_SetVoltageLimit(&hfoc, VOLTAGE_LIMIT); //set the voltage limit, as default
 
@@ -128,54 +120,14 @@ void FOC_Setup(){
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
     HAL_TIM_OC_Start(&htim1, TIM_CHANNEL_4); //this triggers the adc
 
+    HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, GPIO_PIN_SET);
+
     HAL_TIM_Base_Start(&htim1); //pwm timer and also adc trigger
     HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc1_buffer, ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2); //start adc in dma mode
 
-    FOC_SetEncoderPointer(&hfoc, &htim3.Instance->CNT);
-    HAL_TIM_Base_Start(&htim3); //start encoder timer
+    
     HAL_TIM_Base_Start(&htim2); //timer for the counter
 
-
-    // while(1){
-    //     FOC_UpdateEncoderAngle(&hfoc);
-    //     float angle1, angle2;
-    //     angle1=  hfoc.encoder_angle_electric;
-    //     AS5047P_GetAngle(&hfoc.has5047p, &angle2);
-    //     HAL_Delay(100);
-    // }
-
-    // /* Current sensor calibration*/
-    // DRV8323_CSACALStart(&hfoc.hdrv8323);
-    // HAL_Delay(1);
-    // uint32_t adc1_cal_counter = 0;
-    // while(1){
-    //     if(adc1_half_complete_flag || adc1_complete_flag){
-    //         int start_index = adc1_half_complete_flag ? 0 : CURRENT_LOOP_CLOCK_DIVIDER * ADC1_CHANNELS;
-    //         int end_index = start_index + CURRENT_LOOP_CLOCK_DIVIDER * ADC1_CHANNELS;
-
-    //         for (int i = start_index; i < end_index; i += ADC1_CHANNELS) {
-    //         adc_phase_current_offset[0] = adc_phase_current_offset[0] * (1 - ADC_CALIBRATION_ALPHA) + ADC_CALIBRATION_ALPHA * adc1_buffer[i];
-    //         adc_phase_current_offset[1] = adc_phase_current_offset[1] * (1 - ADC_CALIBRATION_ALPHA) + ADC_CALIBRATION_ALPHA * adc1_buffer[i + 1];
-    //         adc_phase_current_offset[2] = adc_phase_current_offset[2] * (1 - ADC_CALIBRATION_ALPHA) + ADC_CALIBRATION_ALPHA * adc1_buffer[i + 2];
-
-    //         }
-    //         adc1_cal_counter++;
-
-    //         adc1_half_complete_flag = 0;
-    //         adc1_complete_flag = 0;
-    //     }
-    //     if(adc1_cal_counter >= 100){
-    //         break;
-    //     }
-    // }
-    // DRV8323_CSACALStop(&hfoc.hdrv8323);
-
-    // /* Motor alignment */
-    // FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){1.0f, 0.0f}));
-    // HAL_Delay(100);
-    // FOC_SetEncoderZero(&hfoc);
-    // HAL_Delay(100);
-    // FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){0.0f, 0.0f}));
 
     // /* PID controllers */
     // PID_Init(&hfoc.pid_current_d, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -PID_LIMIT, PID_LIMIT, -PID_INT_LIMIT, PID_INT_LIMIT);
@@ -210,36 +162,22 @@ static uint32_t adc1_start_time = 0;
 static uint32_t adc1_time = 0;
 static uint32_t max_adc1_time = 0;
 
-static uint32_t current_loop_start_time = 0;
-static uint32_t current_loop_time = 0;
-static uint32_t max_current_loop_time = 0;
+// static uint32_t current_loop_start_time = 0;
+// static uint32_t current_loop_time = 0;
+// static uint32_t max_current_loop_time = 0;
 
-static uint32_t debug_loop_start_time = 0;
-static uint32_t debug_loop_time = 0;
-static uint32_t max_debug_loop_time = 0;
+// static uint32_t debug_loop_start_time = 0;
+// static uint32_t debug_loop_time = 0;
+// static uint32_t max_debug_loop_time = 0;
 
 
-uint32_t alignment_test_mode_counter = 0;
-static uint8_t debug_state = 0;
-static uint8_t setpoint_counter = 0;
-// static AlphaBetaVoltages Vab_setpoint[4] = {{2.0f, 0.0f}, {0.0f, 2.0f}, {-2.0f, 0.0f}, {0.0f, -2.0f}};
-static AlphaBetaVoltages Vab_setpoint[4] = {{1.0f, 0.0f}, {0.0f, 1.0f}, {-1.0f, 0.0f}, {0.0f, -1.0f}};
-// static AlphaBetaVoltages Vab_setpoint[4] = {{0.5, 0.0f}, {0.0f, 0.5f}, {-0.5f, 0.0f}, {0.0f, -0.5f}};
-// static AlphaBetaVoltages Vab_setpoint[4] = {{0.5f, 0.5f}, {-0.5f, 0.5f}, {-0.5f, -0.5f}, {0.5f, -0.5f}};
 
-static PhaseVoltages phase_voltages_setpoint[4] = {0};
-static AlphaBetaCurrents Iab_result[4] = {0};
-static float Iab_polar_result_mag[4] = {0};
-static float Iab_polar_result_arg[4] = {0};
-static float Angle_result[4] = {0};
-static float Angle_error[4] = {0};
-static DQCurrents Idq_result[4] = {0};
-static AlphaBetaVoltages Vab_result[4] = {0};
+char usart3_tx_buffer[200];
 
-uint8_t timeout_flag = 0;
 
 void FOC_Loop(){
     start_time = __HAL_TIM_GET_COUNTER(&htim2);
+
     if(adc1_half_complete_flag || adc1_complete_flag){ //This loop runs at (PWM frequency / CURRENT_LOOP_CLOCK_SCALER)
         adc1_start_time = __HAL_TIM_GET_COUNTER(&htim2);
 
@@ -253,6 +191,8 @@ void FOC_Loop(){
                 hfoc.vbus            = hfoc.vbus            * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * VOLTAGE_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 3] * 3.3f / 4096.0f) - hfoc.vbus_offset;
             }
 
+            HAL_GPIO_TogglePin(PB2_GPIO_Port, PB2_Pin);
+
             foc_adc1_measurement_flag = 1; //triggered after the adc conversion is complete (either first or second half of the buffer)
             adc1_half_complete_flag = 0;
             adc1_complete_flag = 0;
@@ -264,20 +204,67 @@ void FOC_Loop(){
     }
 
     switch(Current_FOC_State){
-        case FOC_CURRENT_SENSOR_CALIBRATION:
+        
+        case FOC_INIT:
+            __NOP();
+            Current_FOC_State = FOC_CURRENT_SENSOR_CALIBRATION;
             break;
-        case FOC_STATE_INIT:
+        case FOC_CURRENT_SENSOR_CALIBRATION:
+            if(Current_Sensor_Calibration_Loop()){
+                Current_FOC_State = FOC_ALIGNMENT;
+                hfoc.adc_calibrated = 1;
+            }
+            break;
+        case FOC_GENERAL_TEST:
+            if(General_Test_Loop()){
+                // Current_FOC_State = FOC_ALIGNMENT;
+                __NOP();
+            }
             break;
         case FOC_CALIBRATION:
             break;
-        case FOC_STATE_ALIGNMENT:
+        case FOC_ALIGNMENT:
+            if(Alignment_Loop()){
+                Current_FOC_State = FOC_ALIGNMENT_TEST;
+            }
             break;
-        case FOC_STATE_RUN:
+        case FOC_ALIGNMENT_TEST:
+            if(Alignment_Test_Loop()){
+                Current_FOC_State = FOC_GENERAL_TEST;
+            }
+            break;
+        case FOC_RUN:
             break;
     }
 
-    
+    execution_time = __HAL_TIM_GET_COUNTER(&htim2) - start_time;
+    if (execution_time > max_execution_time) {
+        max_execution_time = execution_time;
+    }
+    if(execution_time > 100){
+        snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Execution time: %lu us\r\n", execution_time);
+        HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+    }
+}
 
+// void Current_Loop(){
+//     if(DRV8323_CheckFault(&hfoc.hdrv8323)){ //check for motor driver fault
+//         hfoc.motor_disable_flag = 1;
+//     }
+
+//     FOC_UpdateEncoderAngle(&hfoc);
+//     FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY);
+
+//     hfoc.ab_current = FOC_Clarke_transform(hfoc.phase_current);
+//     hfoc.dq_current = FOC_Park_transform(hfoc.ab_current, hfoc.encoder_angle_electric);
+
+//     hfoc.dq_voltage.d = PID_Update(&hfoc.pid_current_d, hfoc.dq_current_setpoint.d, hfoc.dq_current.d);
+//     hfoc.dq_voltage.q = PID_Update(&hfoc.pid_current_q, hfoc.dq_current_setpoint.q, hfoc.dq_current.q);
+
+//     hfoc.ab_voltage = FOC_InvPark_transform(hfoc.dq_voltage, hfoc.encoder_angle_electric);
+//     PhaseVoltages phase_voltages = FOC_InvClarke_transform(hfoc.ab_voltage);
+//     FOC_SetPhaseVoltages(&hfoc, phase_voltages);
+// }
 
     // if(foc_adc1_measurement_flag && !alignment_test_mode){
     //     // HAL_GPIO_WritePin(User_LED_GPIO_Port, User_LED_Pin, 1);
@@ -299,7 +286,22 @@ void FOC_Loop(){
     //     }
     // }
 
+// uint32_t alignment_test_mode_counter = 0;
+// static uint8_t debug_state = 0;
+// static uint8_t setpoint_counter = 0;
+// static AlphaBetaVoltages Vab_setpoint[4] = {{2.0f, 0.0f}, {0.0f, 2.0f}, {-2.0f, 0.0f}, {0.0f, -2.0f}};
+// static AlphaBetaVoltages Vab_setpoint[4] = {{1.0f, 0.0f}, {0.0f, 1.0f}, {-1.0f, 0.0f}, {0.0f, -1.0f}};
+// static AlphaBetaVoltages Vab_setpoint[4] = {{0.5, 0.0f}, {0.0f, 0.5f}, {-0.5f, 0.0f}, {0.0f, -0.5f}};
+// static AlphaBetaVoltages Vab_setpoint[4] = {{0.5f, 0.5f}, {-0.5f, 0.5f}, {-0.5f, -0.5f}, {0.5f, -0.5f}};
 
+// static PhaseVoltages phase_voltages_setpoint[4] = {0};
+// static AlphaBetaCurrents Iab_result[4] = {0};
+// static float Iab_polar_result_mag[4] = {0};
+// static float Iab_polar_result_arg[4] = {0};
+// static float Angle_result[4] = {0};
+// static float Angle_error[4] = {0};
+// static DQCurrents Idq_result[4] = {0};
+// static AlphaBetaVoltages Vab_result[4] = {0};
 
     // if(debug_loop_flag){
     //         Debug_Queue(&hfoc);
@@ -314,8 +316,8 @@ void FOC_Loop(){
     //                     debug_state++;
     //                 } else if(debug_state == 1){
     //                     Iab_result[setpoint_counter] = FOC_Clarke_transform(hfoc.phase_current);
-    //                     Iab_polar_result_mag[setpoint_counter] = sqrtf(Iab_result[setpoint_counter].alpha * Iab_result[setpoint_counter].alpha + Iab_result[setpoint_counter].beta * Iab_result[setpoint_counter].beta);
-    //                     Iab_polar_result_arg[setpoint_counter] = atan2f(Iab_result[setpoint_counter].beta, Iab_result[setpoint_counter].alpha);
+                        // Iab_polar_result_mag[setpoint_counter] = sqrtf(Iab_result[setpoint_counter].alpha * Iab_result[setpoint_counter].alpha + Iab_result[setpoint_counter].beta * Iab_result[setpoint_counter].beta);
+                        // Iab_polar_result_arg[setpoint_counter] = atan2f(Iab_result[setpoint_counter].beta, Iab_result[setpoint_counter].alpha);
         
     //                     if(Iab_polar_result_arg[setpoint_counter] < 0){
     //                         Iab_polar_result_arg[setpoint_counter] += 2*M_PIF;
@@ -364,121 +366,321 @@ void FOC_Loop(){
     //     }
     // }
 
-    
 
 
 
+/**
+  * @brief Current sensor calibration loop
+  * @note This function is used to calibrate the current sensor. It takes 100 samples of the current sensor and calculates the offset.
+  * @param None
+  * @retval uint8_t: 0 if the calibration is not complete, 1 if the calibration is complete
+  */
+static uint8_t Current_Sensor_Calibration_Loop(){
 
+    static uint8_t step = 0;
+    static uint32_t next_step_time = 0;
+    static uint8_t measurement_step_counter = 0;
+    static uint8_t step_complete = 0;
 
-
-
-    // execution_time = __HAL_TIM_GET_COUNTER(&htim2) - start_time;
-    // if (execution_time > max_execution_time) {
-    //     max_execution_time = execution_time;
-    // }
-    // if(execution_time > 100){
-    //     __NOP();
-    // }
-}
-
-void Current_Loop(){
-    if(DRV8323_CheckFault(&hfoc.hdrv8323)){ //check for motor driver fault
-        hfoc.motor_disable_flag = 1;
-    }
-
-    FOC_UpdateEncoderAngle(&hfoc);
-    FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY);
-
-    hfoc.ab_current = FOC_Clarke_transform(hfoc.phase_current);
-    hfoc.dq_current = FOC_Park_transform(hfoc.ab_current, hfoc.encoder_angle_electric);
-
-    hfoc.dq_voltage.d = PID_Update(&hfoc.pid_current_d, hfoc.dq_current_setpoint.d, hfoc.dq_current.d);
-    hfoc.dq_voltage.q = PID_Update(&hfoc.pid_current_q, hfoc.dq_current_setpoint.q, hfoc.dq_current.q);
-
-    hfoc.ab_voltage = FOC_InvPark_transform(hfoc.dq_voltage, hfoc.encoder_angle_electric);
-    PhaseVoltages phase_voltages = FOC_InvClarke_transform(hfoc.ab_voltage);
-    FOC_SetPhaseVoltages(&hfoc, phase_voltages);
-}
-
-
-
-
-uint8_t Current_Sensor_Calibration_Loop(){
-
-    static uint8_t adc1_cal_step = 0;
-    static uint32_t adc1_cal_next_step_time = 0;
-    static uint8_t adc1_cal_step_counter = 0;
-    static uint8_t adc1_cal_step_complete = 0;
-
-    switch(adc1_cal_step){
+    switch(step){
         case 0:
-            if(!adc1_cal_step_complete){
+            if(!step_complete){
 
                 DRV8323_CSACALStart(&hfoc.hdrv8323);
 
-                adc1_cal_step_complete = 1;
-                adc1_cal_next_step_time = HAL_GetTick() + 1; //wait 1ms before the next step
+                step_complete = 1;
+                next_step_time = HAL_GetTick() + 1; //wait 1ms before the next step
             }
             break;
         case 1:
-            if(!adc1_cal_step_complete){
+            if(!step_complete){
                 if(foc_adc1_measurement_flag){
-                    adc1_cal_step_counter++;
+                    measurement_step_counter++;
     
-                    hfoc.phase_current_offset.a = hfoc.phase_current.a;
-                    hfoc.phase_current_offset.b = hfoc.phase_current.b;
-                    hfoc.phase_current_offset.c = hfoc.phase_current.c;
+                    hfoc.phase_current_offset.a += hfoc.phase_current.a;
+                    hfoc.phase_current_offset.b += hfoc.phase_current.b;
+                    hfoc.phase_current_offset.c += hfoc.phase_current.c;
     
                     foc_adc1_measurement_flag = 0;
-                    if(adc1_cal_step_counter >= 100){
+                    if(measurement_step_counter >= 100){
 
                         DRV8323_CSACALStop(&hfoc.hdrv8323);
-                        adc1_cal_step_counter = 0; //reset the counter
+                        measurement_step_counter = 0; //reset the counter
 
-                        adc1_cal_step_complete = 1;
-                        adc1_cal_next_step_time = HAL_GetTick() + 1; //wait 1ms before the next step
+                        step_complete = 1;
+                        next_step_time = HAL_GetTick() + 1; //wait 1ms before the next step
                     }
                 }
             }
             break;
         case 2:
-            break;
         default:
-            
+            step = 0;
+            return 1; //calibration complete
             break;
     }
 
-    if(adc1_cal_step_complete && (HAL_GetTick() >= adc1_cal_next_step_time)){
-        adc1_cal_step_complete = 0;
-        adc1_cal_step++;
+    if(step_complete && (HAL_GetTick() >= next_step_time)){
+        step_complete = 0;
+        step++;
     }
-
+    return 0;
 }
 
-    // DRV8323_CSACALStart(&hfoc.hdrv8323);
-    // HAL_Delay(1);
-    // uint32_t adc1_cal_counter = 0;
-    // while(1){
-    //     if(adc1_half_complete_flag || adc1_complete_flag){
-    //         int start_index = adc1_half_complete_flag ? 0 : CURRENT_LOOP_CLOCK_DIVIDER * ADC1_CHANNELS;
-    //         int end_index = start_index + CURRENT_LOOP_CLOCK_DIVIDER * ADC1_CHANNELS;
+/**
+  * @brief 
+  * @note 
+  * @param None
+  * @retval uint8_t: 0 if the calibration is not complete, 1 if the calibration is complete
+  */
+ static uint8_t Alignment_Loop(){
 
-    //         for (int i = start_index; i < end_index; i += ADC1_CHANNELS) {
-    //         adc_phase_current_offset[0] = adc_phase_current_offset[0] * (1 - ADC_CALIBRATION_ALPHA) + ADC_CALIBRATION_ALPHA * adc1_buffer[i];
-    //         adc_phase_current_offset[1] = adc_phase_current_offset[1] * (1 - ADC_CALIBRATION_ALPHA) + ADC_CALIBRATION_ALPHA * adc1_buffer[i + 1];
-    //         adc_phase_current_offset[2] = adc_phase_current_offset[2] * (1 - ADC_CALIBRATION_ALPHA) + ADC_CALIBRATION_ALPHA * adc1_buffer[i + 2];
+    static uint8_t step = 0;
+    static uint32_t next_step_time = 0;
+    static uint8_t step_complete = 0;
+    
+    switch(step){
+        case 0:
+            if(!step_complete){
+                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){0.3f, 0.0f}));
+                step_complete = 1;
+                next_step_time = HAL_GetTick() + 300; //wait 1ms before the next step
+            }
+            break;
+        case 1:
+            if(!step_complete){
+                FOC_SetEncoderZero(&hfoc);
+                step_complete = 1;
+                next_step_time = HAL_GetTick() + 10; //wait 1ms before the next step
+            }
+            break;
+        case 2:
+            if(!step_complete){
+                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){0.0f, 0.0f}));
+                step_complete = 1;
+                next_step_time = HAL_GetTick() + 1; //wait 1ms before the next step
+            }
+            break;
+        default:
+            step = 0;
+            return 1; // complete
+            break;
+        }
+    
+        if(step_complete && (HAL_GetTick() >= next_step_time)){
+            step_complete = 0;
+            step++;
+        }
+    return 0;
+    }
 
-    //         }
-    //         adc1_cal_counter++;
+/**
+  * @brief 
+  * @note 
+  * @param None
+  * @retval uint8_t: 0 if the calibration is not complete, 1 if the calibration is complete
+  */
+static uint8_t General_Test_Loop(){
 
-    //         adc1_half_complete_flag = 0;
-    //         adc1_complete_flag = 0;
-    //     }
-    //     if(adc1_cal_counter >= 100){
-    //         break;
-    //     }
-    // }
-    // DRV8323_CSACALStop(&hfoc.hdrv8323);
+    static uint8_t step = 0;
+    static uint32_t next_step_time = 0;
+    static uint8_t step_complete = 0;
+
+    switch(step){
+        case 0:
+            if(!step_complete){
+                FOC_UpdateEncoderAngle(&hfoc);
+                
+                HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 1);
+                for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
+                    WS2812b_SetColor(i, 0, 25, 0); //green
+                }
+                WS2812b_Send();
+
+                step_complete = 1;
+                next_step_time = HAL_GetTick() + 100; //wait 1ms before the next step
+            }
+            break;
+        case 1:
+            if(!step_complete){
+
+                HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 0);
+                for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
+                    WS2812b_SetColor(i, 0, 0, 0); 
+                }
+                WS2812b_Send();
+                
+                step_complete = 1;
+                next_step_time = HAL_GetTick() + 100; //wait 1ms before the next step
+            }
+            break;
+        case 2:
+        default:
+            step = 0;
+            return 1; // complete
+            break;
+    }
+
+    if(step_complete && (HAL_GetTick() >= next_step_time)){
+        step_complete = 0;
+        step++;
+    }
+return 0;
+}
+
+
+/**
+  * @brief 
+  * @note 
+  * @param None
+  * @retval uint8_t: 0 if the calibration is not complete, 1 if the calibration is complete
+  */
+ static uint8_t Alignment_Test_Loop(){
+
+    static uint8_t step = 0;
+    static uint32_t next_step_time = 0;
+    static uint8_t step_complete = 0;
+    static uint8_t substep_counter = 0;
+
+    static float reference_angle = 0.0f;
+    static float reference_electrical_angle = 0.0f;
+    static float magnitude = 0.3f;
+    static uint8_t direction = 0;
+    static uint8_t dir_swapped = 0;
+
+    static float current_angle = 0.0f;
+    static float current_magnitude = 0.0f;
+
+    switch(step){
+        case 0:
+            if(!step_complete && (HAL_GetTick() >= next_step_time)){
+
+                snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Ref: %d, Ang: %d, CAng: %d, CMag: %d\n", (int)(reference_electrical_angle * 1000), (int)(hfoc.encoder_angle_electrical * 1000), (int)(current_angle * 1000), (int)(current_magnitude * 1000));
+                HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+
+                AlphaBetaVoltages Vab;
+                Vab.alpha = magnitude * cosf(reference_electrical_angle);
+                Vab.beta = magnitude * sinf(reference_electrical_angle);
+                PhaseVoltages phase_voltages = FOC_InvClarke_transform(Vab);
+                FOC_SetPhaseVoltages(&hfoc, phase_voltages);
+
+                FOC_UpdateEncoderAngle(&hfoc);
+                FOC_UpdateEncoderSpeed(&hfoc, 1.0f, 2.0f/(50.0f + 1.0f));
+
+                AlphaBetaCurrents Iab = FOC_Clarke_transform(hfoc.phase_current);
+                current_angle = atan2f(Iab.beta, Iab.alpha);
+                normalize_angle(&current_angle);
+                current_magnitude = sqrtf(Iab.alpha * Iab.alpha + Iab.beta * Iab.beta);
+
+
+                if(direction == 0){//cw
+                    reference_angle += 2*M_PIF / 100.0f;
+                }else{//ccw
+                    reference_angle -= 2*M_PIF / 100.0f;
+                }
+                reference_electrical_angle = reference_angle * hfoc.motor_pole_pairs;
+                normalize_angle(&reference_electrical_angle);
+                
+                
+                substep_counter++;
+                if(substep_counter > 100){
+                    substep_counter = 0;
+                    HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 1);
+
+                    if(!direction){
+
+                        if(hfoc.encoder_speed_electrical < 0.0f){
+                            dir_swapped = 1;
+                        }
+
+                        direction = 1;
+                        substep_counter = 0;
+                    }else{
+
+                        if(hfoc.encoder_speed_electrical > 0.0f){
+                            if(dir_swapped){
+                               hfoc.flash_data.motor_direction_swapped = !hfoc.flash_data.motor_direction_swapped;
+                            }else{
+                                __NOP(); //error
+                            }
+                        }
+
+                        step_complete = 1;
+                    }
+                    next_step_time = HAL_GetTick() + 10;
+                }else{
+                    next_step_time = HAL_GetTick() + 10; 
+                }
+            }
+            break;
+        case 1:
+            if(!step_complete){
+
+                FOC_SetPhaseVoltages(&hfoc, (PhaseVoltages){0.0f, 0.0f, 0.0f});
+
+                HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 0);
+                HAL_GPIO_TogglePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin);
+                // step_complete = 1;
+                next_step_time = HAL_GetTick() + 100;
+            }
+            break;
+        case 2:
+        default:
+            step = 0;
+            return 1; // complete
+            break;
+    }
+
+    if(step_complete && (HAL_GetTick() >= next_step_time)){
+        step_complete = 0;
+        step++;
+    }
+return 0;
+}
+
+
+// /**
+//   * @brief 
+//   * @note 
+//   * @param None
+//   * @retval uint8_t: 0 if the calibration is not complete, 1 if the calibration is complete
+//   */
+//  static uint8_t General_Test_Loop(){
+
+//     static uint8_t step = 0;
+//     static uint32_t next_step_time = 0;
+//     static uint8_t step_complete = 0;
+
+//     switch(step){
+//         case 0:
+//             if(!step_complete){
+
+//                 HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 1);
+//                 step_complete = 1;
+//                 next_step_time = HAL_GetTick() + 1000; //wait 1ms before the next step
+//             }
+//             break;
+//         case 1:
+//             if(!step_complete){
+
+//                 HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 0);
+//                 step_complete = 1;
+//                 next_step_time = HAL_GetTick() + 1000; //wait 1ms before the next step
+//             }
+//             break;
+//         case 2:
+//         default:
+//             step = 0;
+//             return 1; // complete
+//             break;
+//     }
+
+//     if(step_complete && (HAL_GetTick() >= next_step_time)){
+//         step_complete = 0;
+//         step++;
+//     }
+// return 0;
+// }
 
 
 

@@ -25,11 +25,11 @@ void WS2812b_SetColor(uint8_t led, uint8_t r, uint8_t g, uint8_t b) {
         return;
     }
 
-    for (int i = 23; i >= 0; i--) {
+    for (int i = 0; i < 23; i++) {
         if(data & (1 << i)) {
-            ws2812b_pwm_data[i + led * 24] = 144; //1
+            ws2812b_pwm_data[(24 - i) + led * 24] = 144; //1
         } else {
-            ws2812b_pwm_data[i + led * 24] = 68; //0
+            ws2812b_pwm_data[(24 - i) + led * 24] = 68; //0
         }
     }
 

@@ -11,7 +11,7 @@ typedef enum {
 
 typedef struct {
     uint8_t contains_data;
-    uint32_t banana;
+    uint8_t motor_direction_swapped;
     float apple;
     uint8_t orange;
     float array[4];

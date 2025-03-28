@@ -76,7 +76,6 @@ void FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltages phase_voltages)
     *(hfoc->pCCRc) = (uint32_t)PWMc;
 }
 
-    
 
 void FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, volatile uint32_t *pCCRb, volatile uint32_t *pCCRc, uint32_t max_ccr){
 	hfoc->max_ccr = max_ccr;
@@ -98,26 +97,35 @@ void FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32_t *pencoder_
 }
 
 void FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
-    *(hfoc->pencoder_count) = 0;
+    float ap5047p_angle = 0.0f;
+    AS5047P_GetAngle(&(hfoc->has5047p), &ap5047p_angle);
+    hfoc->encoder_angle_mechanical_offset = ap5047p_angle;
+    *(hfoc->pencoder_count) = (int32_t)(ap5047p_angle * ENCODER_PULSES_PER_ROTATION / (2 * M_PIF));
 }
 
 void FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
-    hfoc->encoder_angle_electric = ((float)(*(hfoc->pencoder_count)) / ENCODER_PULSES_PER_ROTATION) * 2 * M_PIF * hfoc->motor_pole_pairs;
-    while (hfoc->encoder_angle_electric > 2*M_PIF){
-        hfoc->encoder_angle_electric -= 2*M_PIF;
+    hfoc->encoder_angle_mechanical = ((float)(*(hfoc->pencoder_count)) / ENCODER_PULSES_PER_ROTATION) * 2 * M_PIF - hfoc->encoder_angle_mechanical_offset;
+    if (hfoc->encoder_angle_mechanical < 0) {
+        hfoc->encoder_angle_mechanical += 2 * M_PIF;
+    } else if (hfoc->encoder_angle_mechanical > 2 * M_PIF) {
+        hfoc->encoder_angle_mechanical -= 2 * M_PIF;
+    }
+    hfoc->encoder_angle_electrical = hfoc->encoder_angle_mechanical * hfoc->motor_pole_pairs;
+    while (hfoc->encoder_angle_electrical > 2*M_PIF){
+        hfoc->encoder_angle_electrical -= 2*M_PIF;
     }
 }
 
-#define ENCODER_SPEED_LOOP_ALPHA 0.05f
-void FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt){
-    float delta_angle = hfoc->encoder_angle_electric - hfoc->previous_encoder_angle_electric;
+// #define ENCODER_SPEED_LOOP_ALPHA 0.05f
+void FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha){
+    float delta_angle = hfoc->encoder_angle_electrical - hfoc->previous_encoder_angle_electrical;
     if (delta_angle > M_PIF) {
         delta_angle -= 2 * M_PIF;
     } else if (delta_angle < -M_PIF) {
         delta_angle += 2 * M_PIF;
     }
-    hfoc->encoder_speed_electric = hfoc->encoder_speed_electric * (1 - ENCODER_SPEED_LOOP_ALPHA) + ENCODER_SPEED_LOOP_ALPHA * delta_angle * dt;
-    hfoc->previous_encoder_angle_electric = hfoc->encoder_angle_electric;
+    hfoc->encoder_speed_electrical = hfoc->encoder_speed_electrical * (1 - filter_alpha) + filter_alpha * delta_angle * dt;
+    hfoc->previous_encoder_angle_electrical = hfoc->encoder_angle_electrical;
 }
 
 
