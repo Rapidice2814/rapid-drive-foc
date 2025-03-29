@@ -10,7 +10,9 @@ typedef enum {
     FOC_CALIBRATION,
     FOC_ALIGNMENT,
     FOC_ALIGNMENT_TEST,
-    FOC_RUN
+    FOC_RUN,
+    FOC_CHECK_CURRENT_SENSOR,
+    FOC_ENCODER_TEST
 } FOC_State;
 
 /*Motor parameters for the Maxon motor*/

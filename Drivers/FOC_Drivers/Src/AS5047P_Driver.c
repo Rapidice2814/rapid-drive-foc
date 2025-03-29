@@ -92,13 +92,45 @@ AS5047P_StatusTypeDef AS5047P_GetAngle(AS5047P_HandleTypeDef *has5047p, float *a
     if(has5047p->pins_set == 0) return AS5047P_ERROR; //if the pins are not set, return error
 
     AS5047P_TransmitCommand(has5047p, ANGLECOM, 1);
-    uint16_t anglecom = AS5047P_TransmitCommand(has5047p, NOP, 1);
+    uint16_t ret = AS5047P_TransmitCommand(has5047p, NOP, 1);
 
-    *angle = (anglecom & 0x3FFF) * (2.0f * 3.14159265359f / 16384.0f);
+    *angle = (ret & 0x3FFF) * (2.0f * 3.14159265359f / 16384.0f);
 
     return AS5047P_OK;
 }
 
+AS5047P_StatusTypeDef AS5047P_GetAngle_Raw(AS5047P_HandleTypeDef *has5047p, float *angle){
+    if(has5047p->pins_set == 0) return AS5047P_ERROR; //if the pins are not set, return error
+
+    AS5047P_TransmitCommand(has5047p, ANGLEUNC, 1);
+    uint16_t ret = AS5047P_TransmitCommand(has5047p, NOP, 1);
+
+    *angle = (ret & 0x3FFF) * (2.0f * 3.14159265359f / 16384.0f);
+
+    return AS5047P_OK;
+}
+
+AS5047P_StatusTypeDef AS5047P_GetCMAG(AS5047P_HandleTypeDef *has5047p, uint16_t *cmag){
+    if(has5047p->pins_set == 0) return AS5047P_ERROR; //if the pins are not set, return error
+
+    AS5047P_TransmitCommand(has5047p, MAG, 1);
+    uint16_t ret = AS5047P_TransmitCommand(has5047p, NOP, 1);
+
+    *cmag = (ret & 0x3FFF);
+
+    return AS5047P_OK;
+}
+
+AS5047P_StatusTypeDef AS5047P_GetDIAAGC(AS5047P_HandleTypeDef *has5047p, uint16_t *value){
+    if(has5047p->pins_set == 0) return AS5047P_ERROR; //if the pins are not set, return error
+
+    AS5047P_TransmitCommand(has5047p, DIAAGC, 1);
+    uint16_t ret = AS5047P_TransmitCommand(has5047p, NOP, 1);
+
+    *value = (ret & 0x0FFF);
+
+    return AS5047P_OK;
+}
 
 
 /* 14 bit address, 0:Write, 1:Read*/

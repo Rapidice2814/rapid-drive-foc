@@ -105,15 +105,9 @@ void FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
 
 void FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
     hfoc->encoder_angle_mechanical = ((float)(*(hfoc->pencoder_count)) / ENCODER_PULSES_PER_ROTATION) * 2 * M_PIF - hfoc->encoder_angle_mechanical_offset;
-    if (hfoc->encoder_angle_mechanical < 0) {
-        hfoc->encoder_angle_mechanical += 2 * M_PIF;
-    } else if (hfoc->encoder_angle_mechanical > 2 * M_PIF) {
-        hfoc->encoder_angle_mechanical -= 2 * M_PIF;
-    }
+    normalize_angle(&hfoc->encoder_angle_mechanical);
     hfoc->encoder_angle_electrical = hfoc->encoder_angle_mechanical * hfoc->motor_pole_pairs;
-    while (hfoc->encoder_angle_electrical > 2*M_PIF){
-        hfoc->encoder_angle_electrical -= 2*M_PIF;
-    }
+    normalize_angle(&hfoc->encoder_angle_electrical);
 }
 
 // #define ENCODER_SPEED_LOOP_ALPHA 0.05f

@@ -72,7 +72,16 @@ __attribute__((weak)) float _sinf(float a){
         while (*angle > M_2PIF) {
             *angle -= M_2PIF;
         }
-        while (*angle < 0) {
+        while (*angle <= 0) {
             *angle += M_2PIF;
         }
     }
+
+    void normalize_angle2(float *angle){
+      while (*angle > M_PI) {
+          *angle -= M_2PIF;
+      }
+      while (*angle <= -M_PI) {
+          *angle += M_2PIF;
+      }
+  }

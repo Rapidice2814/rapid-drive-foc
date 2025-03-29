@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "Debug.h"
+#include "FOC.h"
 
 
 extern UART_HandleTypeDef huart3;
@@ -52,12 +53,13 @@ void Debug_Queue(FOC_HandleTypeDef *hfoc){
     Speed = hfoc->encoder_speed_electrical;
 }
 
-extern uint8_t alignment_test_mode;
 extern uint8_t timeout_flag;
 
 uint32_t debug_start_time = 0;
 uint32_t debug_step_time[10] = {0};
 uint32_t debug_max_time = 0;
+
+extern FOC_State Current_FOC_State;
 
 
 void Debug_Loop(){
@@ -110,7 +112,10 @@ void Debug_Loop(){
 
                 for(int i = 0; i < rx_packet_length; i++){
                     if(usart2_rx_buffer[i] == 'D'){
-                        alignment_test_mode = !alignment_test_mode;
+                        Current_FOC_State = FOC_ALIGNMENT_TEST;
+                    }
+                    if(usart2_rx_buffer[i] == 'N'){
+                        Current_FOC_State = FOC_RUN;
                     }
                     if(usart2_rx_buffer[i] == 'K'){
                         hfoc.motor_disable_flag = 1;
