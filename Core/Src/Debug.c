@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "Debug.h"
 #include "FOC.h"
+#include "FOC_Utils.h"
 
 
 extern UART_HandleTypeDef huart3;
@@ -36,8 +37,9 @@ static float Id = 0.0f;
 static float Iq = 0.0f;
 static float Id_setpoint = 0.0f;
 static float Iq_setpoint = 0.0f;
-static float Angle = 0.0f;
-static float Speed = 0.0f;
+static float EAngle = 0.0f;
+static float ESpeed = 0.0f;
+static float MAngle = 0.0f;
 
 
 
@@ -49,8 +51,11 @@ void Debug_Queue(FOC_HandleTypeDef *hfoc){
     Iq = hfoc->dq_current.q;
     Id_setpoint = hfoc->dq_current_setpoint.d;
     Iq_setpoint = hfoc->dq_current_setpoint.q;
-    Angle = hfoc->encoder_angle_electrical;
-    Speed = hfoc->encoder_speed_electrical;
+    EAngle = hfoc->encoder_angle_electrical;
+    ESpeed = hfoc->encoder_speed_electrical;
+    MAngle = hfoc->encoder_angle_mechanical;
+    normalize_angle2(&EAngle);
+    normalize_angle2(&MAngle);
 }
 
 extern uint8_t timeout_flag;
@@ -91,11 +96,11 @@ void Debug_Loop(){
             debug_step_time[5] = __HAL_TIM_GET_COUNTER(&htim2) - debug_start_time;
             break;
         case 6:
-            tx_packet_length += snprintf(usart2_tx_buffer + tx_packet_length, sizeof(usart2_tx_buffer) - tx_packet_length, "Angle:%d,", (int)(Angle * 1000));
+            tx_packet_length += snprintf(usart2_tx_buffer + tx_packet_length, sizeof(usart2_tx_buffer) - tx_packet_length, "EAngle:%d,", (int)(EAngle * 1000));
             debug_step_time[6] = __HAL_TIM_GET_COUNTER(&htim2) - debug_start_time;
             break;
         case 7:
-            tx_packet_length += snprintf(usart2_tx_buffer + tx_packet_length, sizeof(usart2_tx_buffer) - tx_packet_length, "Speed:%d\n", (int)(Speed * 1000));
+            tx_packet_length += snprintf(usart2_tx_buffer + tx_packet_length, sizeof(usart2_tx_buffer) - tx_packet_length, "MAngle:%d\n", (int)(MAngle * 1000));
             debug_step_time[7] = __HAL_TIM_GET_COUNTER(&htim2) - debug_start_time;
             break;
         case 8:
@@ -116,6 +121,9 @@ void Debug_Loop(){
                     }
                     if(usart2_rx_buffer[i] == 'N'){
                         Current_FOC_State = FOC_RUN;
+                    }
+                    if(usart2_rx_buffer[i] == 'E'){
+                        Current_FOC_State = FOC_ENCODER_TEST;
                     }
                     if(usart2_rx_buffer[i] == 'K'){
                         hfoc.motor_disable_flag = 1;

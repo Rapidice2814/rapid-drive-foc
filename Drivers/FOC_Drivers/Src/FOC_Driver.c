@@ -100,11 +100,17 @@ void FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
     float ap5047p_angle = 0.0f;
     AS5047P_GetAngle(&(hfoc->has5047p), &ap5047p_angle);
     hfoc->encoder_angle_mechanical_offset = ap5047p_angle;
-    *(hfoc->pencoder_count) = (int32_t)(ap5047p_angle * ENCODER_PULSES_PER_ROTATION / (2 * M_PIF));
+    // *(hfoc->pencoder_count) = 0; // Reset the encoder count to 0
+    *(hfoc->pencoder_count) = (int32_t)(hfoc->encoder_angle_mechanical_offset * ENCODER_PULSES_PER_ROTATION / (2 * M_PIF));
 }
 
 void FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
-    hfoc->encoder_angle_mechanical = ((float)(*(hfoc->pencoder_count)) / ENCODER_PULSES_PER_ROTATION) * 2 * M_PIF - hfoc->encoder_angle_mechanical_offset;
+    // hfoc->encoder_angle_mechanical = ((float)(*(hfoc->pencoder_count)) / ENCODER_PULSES_PER_ROTATION) * 2 * M_PIF - hfoc->encoder_angle_mechanical_offset;
+
+    float as5047p_angle = 0.0f;
+    AS5047P_GetAngle(&hfoc->has5047p, &as5047p_angle);
+    hfoc->encoder_angle_mechanical = as5047p_angle- hfoc->encoder_angle_mechanical_offset;
+
     normalize_angle(&hfoc->encoder_angle_mechanical);
     hfoc->encoder_angle_electrical = hfoc->encoder_angle_mechanical * hfoc->motor_pole_pairs;
     normalize_angle(&hfoc->encoder_angle_electrical);

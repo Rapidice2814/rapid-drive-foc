@@ -21,8 +21,8 @@
 #define DIR         0x0 // Rotation direction
 #define UVW_ABI     0x0 // Defines the PWM Output
 #define DAECDIS     0x0 // Disable Dynamic Angle Error Compensation
-#define ABIBIN      0x1 // ABI decimal or binary selection
-#define DATASELECT  0x1 // Data selection for address 3FFFh
+#define ABIBIN      0x1 // ABI decimal or binary selection, 1-> binary, 0->decimal
+#define DATASELECT  0x1 // This bit defines which data can be read form address 16383dec (3FFFhex). 0->DAECANG, 1->CORDICANG(Raw)
 #define PWMON       0x0 // Enables PWM
 
 /* SETTINGS2 values*/
