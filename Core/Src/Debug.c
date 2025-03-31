@@ -40,6 +40,7 @@ static float Iq_setpoint = 0.0f;
 static float EAngle = 0.0f;
 static float ESpeed = 0.0f;
 static float MAngle = 0.0f;
+static float Vbus = 0.0f;
 
 
 
@@ -54,6 +55,7 @@ void Debug_Queue(FOC_HandleTypeDef *hfoc){
     EAngle = hfoc->encoder_angle_electrical;
     ESpeed = hfoc->encoder_speed_electrical;
     MAngle = hfoc->encoder_angle_mechanical;
+    Vbus = hfoc->vbus;
     normalize_angle2(&EAngle);
     normalize_angle2(&MAngle);
 }
@@ -100,10 +102,14 @@ void Debug_Loop(){
             debug_step_time[6] = __HAL_TIM_GET_COUNTER(&htim2) - debug_start_time;
             break;
         case 7:
-            tx_packet_length += snprintf(usart2_tx_buffer + tx_packet_length, sizeof(usart2_tx_buffer) - tx_packet_length, "MAngle:%d\n", (int)(MAngle * 1000));
+            tx_packet_length += snprintf(usart2_tx_buffer + tx_packet_length, sizeof(usart2_tx_buffer) - tx_packet_length, "Espeed:%d,", (int)(ESpeed * 1));
             debug_step_time[7] = __HAL_TIM_GET_COUNTER(&htim2) - debug_start_time;
             break;
         case 8:
+            tx_packet_length += snprintf(usart2_tx_buffer + tx_packet_length, sizeof(usart2_tx_buffer) - tx_packet_length, "Vbus:%d\n", (int)(Vbus * 10));
+            debug_step_time[7] = __HAL_TIM_GET_COUNTER(&htim2) - debug_start_time;
+            break;
+        case 9:
             if(uart2_tx_free_flag){
                 uart2_tx_free_flag = 0;
                 HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart2_tx_buffer, tx_packet_length);
@@ -112,7 +118,7 @@ void Debug_Loop(){
             }
             debug_step_time[8] = __HAL_TIM_GET_COUNTER(&htim2) - debug_start_time;
             break;
-        case 9:
+        case 10:
             if(uart2_rx_flag){
 
                 for(int i = 0; i < rx_packet_length; i++){
@@ -187,7 +193,7 @@ void Debug_Loop(){
             }
             debug_step_time[9] = __HAL_TIM_GET_COUNTER(&htim2) - debug_start_time;
             break;
-        case 10:
+        case 11:
             {
                 for (int i = 0; i < 10; i++) {
                     if (debug_step_time[i] > debug_max_time) {

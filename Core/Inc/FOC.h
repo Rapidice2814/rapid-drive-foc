@@ -25,7 +25,7 @@ typedef enum {
 #define OUTER_LOOP_FREQUENCY 2000
 
 #define INPUT_VOLTAGE 24.0f
-#define VOLTAGE_LIMIT 12.0f
+#define VOLTAGE_LIMIT 6.0f
 #define PID_LIMIT (VOLTAGE_LIMIT * M_1_SQRT3F)
 #define PID_INT_LIMIT (PID_LIMIT * 0.8f)
 

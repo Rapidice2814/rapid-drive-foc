@@ -88,24 +88,24 @@ AS5047P_StatusTypeDef AS5047P_Init(AS5047P_HandleTypeDef *has5047p){
     return AS5047P_OK;
 }
 
-AS5047P_StatusTypeDef AS5047P_GetAngle(AS5047P_HandleTypeDef *has5047p, float *angle){
+AS5047P_StatusTypeDef AS5047P_GetAngle(AS5047P_HandleTypeDef *has5047p, uint16_t *angle){
     if(has5047p->pins_set == 0) return AS5047P_ERROR; //if the pins are not set, return error
 
     AS5047P_TransmitCommand(has5047p, ANGLECOM, 1);
     uint16_t ret = AS5047P_TransmitCommand(has5047p, NOP, 1);
 
-    *angle = (ret & 0x3FFF) * (2.0f * 3.14159265359f / 16384.0f);
+    *angle = (ret & 0x3FFF);
 
     return AS5047P_OK;
 }
 
-AS5047P_StatusTypeDef AS5047P_GetAngle_Raw(AS5047P_HandleTypeDef *has5047p, float *angle){
+AS5047P_StatusTypeDef AS5047P_GetAngle_Raw(AS5047P_HandleTypeDef *has5047p, uint16_t *angle){
     if(has5047p->pins_set == 0) return AS5047P_ERROR; //if the pins are not set, return error
 
     AS5047P_TransmitCommand(has5047p, ANGLEUNC, 1);
     uint16_t ret = AS5047P_TransmitCommand(has5047p, NOP, 1);
 
-    *angle = (ret & 0x3FFF) * (2.0f * 3.14159265359f / 16384.0f);
+    *angle = (ret & 0x3FFF);
 
     return AS5047P_OK;
 }
@@ -132,6 +132,27 @@ AS5047P_StatusTypeDef AS5047P_GetDIAAGC(AS5047P_HandleTypeDef *has5047p, uint16_
     return AS5047P_OK;
 }
 
+AS5047P_StatusTypeDef AS5047P_SetZeroAngle(AS5047P_HandleTypeDef *has5047p){
+    if(has5047p->pins_set == 0) return AS5047P_ERROR; //if the pins are not set, return error
+
+    uint16_t as5047p_angle = 0.0f;
+    AS5047P_GetAngle(has5047p, &as5047p_angle);
+
+    AS5047P_TransmitCommand(has5047p, ZPOSM, 0);
+    AS5047P_TransmitData(has5047p, (as5047p_angle >> 6) & 0x00FF); // Set the MSB of the zero position (8 bits)
+
+    uint16_t ret_zposm = AS5047P_TransmitCommand(has5047p, ZPOSL, 0);
+    AS5047P_TransmitData(has5047p, as5047p_angle & 0x003F); // Set the LSB of the zero position (6 bits)
+    uint16_t ret_zposl = AS5047P_TransmitCommand(has5047p, NOP, 1);
+
+    uint16_t ret_zpos = ((ret_zposm & 0x00FF) << 6) | (ret_zposl & 0x003F);
+
+    if(ret_zpos == as5047p_angle) return AS5047P_OK;
+
+    return AS5047P_ERROR;
+}
+
+
 
 /* 14 bit address, 0:Write, 1:Read*/
 static uint16_t AS5047P_TransmitCommand(AS5047P_HandleTypeDef *has5047p, uint16_t address14Bits, uint8_t rwBit){
@@ -153,11 +174,11 @@ static uint16_t AS5047P_TransmitCommand(AS5047P_HandleTypeDef *has5047p, uint16_
 	return received;
 }
 
-static uint16_t AS5047P_TransmitData(AS5047P_HandleTypeDef *has5047p, uint16_t address14Bits){
+static uint16_t AS5047P_TransmitData(AS5047P_HandleTypeDef *has5047p, uint16_t data14Bits){
 	uint16_t command = 0;
 	uint16_t received = 0;
 
-    command = address14Bits & 0x3FFF; // Mask to 14 bits
+    command = data14Bits & 0x3FFF; // Mask to 14 bits
 
     if(!is_even_parity(command)){
         command |= 0x8000; // Set the parity bit

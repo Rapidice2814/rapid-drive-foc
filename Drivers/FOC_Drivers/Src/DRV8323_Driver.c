@@ -117,7 +117,7 @@ DRV8323_StatusTypeDef DRV8323_Enable(DRV8323_HandleTypeDef *hdrv8323){
 DRV8323_StatusTypeDef DRV8323_Disable(DRV8323_HandleTypeDef *hdrv8323){
 	if(hdrv8323->pins_set == 0) return DRV8323_ERROR; //if the pins are not set, return error
 
-	HAL_GPIO_WritePin(hdrv8323->enable_port, hdrv8323->enable_pin, 1);
+	HAL_GPIO_WritePin(hdrv8323->enable_port, hdrv8323->enable_pin, 0);
 	hdrv8323->driver_enabled = 0;
 	hdrv8323->setup_complete = 0; //if the driver is disabled, the settings are reset to default
 

@@ -12,9 +12,13 @@ typedef enum {
 typedef struct {
     uint8_t contains_data;
     uint8_t motor_direction_swapped;
-    float apple;
-    uint8_t orange;
-    float array[4];
+
+    /* Encoder */
+    uint8_t encoder_aligned_flag;  //flag for the encoder alignment
+    float encoder_angle_mechanical_offset;  //offset for the encoder angle [radians]
+
+    
+
 } FLASH_DataTypeDef;
 
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata);

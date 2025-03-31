@@ -25,10 +25,11 @@ typedef struct {
 
 AS5047P_StatusTypeDef AS5047P_SetPins(AS5047P_HandleTypeDef *has5047p, SPI_HandleTypeDef *hspi, GPIO_TypeDef *slave_select_port, uint16_t slave_select_pin);
 AS5047P_StatusTypeDef AS5047P_Init(AS5047P_HandleTypeDef *has5047p);
-AS5047P_StatusTypeDef AS5047P_GetAngle(AS5047P_HandleTypeDef *has5047p, float *angle);
-AS5047P_StatusTypeDef AS5047P_GetAngle_Raw(AS5047P_HandleTypeDef *has5047p, float *angle);
+AS5047P_StatusTypeDef AS5047P_GetAngle(AS5047P_HandleTypeDef *has5047p, uint16_t *angle);
+AS5047P_StatusTypeDef AS5047P_GetAngle_Raw(AS5047P_HandleTypeDef *has5047p, uint16_t *angle);
 AS5047P_StatusTypeDef AS5047P_GetCMAG(AS5047P_HandleTypeDef *has5047p, uint16_t *cmag);
 AS5047P_StatusTypeDef AS5047P_GetDIAAGC(AS5047P_HandleTypeDef *has5047p, uint16_t *value);
+AS5047P_StatusTypeDef AS5047P_SetZeroAngle(AS5047P_HandleTypeDef *has5047p);
 
 
 

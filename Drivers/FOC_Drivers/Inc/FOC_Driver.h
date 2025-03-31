@@ -61,7 +61,6 @@ typedef struct {
     AS5047P_HandleTypeDef has5047p;         //encoder handle
     volatile uint32_t *pencoder_count;      //pointer to the encoder counter
     float encoder_angle_mechanical;         //angle in radians
-    float encoder_angle_mechanical_offset;  //offset for the encoder angle [radians]
     
     float encoder_angle_electrical;           //angle in radians
     float previous_encoder_angle_electrical;  //previous angle in radians
