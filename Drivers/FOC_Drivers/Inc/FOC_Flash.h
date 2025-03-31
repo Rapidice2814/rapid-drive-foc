@@ -2,6 +2,8 @@
 #define FOC_FLASH_H
 
 #include "stm32g4xx_hal.h"
+#include "FOC_Utils.h"
+#include "PID.h"
 
 typedef enum {
     FLASH_OK = 0,
@@ -17,7 +19,10 @@ typedef struct {
     uint8_t encoder_aligned_flag;  //flag for the encoder alignment
     float encoder_angle_mechanical_offset;  //offset for the encoder angle [radians]
 
-    
+    /* PID controler gains*/
+    PIDValuesTypeDef PID_gains_q;
+    PIDValuesTypeDef PID_gains_d;
+
 
 } FLASH_DataTypeDef;
 

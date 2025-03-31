@@ -58,14 +58,14 @@ volatile uint8_t debug_loop_flag = 0;
 /* ADC */
 #define ADC_LOOP_ALPHA (2.0f/(CURRENT_LOOP_CLOCK_DIVIDER+1))
 #define CURRENT_SENSE_CONVERSION_FACTOR 0.00100708007f // 4096.0f * 3.3f / (0.02f * 40.0f)
-#define VOLTAGE_SENSE_CONVERSION_FACTOR 11.0f/1.0f // 100:10 voltage divider
+#define VOLTAGE_SENSE_CONVERSION_FACTOR 11.0f/1.0f * 3.3f / 4096.0f // 100:10 voltage divider
 
 static volatile uint16_t adc1_buffer[ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2] = {0};
 
 
 
 void FOC_Setup(){
-    HAL_Delay(100);
+    HAL_Delay(10);
     // HAL_GetUIDw0();
     // HAL_GetUIDw1();
     // HAL_GetUIDw2();
@@ -132,15 +132,22 @@ void FOC_Setup(){
 
 
     /* PID controllers */
-    PID_Init(&hfoc.pid_current_d, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -PID_LIMIT, PID_LIMIT, -PID_INT_LIMIT, PID_INT_LIMIT);
-    PID_Init(&hfoc.pid_current_q, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -PID_LIMIT, PID_LIMIT, -PID_INT_LIMIT, PID_INT_LIMIT);
-    PID_SetK(&hfoc.pid_current_d, 0.0f, 0.0f, 0.0f);
-    PID_SetK(&hfoc.pid_current_q, 0.2f, 1.0f, 0.0f);
+    PID_Init(&hfoc.pid_current_d, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -PID_LIMIT, PID_LIMIT, -PID_INT_LIMIT, PID_INT_LIMIT, &hfoc.flash_data.PID_gains_d);
+    PID_Init(&hfoc.pid_current_q, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -PID_LIMIT, PID_LIMIT, -PID_INT_LIMIT, PID_INT_LIMIT, &hfoc.flash_data.PID_gains_q);
 
     // PID_Init(&hfoc.pid_speed, (1.0f/DEBUG_FREQUENCY), 0.01f, -2.0f, 2.0f, -2.0f, 2.0f);
     // PID_SetK(&hfoc.pid_speed, 0.01f, 0.0f, 0.0f);
 
     // hfoc.speed_setpoint = 300.0f;
+
+    hfoc.flash_data.PID_gains_d.Kp = 0.0f;
+    hfoc.flash_data.PID_gains_d.Ki = 0.0f;
+    hfoc.flash_data.PID_gains_d.Kd = 0.0f;
+
+    hfoc.flash_data.PID_gains_q.Kp = 0.2f;
+    hfoc.flash_data.PID_gains_q.Ki = 1.0f;
+    hfoc.flash_data.PID_gains_q.Kd = 0.0f;
+
 
     /* UART */
     Debug_Setup();
@@ -173,7 +180,7 @@ void FOC_Loop(){
                 hfoc.phase_current.a = hfoc.phase_current.a * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 0] - 2048) - hfoc.phase_current_offset.a;
                 hfoc.phase_current.b = hfoc.phase_current.b * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 1] - 2048) - hfoc.phase_current_offset.b;
                 hfoc.phase_current.c = hfoc.phase_current.c * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 2] - 2048) - hfoc.phase_current_offset.c;
-                hfoc.vbus            = hfoc.vbus            * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * VOLTAGE_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 3] * 3.3f / 4096.0f) - hfoc.vbus_offset;
+                hfoc.vbus            = hfoc.vbus            * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * VOLTAGE_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 3] ) - hfoc.vbus_offset;
             }
 
             HAL_GPIO_TogglePin(PB2_GPIO_Port, PB2_Pin);
@@ -253,7 +260,7 @@ void FOC_Loop(){
     if (execution_time > max_execution_time) {
         max_execution_time = execution_time;
     }
-    if(execution_time > 125){
+    if(execution_time > 110){
         // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Execution time: %lu us\r\n", execution_time);
         // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
         __NOP();
@@ -514,7 +521,6 @@ static uint8_t Alignment_Test_Loop(){
 
     static float abs_diff_cw = 0.0f;
     static float abs_diff_ccw = 0.0f;
-    static uint8_t flip = 0;
 
     switch(step){
         case 0:
@@ -548,7 +554,7 @@ static uint8_t Alignment_Test_Loop(){
                 AS5047P_GetAngle(&hfoc.has5047p, &ap5047p_angle);
                 float as5047p_angle = ((float)ap5047p_angle / 16384.0f) * 2.0f * M_PIF; //convert to radians
                 
-                as5047p_angle = as5047p_angle - hfoc.encoder_angle_mechanical_offset;
+                as5047p_angle = as5047p_angle - hfoc.flash_data.encoder_angle_mechanical_offset;
                 normalize_angle(&as5047p_angle);
                 float as5047p_angle_electrical = as5047p_angle * hfoc.motor_pole_pairs;
                 normalize_angle(&as5047p_angle_electrical);
@@ -575,21 +581,9 @@ static uint8_t Alignment_Test_Loop(){
 
 
                 if(!direction){//cw
-                    // if(flip){
-                    //     reference_angle += 2*M_PIF / 50.0f;
-                    //     flip = 0;
-                    // }else{
-                    //     flip = 1;
-                    // }
                     reference_angle += 2*M_PIF / 200.0f;
                     abs_diff_cw += fabsf(diff1) / 200.0f;
                 }else{//ccw
-                    // if(flip){
-                    //     reference_angle -= 2*M_PIF / 50.0f;
-                    //     flip = 0;
-                    // }else{
-                    //     flip = 1;
-                    // }
                     reference_angle -= 2*M_PIF / 200.0f;
                     abs_diff_ccw += fabsf(diff1) / 200.0f;
                 }

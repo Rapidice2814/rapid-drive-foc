@@ -1,15 +1,9 @@
 #include "PID.h"
 
 
-void PID_SetK(PIDController *pid, float Kp, float Ki, float Kd) {
-    pid->Kp = Kp;
-    pid->Ki = Ki;
-    pid->Kd = Kd;
-}
+void PID_Init(PIDControllerTypeDef *pid, float T, float tau, float limMin, float limMax, float limMinInt, float limMaxInt, PIDValuesTypeDef *K) {
 
-
-void PID_Init(PIDController *pid, float T, float tau, float limMin, float limMax, float limMinInt, float limMaxInt) {
-
+    pid->K = K;
 	/* Clear controller variables */
 	pid->integrator = 0.0f;
 	pid->prevError  = 0.0f;
@@ -28,7 +22,7 @@ void PID_Init(PIDController *pid, float T, float tau, float limMin, float limMax
     pid->limMaxInt = limMaxInt;
 }
 
-float PID_Update(PIDController *pid, float setpoint, float measurement) {
+float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement) {
 
 	/*
 	* Error signal
@@ -39,13 +33,13 @@ float PID_Update(PIDController *pid, float setpoint, float measurement) {
 	/*
 	* Proportional
 	*/
-    float proportional = pid->Kp * error;
+    float proportional = pid->K->Kp * error;
 
 
 	/*
 	* Integral
 	*/
-    pid->integrator = pid->integrator + 0.5f * pid->Ki * pid->T * (error + pid->prevError);
+    pid->integrator = pid->integrator + 0.5f * pid->K->Ki * pid->T * (error + pid->prevError);
 
 	/* Anti-wind-up via integrator clamping */
     if (pid->integrator > pid->limMaxInt) {
@@ -63,7 +57,7 @@ float PID_Update(PIDController *pid, float setpoint, float measurement) {
 	* Derivative (band-limited differentiator)
 	*/
 		
-    pid->differentiator = -(2.0f * pid->Kd * (measurement - pid->prevMeasurement)	/* Note: derivative on measurement, therefore minus sign in front of equation! */
+    pid->differentiator = -(2.0f * pid->K->Kd * (measurement - pid->prevMeasurement)	/* Note: derivative on measurement, therefore minus sign in front of equation! */
                         + (2.0f * pid->tau - pid->T) * pid->differentiator)
                         / (2.0f * pid->tau + pid->T);
 

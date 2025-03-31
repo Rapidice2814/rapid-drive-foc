@@ -142,33 +142,33 @@ void Debug_Loop(){
                 if(usart2_rx_buffer[0] == 'P' && usart2_rx_buffer[1] == 'd'){
                     int Pd = 0;
                     sscanf(usart2_rx_buffer, "Pd%d", &Pd);
-                    hfoc.pid_current_d.Kp = (float)Pd / 1000.0f;
+                    hfoc.flash_data.PID_gains_d.Kp = (float)Pd / 1000.0f;
                 }
                 if(usart2_rx_buffer[0] == 'P' && usart2_rx_buffer[1] == 'q'){
                     int Pq = 0;
                     sscanf(usart2_rx_buffer, "Pq%d", &Pq);
-                    hfoc.pid_current_q.Kp = (float)Pq / 1000.0f;
+                    hfoc.flash_data.PID_gains_q.Kp = (float)Pq / 1000.0f;
                 }
                 if(usart2_rx_buffer[0] == 'P' && usart2_rx_buffer[1] == 's'){
                     int Ps = 0;
                     sscanf(usart2_rx_buffer, "Ps%d", &Ps);
-                    hfoc.pid_speed.Ki = (float)Ps / 1000000.0f;
+                    // hfoc.pid_speed.K->Ki = (float)Ps / 1000000.0f;
                 }
                 
                 if(usart2_rx_buffer[0] == 'I' && usart2_rx_buffer[1] == 'd'){
                     int Id = 0;
                     sscanf(usart2_rx_buffer, "Id%d", &Id);
-                    hfoc.pid_current_d.Ki = (float)Id / 1000.0f;
+                    hfoc.flash_data.PID_gains_d.Ki = (float)Id / 1000.0f;
                 }
                 if(usart2_rx_buffer[0] == 'I' && usart2_rx_buffer[1] == 'q'){
                     int Iq = 0;
                     sscanf(usart2_rx_buffer, "Iq%d", &Iq);
-                    hfoc.pid_current_q.Ki = (float)Iq / 1000.0f;
+                    hfoc.flash_data.PID_gains_q.Ki = (float)Iq / 1000.0f;
                 }
                 if(usart2_rx_buffer[0] == 'I' && usart2_rx_buffer[1] == 's'){
                     int Is = 0;
                     sscanf(usart2_rx_buffer, "Is%d", &Is);
-                    hfoc.pid_speed.Ki = (float)Is / 1000000.0f;
+                    // hfoc.pid_speed.Ki = (float)Is / 1000000.0f;
                 }
 
                 if(usart2_rx_buffer[0] == 'S' && usart2_rx_buffer[1] == 'q'){

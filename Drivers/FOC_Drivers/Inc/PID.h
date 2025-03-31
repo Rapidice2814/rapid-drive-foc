@@ -2,11 +2,15 @@
 #define PID_H
 
 typedef struct {
-
 	/* Controller gains */
 	float Kp;
 	float Ki;
 	float Kd;
+}PIDValuesTypeDef;
+
+typedef struct {
+
+	PIDValuesTypeDef *K;
 
 	/* Derivative low-pass filter time constant */
 	float tau;
@@ -31,11 +35,11 @@ typedef struct {
 	/* Controller output */
 	float out;
 
-} PIDController;
+} PIDControllerTypeDef;
 
-void PID_SetK(PIDController *pid, float Kp, float Ki, float Kd);
-void PID_Init(PIDController *pid, float T, float tau, float limMin, float limMax, float limMinInt, float limMaxInt);
-float PID_Update(PIDController *pid, float setpoint, float measurement);
+
+void PID_Init(PIDControllerTypeDef *pid, float T, float tau, float limMin, float limMax, float limMinInt, float limMaxInt, PIDValuesTypeDef *K);
+float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement);
 
 
 #endif // PID_H

@@ -80,9 +80,9 @@ typedef struct {
 
 
     /* PID Controllers */
-    PIDController pid_current_d;            //d current controller
-    PIDController pid_current_q;            //q current controller
-    PIDController pid_speed;                //speed controller
+    PIDControllerTypeDef pid_current_d;            //d current controller
+    PIDControllerTypeDef pid_current_q;            //q current controller
+    PIDControllerTypeDef pid_speed;                //speed controller
 
     DQCurrents dq_current_setpoint; //d and q current setpoints [A]
     float speed_setpoint; //speed setpoint [rad/s]
