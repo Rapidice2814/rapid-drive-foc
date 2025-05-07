@@ -37,9 +37,9 @@ FOC_State Current_FOC_State = FOC_INIT;
 
 
 static uint8_t Current_Sensor_Calibration_Loop();
-static uint8_t Alignment_Loop();
-static uint8_t General_Test_Loop();
-static uint8_t Error_Loop();
+static uint8_t Alignment_Loop(float magnitude);
+static uint8_t General_LED_Loop();
+static uint8_t Error_LED_Loop();
 static uint8_t Alignment_Test_Loop();
 static uint8_t Check_Current_Sensor_Loop();
 static uint8_t Encoder_Test_Loop();
@@ -209,7 +209,7 @@ void FOC_Loop(){
                 }
                 break;
             case FOC_GENERAL_TEST:
-                if(General_Test_Loop()){
+                if(General_LED_Loop()){
                     Current_FOC_State = FOC_RUN;
                     __NOP();
                 }
@@ -217,7 +217,7 @@ void FOC_Loop(){
             case FOC_CALIBRATION:
                 break;
             case FOC_ALIGNMENT:
-                if(Alignment_Loop()){
+                if(Alignment_Loop(0.5f)){
                     Current_FOC_State = FOC_RUN;
                     // Current_FOC_State = FOC_ENCODER_TEST;
                 }
@@ -247,7 +247,7 @@ void FOC_Loop(){
                 }
                 break;
             case FOC_ERROR:
-                if(Error_Loop()){
+                if(Error_LED_Loop()){
                     // Current_FOC_State = FOC_GENERAL_TEST;
                 }
                 break;
@@ -301,7 +301,7 @@ static uint8_t Current_Loop(){
   * @brief Current sensor calibration loop
   * @note This function is used to calibrate the current sensor. It takes 100 samples of the current sensor and calculates the offset.
   * @param None
-  * @retval uint8_t: 0 if the calibration is not complete, 1 if the calibration is complete
+  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
   */
 static uint8_t Current_Sensor_Calibration_Loop(){
 
@@ -352,12 +352,12 @@ static uint8_t Current_Sensor_Calibration_Loop(){
 }
 
 /**
-  * @brief 
+  * @brief This is alligns the encoder zero to the motor zero (electrical angle).
   * @note 
   * @param None
-  * @retval uint8_t: 0 if the calibration is not complete, 1 if the calibration is complete
+  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
   */
- static uint8_t Alignment_Loop(){
+ static uint8_t Alignment_Loop(float magnitude){
 
     static uint8_t step = 0;
     static uint32_t next_step_time = 0;
@@ -365,7 +365,7 @@ static uint8_t Current_Sensor_Calibration_Loop(){
     switch(step){
         case 0:
             if(HAL_GetTick() >= next_step_time){
-                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){0.5f, 0.0f}));
+                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){magnitude, 0.0f}));
                 step++;
                 next_step_time = HAL_GetTick() + 500; //wait before the next step
             }
@@ -373,6 +373,7 @@ static uint8_t Current_Sensor_Calibration_Loop(){
         case 1:
             if(HAL_GetTick() >= next_step_time){
                 FOC_SetEncoderZero(&hfoc);
+                hfoc.flash_data.encoder_aligned_flag = 1;
                 FOC_UpdateEncoderAngle(&hfoc);
                 step++;
                 next_step_time = HAL_GetTick() + 100; //wait before the next step
@@ -400,9 +401,9 @@ static uint8_t Current_Sensor_Calibration_Loop(){
   * @brief 
   * @note 
   * @param None
-  * @retval uint8_t: 0 if the calibration is not complete, 1 if the calibration is complete
+  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
   */
-static uint8_t General_Test_Loop(){
+static uint8_t General_LED_Loop(){
 
     static uint8_t step = 0;
     static uint32_t next_step_time = 0;
@@ -450,9 +451,9 @@ return 0;
   * @brief 
   * @note 
   * @param None
-  * @retval uint8_t: 0 if the calibration is not complete, 1 if the calibration is complete
+  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
   */
-static uint8_t Error_Loop(){
+static uint8_t Error_LED_Loop(){
 
     static uint8_t step = 0;
     static uint32_t next_step_time = 0;
@@ -499,10 +500,10 @@ return 0;
 
 
 /**
-  * @brief 
+  * @brief Spins the motor and checks the encoder values. Used to check the encoder and the motor direction, and the accuracy of the encoder. 
   * @note 
   * @param None
-  * @retval uint8_t: 0 if the calibration is not complete, 1 if the calibration is complete
+  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
   */
 static uint8_t Alignment_Test_Loop(){
 
@@ -653,10 +654,10 @@ return 0;
 }
 
 /**
-  * @brief 
+  * @brief This function is used to check whether the current sensors are working correctly, and if the phases are connected correctly.
   * @note 
   * @param None
-  * @retval uint8_t: 0 if the calibration is not complete, 1 if the calibration is complete
+  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
   */
 static uint8_t Check_Current_Sensor_Loop(){
 
@@ -709,7 +710,7 @@ return 0;
   * @brief 
   * @note 
   * @param None
-  * @retval uint8_t: 0 if the calibration is not complete, 1 if the calibration is complete
+  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
   */
 static uint8_t Encoder_Test_Loop(){
 
@@ -769,9 +770,9 @@ return 0;
 //   * @brief 
 //   * @note 
 //   * @param None
-//   * @retval uint8_t: 0 if the calibration is not complete, 1 if the calibration is complete
+//   * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
 //   */
-//  static uint8_t General_Test_Loop(){
+//  static uint8_t General_LED_Loop(){
 
 //     static uint8_t step = 0;
 //     static uint32_t next_step_time = 0;

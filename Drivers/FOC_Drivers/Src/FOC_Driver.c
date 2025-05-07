@@ -96,6 +96,12 @@ void FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32_t *pencoder_
     hfoc->pencoder_count = pencoder_count;
 }
 
+
+/**
+  * @brief Sets the encoder zero position to the current position.
+  * @param Handle to the FOC structure
+  * @retval none
+  */
 void FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
 
     uint16_t ap5047p_angle = 0;
@@ -103,10 +109,14 @@ void FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
 
     hfoc->flash_data.encoder_angle_mechanical_offset = ((float)ap5047p_angle / 16384.0f) * 2.0f * M_PIF;
     *(hfoc->pencoder_count) = (int32_t)(hfoc->flash_data.encoder_angle_mechanical_offset * ENCODER_PULSES_PER_ROTATION / (2 * M_PIF));
-
-    hfoc->flash_data.encoder_aligned_flag = 1;
 }
 
+
+/**
+  * @brief Updates the encoder angle
+  * @param Handle to the FOC structure
+  * @retval none
+  */
 void FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
     hfoc->encoder_angle_mechanical = (((float)(*(hfoc->pencoder_count)) / ENCODER_PULSES_PER_ROTATION) * 2 * M_PIF) - hfoc->flash_data.encoder_angle_mechanical_offset;
 
@@ -119,7 +129,13 @@ void FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
     normalize_angle(&hfoc->encoder_angle_electrical);
 }
 
-// #define ENCODER_SPEED_LOOP_ALPHA 0.05f
+
+/**
+  * @brief Updates the encoder angle
+  * @param Handle to the FOC structure, delta time, filter alpha
+  * @note filter alpha is used by the exponential filter to smooth the speed
+  * @retval none
+  */
 void FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha){
     float delta_angle = hfoc->encoder_angle_electrical - hfoc->previous_encoder_angle_electrical;
     if (delta_angle > M_PIF) {
