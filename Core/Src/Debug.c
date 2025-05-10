@@ -123,13 +123,19 @@ void Debug_Loop(){
 
                 for(int i = 0; i < rx_packet_length; i++){
                     if(usart2_rx_buffer[i] == 'D'){
-                        Current_FOC_State = FOC_ALIGNMENT_TEST;
+                        Current_FOC_State = FOC_STATE_ALIGNMENT_TEST;
+                    }
+                    if(usart2_rx_buffer[i] == 'A'){
+                        Current_FOC_State = FOC_STATE_ALIGNMENT;
                     }
                     if(usart2_rx_buffer[i] == 'N'){
-                        Current_FOC_State = FOC_RUN;
+                        Current_FOC_State = FOC_STATE_RUN;
+                    }
+                    if(usart2_rx_buffer[i] == 'F'){
+                        Current_FOC_State = FOC_STATE_FLASH_SAVE;
                     }
                     if(usart2_rx_buffer[i] == 'E'){
-                        Current_FOC_State = FOC_ENCODER_TEST;
+                        Current_FOC_State = FOC_STATE_ENCODER_TEST;
                     }
                     if(usart2_rx_buffer[i] == 'K'){
                         hfoc.motor_disable_flag = 1;

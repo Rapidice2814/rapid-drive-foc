@@ -7,6 +7,11 @@
 #include "AS5047P_Driver.h"
 #include "FOC_Flash.h"
 
+typedef enum{
+	FOC_OK,
+	FOC_ERROR
+}FOC_StatusTypeDef;
+
 typedef struct {
     float a;
     float b;
@@ -66,11 +71,6 @@ typedef struct {
     float previous_encoder_angle_electrical;  //previous angle in radians
     float encoder_speed_electrical;           //speed in rad/s
 
-    /* Motor parameters */
-    float motor_pole_pairs;                 //number of pole pairs
-    float motor_stator_resistance;          //stator resistance [ohms]
-    float motor_stator_inductance;          //stator inductance [henries]
-    float motor_magnet_flux_linkage;        //magnet flux linkage [webers]
 
     /* Currents and Voltages*/
     AlphaBetaCurrents ab_current;   //alpha and beta currents [A]
@@ -99,8 +99,8 @@ typedef struct {
 } FOC_HandleTypeDef;
 
 /* General */
-void FOC_SetInputVoltage(FOC_HandleTypeDef *hfoc, float vin);
-void FOC_SetVoltageLimit(FOC_HandleTypeDef *hfoc, float voltage_limit);
+FOC_StatusTypeDef FOC_SetInputVoltage(FOC_HandleTypeDef *hfoc, float vin);
+FOC_StatusTypeDef FOC_SetVoltageLimit(FOC_HandleTypeDef *hfoc, float voltage_limit);
 
 
 /* Calculations */
@@ -109,15 +109,15 @@ DQCurrents FOC_Park_transform(AlphaBetaCurrents ab_current, float theta);
 AlphaBetaVoltages FOC_InvPark_transform(DQVoltages dq_voltage, float theta);
 PhaseVoltages FOC_InvClarke_transform(AlphaBetaVoltages ab_voltage);
 
-void FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltages phase_voltages);
+FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltages phase_voltages);
 
 /* Encoder */
-void FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32_t *encoder_count);
-void FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc);
-void FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc);
-void FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha);
+FOC_StatusTypeDef FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32_t *encoder_count);
+FOC_StatusTypeDef FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc);
+FOC_StatusTypeDef FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc);
+FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha);
 /* PWM */
-void FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, volatile uint32_t *pCCRb, volatile uint32_t *pCCRc, uint32_t max_ccr);
+FOC_StatusTypeDef FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, volatile uint32_t *pCCRb, volatile uint32_t *pCCRc, uint32_t max_ccr);
 
 
 

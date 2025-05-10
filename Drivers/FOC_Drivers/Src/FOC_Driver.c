@@ -9,11 +9,13 @@
 #define sinf _sinf
 
 /* General */
-void FOC_SetInputVoltage(FOC_HandleTypeDef *hfoc, float vbus){
+FOC_StatusTypeDef FOC_SetInputVoltage(FOC_HandleTypeDef *hfoc, float vbus){
 	hfoc->vbus = vbus;
+    return FOC_OK;
 }
-void FOC_SetVoltageLimit(FOC_HandleTypeDef *hfoc, float voltage_limit){
+FOC_StatusTypeDef FOC_SetVoltageLimit(FOC_HandleTypeDef *hfoc, float voltage_limit){
     hfoc->voltage_limit = voltage_limit;
+    return FOC_OK;
 }
 
 /* Calculations */
@@ -59,7 +61,7 @@ PhaseVoltages FOC_InvClarke_transform(AlphaBetaVoltages ab_voltage){
     return result;
 }
 
-void FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltages phase_voltages){
+FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltages phase_voltages){
     
 	float Umin = fminf(phase_voltages.a, fminf(phase_voltages.b, phase_voltages.c));
     float Umax = fmaxf(phase_voltages.a, fmaxf(phase_voltages.b, phase_voltages.c));
@@ -74,10 +76,12 @@ void FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltages phase_voltages)
     *(hfoc->pCCRa) = (uint32_t)PWMa;
     *(hfoc->pCCRb) = (uint32_t)PWMb;
     *(hfoc->pCCRc) = (uint32_t)PWMc;
+
+    return FOC_OK;
 }
 
 
-void FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, volatile uint32_t *pCCRb, volatile uint32_t *pCCRc, uint32_t max_ccr){
+FOC_StatusTypeDef FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, volatile uint32_t *pCCRb, volatile uint32_t *pCCRc, uint32_t max_ccr){
 	hfoc->max_ccr = max_ccr;
 	hfoc->pCCRa = pCCRa;
 	hfoc->pCCRb = pCCRb;
@@ -87,37 +91,51 @@ void FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, vo
 	*(hfoc->pCCRa) = 0; 
 	*(hfoc->pCCRb) = 0;
 	*(hfoc->pCCRc) = 0;
+
+    return FOC_OK;
 }
 
 
 
 /* Encoder */
-void FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32_t *pencoder_count){
+FOC_StatusTypeDef FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32_t *pencoder_count){
     hfoc->pencoder_count = pencoder_count;
+
+    if(hfoc->has5047p.setup_complete != 1) return FOC_ERROR;
+    uint16_t ap5047p_angle = 0;
+    AS5047P_GetAngle(&(hfoc->has5047p), &ap5047p_angle);
+
+    *(hfoc->pencoder_count) = (int32_t)(((float)ap5047p_angle / 16384.0f)  * ENCODER_PULSES_PER_ROTATION); //set absolute angle
+
+    return FOC_OK;
 }
 
 
 /**
   * @brief Sets the encoder zero position to the current position.
   * @param Handle to the FOC structure
-  * @retval none
+  * @retval FOC_StatusTypeDef
   */
-void FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
+FOC_StatusTypeDef FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
 
+    if(hfoc->has5047p.setup_complete != 1) return FOC_ERROR;
     uint16_t ap5047p_angle = 0;
     AS5047P_GetAngle(&(hfoc->has5047p), &ap5047p_angle);
 
     hfoc->flash_data.encoder_angle_mechanical_offset = ((float)ap5047p_angle / 16384.0f) * 2.0f * M_PIF;
-    *(hfoc->pencoder_count) = (int32_t)(hfoc->flash_data.encoder_angle_mechanical_offset * ENCODER_PULSES_PER_ROTATION / (2 * M_PIF));
+    hfoc->flash_data.encoder_aligned_flag = 1; //set the encoder aligned flag
+    // *(hfoc->pencoder_count) = (int32_t)(hfoc->flash_data.encoder_angle_mechanical_offset * ENCODER_PULSES_PER_ROTATION / (2 * M_PIF));
+
+    return FOC_OK;
 }
 
 
 /**
   * @brief Updates the encoder angle
   * @param Handle to the FOC structure
-  * @retval none
+  * @retval FOC_StatusTypeDef
   */
-void FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
+FOC_StatusTypeDef FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
     hfoc->encoder_angle_mechanical = (((float)(*(hfoc->pencoder_count)) / ENCODER_PULSES_PER_ROTATION) * 2 * M_PIF) - hfoc->flash_data.encoder_angle_mechanical_offset;
 
     // uint16_t as5047p_angle = 0;
@@ -125,8 +143,10 @@ void FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
     // hfoc->encoder_angle_mechanical = (((float)as5047p_angle / 16384.0f) * 2.0f * M_PIF) - hfoc->encoder_angle_mechanical_offset;
 
     normalize_angle(&hfoc->encoder_angle_mechanical);
-    hfoc->encoder_angle_electrical = hfoc->encoder_angle_mechanical * hfoc->motor_pole_pairs;
+    hfoc->encoder_angle_electrical = hfoc->encoder_angle_mechanical * hfoc->flash_data.motor_pole_pairs;
     normalize_angle(&hfoc->encoder_angle_electrical);
+
+    return FOC_OK;
 }
 
 
@@ -134,9 +154,9 @@ void FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
   * @brief Updates the encoder angle
   * @param Handle to the FOC structure, delta time, filter alpha
   * @note filter alpha is used by the exponential filter to smooth the speed
-  * @retval none
+  * @retval FOC_StatusTypeDef
   */
-void FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha){
+FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha){
     float delta_angle = hfoc->encoder_angle_electrical - hfoc->previous_encoder_angle_electrical;
     if (delta_angle > M_PIF) {
         delta_angle -= 2 * M_PIF;
@@ -145,6 +165,8 @@ void FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alph
     }
     hfoc->encoder_speed_electrical = hfoc->encoder_speed_electrical * (1 - filter_alpha) + filter_alpha * delta_angle * dt;
     hfoc->previous_encoder_angle_electrical = hfoc->encoder_angle_electrical;
+
+    return FOC_OK;
 }
 
 

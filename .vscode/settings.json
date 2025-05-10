@@ -9,7 +9,8 @@
         "pid.h": "c",
         "foc_driver.h": "c",
         "foc_utils.h": "c",
-        "as5047p_driver.h": "c"
+        "as5047p_driver.h": "c",
+        "foc_flash.h": "c"
     },
     "search.useGlobalIgnoreFiles": false,
     "search.useIgnoreFiles": false,

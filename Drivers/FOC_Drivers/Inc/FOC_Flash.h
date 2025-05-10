@@ -12,8 +12,17 @@ typedef enum {
 
 
 typedef struct {
+    /* Flash settings*/
     uint8_t contains_data;
+
+    /* Motor settings */
     uint8_t motor_direction_swapped;
+
+    /* Motor parameters */
+    float motor_pole_pairs;                 //number of pole pairs
+    float motor_stator_resistance;          //stator resistance [ohms]
+    float motor_stator_inductance;          //stator inductance [henries]
+    float motor_magnet_flux_linkage;        //magnet flux linkage [webers]
 
     /* Encoder */
     uint8_t encoder_aligned_flag;  //flag for the encoder alignment

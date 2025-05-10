@@ -3,8 +3,8 @@
 
 
 static FLASH_EraseInitTypeDef EraseInitStruct;
-#define DATA_FLASH_PAGE 60
-#define STORAGE_FLASH_BASE (0x08000000 + FLASH_PAGE_SIZE * DATA_FLASH_PAGE)
+#define DATA_FLASH_PAGE 60 //the last 4 pages are reserved, pages 60-63
+#define STORAGE_FLASH_BASE (0x08000000 + FLASH_PAGE_SIZE * DATA_FLASH_PAGE) // 0x0801E000 for page 60
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
 
     if(sizeof(FLASH_DataTypeDef) > FLASH_PAGE_SIZE){
