@@ -131,6 +131,9 @@ void Debug_Loop(){
                     if(usart2_rx_buffer[i] == 'N'){
                         Current_FOC_State = FOC_STATE_RUN;
                     }
+                    if(usart2_rx_buffer[i] == 'M'){
+                        Current_FOC_State = FOC_STATE_IDENTIFY;
+                    }
                     if(usart2_rx_buffer[i] == 'F'){
                         Current_FOC_State = FOC_STATE_FLASH_SAVE;
                     }

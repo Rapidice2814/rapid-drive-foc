@@ -6,6 +6,7 @@
 typedef enum {
     FOC_STATE_INIT,
     FOC_STATE_CURRENT_SENSOR_CALIBRATION,
+    FOC_STATE_IDENTIFY,
     FOC_STATE_GENERAL_TEST,
     FOC_STATE_ERROR,
     FOC_STATE_CALIBRATION,
@@ -20,7 +21,7 @@ typedef enum {
 
 #define MOTOR_POLE_PAIRS 11
 #define MOTOR_STATOR_RESISTANCE 0.15f // ohms
-#define MOTOR_STATOR_INDUCTANCE 0.4025e-3f // henries
+#define MOTOR_STATOR_INDUCTANCE 4.2e-5f // henries
 #define MOTOR_MAGNET_FLUX_LINKAGE 5.47e-3f // webers
 
 #define OUTER_LOOP_FREQUENCY 2000
@@ -31,8 +32,6 @@ typedef enum {
 #define PID_INT_LIMIT (PID_LIMIT * 0.8f)
 
 
-
-// Function prototypes
 void FOC_Setup();
 void FOC_Loop();
 

@@ -169,4 +169,19 @@ FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, floa
     return FOC_OK;
 }
 
+/**
+  * @brief Sets the Current controller PI gains based on the motor parameters
+  * @param Handle to the FOC structure, tau
+  * @note tau is the desired closed-loop current response time constant
+  * @retval none
+  */
+ void FOC_TuneCurrentPID(FOC_HandleTypeDef *hfoc, float tau){
+    hfoc->flash_data.PID_gains_d.Kp = hfoc->flash_data.motor_stator_inductance / tau;
+    hfoc->flash_data.PID_gains_q.Kp = hfoc->flash_data.motor_stator_inductance / tau;
+    
+    hfoc->flash_data.PID_gains_d.Ki = hfoc->flash_data.motor_stator_resistance / tau;
+    hfoc->flash_data.PID_gains_q.Ki = hfoc->flash_data.motor_stator_resistance / tau;
+ }
+
+
 

@@ -10,6 +10,7 @@
 #include "FOC_Flash.h"
 #include "WS2812b_Driver.h"
 #include "Debug.h"
+#include "FOC_Loops.h"
 
 extern ADC_HandleTypeDef hadc1;
 extern ADC_HandleTypeDef hadc2;
@@ -39,6 +40,7 @@ FOC_State Current_FOC_State = FOC_STATE_INIT;
 static uint8_t Current_Sensor_Calibration_Loop();
 static uint8_t Alignment_Loop(float magnitude);
 static uint8_t General_LED_Loop();
+static uint8_t FOC_Identify();
 static uint8_t Error_LED_Loop();
 static uint8_t Alignment_Test_Loop(float magnitude);
 static uint8_t Check_Current_Sensor_Loop();
@@ -211,6 +213,17 @@ void FOC_Loop(){
     }
 
     if(foc_adc1_measurement_flag){
+
+        if(DRV8323_CheckFault(&hfoc.hdrv8323)){ //check for motor driver fault
+            DRV8323_Disable(&hfoc.hdrv8323); //disable the driver
+            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //disable the inverter
+            FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){0.0f, 0.0f}));
+            Current_FOC_State = FOC_STATE_ERROR;
+        }
+
+        FOC_UpdateEncoderAngle(&hfoc);
+        FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY, 0.01f);
+
         switch(Current_FOC_State){
         
             case FOC_STATE_INIT:
@@ -239,6 +252,19 @@ void FOC_Loop(){
                 }
                 break;
             case FOC_STATE_CALIBRATION:
+                break;
+            case FOC_STATE_IDENTIFY:
+                if(FOC_MotorIdentification(&hfoc)){
+
+                    FOC_TuneCurrentPID(&hfoc, 0.002f);
+                    snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Motor Identified! Resistance: %d, Inductance: %d\n", 
+                    (int)(hfoc.flash_data.motor_stator_resistance * 1000), (int)(hfoc.flash_data.motor_stator_inductance * 1000000));
+                    HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+                    
+                    Current_FOC_State = FOC_STATE_RUN;
+                }
+
+
                 break;
             case FOC_STATE_ALIGNMENT:
                 if(Alignment_Loop(1.0f)){
@@ -287,6 +313,8 @@ void FOC_Loop(){
                 break;
             
         }
+
+        foc_adc1_measurement_flag = 0;
     }
     
 
@@ -303,34 +331,21 @@ void FOC_Loop(){
 
 
 static uint8_t Current_Loop(){
-    if(foc_adc1_measurement_flag){
-        if(DRV8323_CheckFault(&hfoc.hdrv8323)){ //check for motor driver fault
-            DRV8323_Disable(&hfoc.hdrv8323); //disable the driver
-            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //disable the inverter
-            FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){0.0f, 0.0f}));
-            Current_FOC_State = FOC_STATE_ERROR;
-        }
-    
-        FOC_UpdateEncoderAngle(&hfoc);
-        FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY, 0.01f);
-    
-        hfoc.ab_current = FOC_Clarke_transform(hfoc.phase_current);
-        hfoc.dq_current = FOC_Park_transform(hfoc.ab_current, hfoc.encoder_angle_electrical);
-    
-        hfoc.dq_voltage.d = PID_Update(&hfoc.pid_current_d, hfoc.dq_current_setpoint.d, hfoc.dq_current.d);
-        hfoc.dq_voltage.q = PID_Update(&hfoc.pid_current_q, hfoc.dq_current_setpoint.q, hfoc.dq_current.q);
 
-        //feed forward terms
-        // hfoc.dq_voltage.q += hfoc.encoder_speed_electrical * (hfoc.flash_data.motor_magnet_flux_linkage + hfoc.flash_data.motor_stator_inductance * hfoc.dq_current.d);
-        // hfoc.dq_voltage.d -= hfoc.encoder_speed_electrical * hfoc.flash_data.motor_stator_inductance * hfoc.dq_current.q;
+    hfoc.ab_current = FOC_Clarke_transform(hfoc.phase_current);
+    hfoc.dq_current = FOC_Park_transform(hfoc.ab_current, hfoc.encoder_angle_electrical);
 
-    
-        hfoc.ab_voltage = FOC_InvPark_transform(hfoc.dq_voltage, hfoc.encoder_angle_electrical);
-        PhaseVoltages phase_voltages = FOC_InvClarke_transform(hfoc.ab_voltage);
-        FOC_SetPhaseVoltages(&hfoc, phase_voltages);
+    hfoc.dq_voltage.d = PID_Update(&hfoc.pid_current_d, hfoc.dq_current_setpoint.d, hfoc.dq_current.d);
+    hfoc.dq_voltage.q = PID_Update(&hfoc.pid_current_q, hfoc.dq_current_setpoint.q, hfoc.dq_current.q);
 
-        foc_adc1_measurement_flag = 0;
-    }
+    //feed forward terms
+    // hfoc.dq_voltage.q += hfoc.encoder_speed_electrical * (hfoc.flash_data.motor_magnet_flux_linkage + hfoc.flash_data.motor_stator_inductance * hfoc.dq_current.d);
+    // hfoc.dq_voltage.d -= hfoc.encoder_speed_electrical * hfoc.flash_data.motor_stator_inductance * hfoc.dq_current.q;
+
+    hfoc.ab_voltage = FOC_InvPark_transform(hfoc.dq_voltage, hfoc.encoder_angle_electrical);
+    PhaseVoltages phase_voltages = FOC_InvClarke_transform(hfoc.ab_voltage);
+    FOC_SetPhaseVoltages(&hfoc, phase_voltages);
+
     return 0;
 }
 
@@ -411,7 +426,6 @@ static uint8_t Current_Sensor_Calibration_Loop(){
         case 1:
             if(HAL_GetTick() >= next_step_time){
                 FOC_SetEncoderZero(&hfoc);
-                FOC_UpdateEncoderAngle(&hfoc);
                 step++;
                 next_step_time = HAL_GetTick() + 100; //wait before the next step
             }
@@ -453,8 +467,7 @@ static uint8_t General_LED_Loop(){
     switch(step){
         case 0:
             if(HAL_GetTick() >= next_step_time){
-                FOC_UpdateEncoderAngle(&hfoc);
-                
+
                 HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 1);
                 for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
                     WS2812b_SetColor(i, 0, 25, 0); //green
@@ -503,8 +516,6 @@ static uint8_t Error_LED_Loop(){
     switch(step){
         case 0:
             if(HAL_GetTick() >= next_step_time){
-
-                FOC_UpdateEncoderAngle(&hfoc);
                 
                 HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 1);
                 for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
@@ -576,7 +587,7 @@ static uint8_t Alignment_Test_Loop(float magnitude){
             break;
         case 1:
             if(HAL_GetTick() >= next_step_time){
-                FOC_UpdateEncoderAngle(&hfoc);
+
                 step++;
                 next_step_time = HAL_GetTick() + 10;
             }
@@ -589,9 +600,6 @@ static uint8_t Alignment_Test_Loop(float magnitude){
                 current_angle = atan2f(Iab.beta, Iab.alpha);
                 normalize_angle(&current_angle);
                 current_magnitude = sqrtf(Iab.alpha * Iab.alpha + Iab.beta * Iab.beta);
-
-                FOC_UpdateEncoderAngle(&hfoc);
-                FOC_UpdateEncoderSpeed(&hfoc, 1.0f, 2.0f/(50.0f + 1.0f));
 
                 uint16_t ap5047p_angle = 0.0f;
                 AS5047P_GetAngle(&hfoc.has5047p, &ap5047p_angle);
@@ -787,8 +795,6 @@ static uint8_t Encoder_Test_Loop(){
                 AS5047P_GetAngle_Raw(&hfoc.has5047p, &ap5047p_angle_raw);
                 angle_raw = ((float)ap5047p_angle / 16384.0f) * 2.0f * M_PIF; //convert to radians
 
-                FOC_UpdateEncoderAngle(&hfoc);
-
                 snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "angleM:%d, angleE:%d, RAW:%d\n", (int)(hfoc.encoder_angle_mechanical * 1000), (int)(hfoc.encoder_angle_electrical * 1000), (int)((angle - hfoc.flash_data.encoder_angle_mechanical_offset) * 1000));
                 HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
                 step++;
@@ -834,7 +840,7 @@ return 0;
 //             if(HAL_GetTick() >= next_step_time){
                 
 //                 step++;
-//                 next_step_time = HAL_GetTick() + 100; //wait 1ms before the next step
+//                 next_step_time = HAL_GetTick() + 100; //wait before the next step
 //             }
 //             break;
 //         case 1:
@@ -842,7 +848,7 @@ return 0;
 
                 
 //                 step++;
-//                 next_step_time = HAL_GetTick() + 100; //wait 1ms before the next step
+//                 next_step_time = HAL_GetTick() + 100; //wait before the next step
 //             }
 //             break;
 //         default:

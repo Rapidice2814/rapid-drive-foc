@@ -45,6 +45,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Flash.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC.c
     ${CMAKE_SOURCE_DIR}/Core/Src/Debug.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_MotorIdentification.c
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Driver.c
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/PID.c
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/DRV8323_Driver.c

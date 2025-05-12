@@ -10,7 +10,10 @@
         "foc_driver.h": "c",
         "foc_utils.h": "c",
         "as5047p_driver.h": "c",
-        "foc_flash.h": "c"
+        "foc_flash.h": "c",
+        "parameter_estimator.h": "c",
+        "stdio.h": "c",
+        "foc_loops.h": "c"
     },
     "search.useGlobalIgnoreFiles": false,
     "search.useIgnoreFiles": false,
