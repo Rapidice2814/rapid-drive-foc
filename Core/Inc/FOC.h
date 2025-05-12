@@ -17,9 +17,9 @@ typedef enum {
     FOC_STATE_FLASH_SAVE
 } FOC_State;
 
-/*Motor parameters for the Maxon motor*/
+
 #define MOTOR_POLE_PAIRS 11
-#define MOTOR_STATOR_RESISTANCE 0.535f // ohms
+#define MOTOR_STATOR_RESISTANCE 0.15f // ohms
 #define MOTOR_STATOR_INDUCTANCE 0.4025e-3f // henries
 #define MOTOR_MAGNET_FLUX_LINKAGE 5.47e-3f // webers
 

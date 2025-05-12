@@ -42,7 +42,7 @@
 #define CSA_FET 	0x0
 #define VREF_DIV 	0x1
 #define LS_REF 		0x0
-#define CSA_GAIN 	0x3 //40V/V
+#define CSA_GAIN 	0x1 //10V/V
 #define DIS_SEN 	0x0
 #define CSA_CAL_A 	0x0
 #define CSA_CAL_B 	0x0

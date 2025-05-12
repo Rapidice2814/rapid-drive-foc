@@ -40,7 +40,7 @@ static uint8_t Current_Sensor_Calibration_Loop();
 static uint8_t Alignment_Loop(float magnitude);
 static uint8_t General_LED_Loop();
 static uint8_t Error_LED_Loop();
-static uint8_t Alignment_Test_Loop();
+static uint8_t Alignment_Test_Loop(float magnitude);
 static uint8_t Check_Current_Sensor_Loop();
 static uint8_t Encoder_Test_Loop();
 
@@ -57,7 +57,7 @@ volatile uint8_t debug_loop_flag = 0;
 
 /* ADC */
 #define ADC_LOOP_ALPHA (2.0f/(CURRENT_LOOP_CLOCK_DIVIDER+1))
-#define CURRENT_SENSE_CONVERSION_FACTOR 0.00100708007f // 4096.0f * 3.3f / (0.02f * 40.0f)
+#define CURRENT_SENSE_CONVERSION_FACTOR (3.3f/4096.0f)/(0.02f * 10.0f) //10 V/V gain, 20 mOhm shunt
 #define VOLTAGE_SENSE_CONVERSION_FACTOR 11.0f/1.0f * 3.3f / 4096.0f // 100:10 voltage divider
 
 static volatile uint16_t adc1_buffer[ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2] = {0};
@@ -191,6 +191,11 @@ void FOC_Loop(){
                 hfoc.phase_current.b = hfoc.phase_current.b * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 1] - 2048) - hfoc.phase_current_offset.b;
                 hfoc.phase_current.c = hfoc.phase_current.c * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 2] - 2048) - hfoc.phase_current_offset.c;
                 hfoc.vbus            = hfoc.vbus            * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * VOLTAGE_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 3] ) - hfoc.vbus_offset;
+                
+                //saturated
+                if(adc1_buffer[i + 0] > 4000 || adc1_buffer[i + 1] > 4000 || adc1_buffer[i + 2] > 4000 || adc1_buffer[i + 3] > 4000){
+                    __NOP();
+                }
             }
 
             HAL_GPIO_TogglePin(PB2_GPIO_Port, PB2_Pin);
@@ -241,7 +246,7 @@ void FOC_Loop(){
                 }
                 break;
             case FOC_STATE_ALIGNMENT_TEST:
-                if(Alignment_Test_Loop()){
+                if(Alignment_Test_Loop(0.5f)){
                     Current_FOC_State = FOC_STATE_GENERAL_TEST;
                 }
                 break;
@@ -314,11 +319,15 @@ static uint8_t Current_Loop(){
     
         hfoc.dq_voltage.d = PID_Update(&hfoc.pid_current_d, hfoc.dq_current_setpoint.d, hfoc.dq_current.d);
         hfoc.dq_voltage.q = PID_Update(&hfoc.pid_current_q, hfoc.dq_current_setpoint.q, hfoc.dq_current.q);
+
+        //feed forward terms
+        // hfoc.dq_voltage.q += hfoc.encoder_speed_electrical * (hfoc.flash_data.motor_magnet_flux_linkage + hfoc.flash_data.motor_stator_inductance * hfoc.dq_current.d);
+        // hfoc.dq_voltage.d -= hfoc.encoder_speed_electrical * hfoc.flash_data.motor_stator_inductance * hfoc.dq_current.q;
+
     
         hfoc.ab_voltage = FOC_InvPark_transform(hfoc.dq_voltage, hfoc.encoder_angle_electrical);
         PhaseVoltages phase_voltages = FOC_InvClarke_transform(hfoc.ab_voltage);
         FOC_SetPhaseVoltages(&hfoc, phase_voltages);
-        // FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){0.4f, 0.0f}));
 
         foc_adc1_measurement_flag = 0;
     }
@@ -538,7 +547,7 @@ return 0;
   * @param None
   * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
   */
-static uint8_t Alignment_Test_Loop(){
+static uint8_t Alignment_Test_Loop(float magnitude){
 
     static uint8_t step = 0;
     static uint32_t next_step_time = 0;
@@ -546,7 +555,6 @@ static uint8_t Alignment_Test_Loop(){
 
     static float reference_angle = 0.0f;
     static float reference_electrical_angle = 0.0f;
-    static float magnitude = 0.6f;
     static uint8_t direction = 0;
     static uint8_t dir_swapped = 0;
 
@@ -599,28 +607,6 @@ static uint8_t Alignment_Test_Loop(){
                 float diff2 = reference_electrical_angle - as5047p_angle_electrical;
                 normalize_angle2(&diff2);
 
-                
-
-                // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "RefM:%d, AngM:%d, Ang2M:%d, RefE:%d, AngE:%d, Ang2E:%d, CAng:%d, D1:%d, D2:%d\n", 
-                // (int)(reference_angle * 1000), (int)(hfoc.encoder_angle_mechanical * 1000), 
-                // (int)(as5047p_angle * 1000), (int)(reference_electrical_angle * 1000), 
-                // (int)(hfoc.encoder_angle_electrical * 1000), (int)(as5047p_angle_electrical * 1000),
-                // (int)(current_angle * 1000), (int)(diff1 * 1000), (int)(diff2 * 1000) 
-                // );
-
-                snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "RefM:%d, AngM:%d, RefE:%d, AngE:%d, D:%d\n", 
-                (int)(reference_angle * 1000), (int)(hfoc.encoder_angle_mechanical * 1000), 
-                (int)(reference_electrical_angle * 1000), (int)(hfoc.encoder_angle_electrical * 1000),
-                (int)(diff1 * 1000)
-                );
-
-                // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "RefM:%d, AngM:%d\n", 
-                // (int)(reference_angle * 1000), (int)(hfoc.encoder_angle_mechanical * 1000)
-                // );
-
-                HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
-
-
                 if(!direction){//cw
                     reference_angle += 2*M_PIF / 200.0f;
                     abs_diff_cw += fabsf(diff1) / 200.0f;
@@ -640,6 +626,28 @@ static uint8_t Alignment_Test_Loop(){
                 Vab.beta = magnitude * sinf(reference_electrical_angle);
                 PhaseVoltages phase_voltages = FOC_InvClarke_transform(Vab);
                 FOC_SetPhaseVoltages(&hfoc, phase_voltages);
+
+
+                 // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "RefM:%d, AngM:%d, Ang2M:%d, RefE:%d, AngE:%d, Ang2E:%d, CAng:%d, D1:%d, D2:%d\n", 
+                // (int)(reference_angle * 1000), (int)(hfoc.encoder_angle_mechanical * 1000), 
+                // (int)(as5047p_angle * 1000), (int)(reference_electrical_angle * 1000), 
+                // (int)(hfoc.encoder_angle_electrical * 1000), (int)(as5047p_angle_electrical * 1000),
+                // (int)(current_angle * 1000), (int)(diff1 * 1000), (int)(diff2 * 1000) 
+                // );
+
+                snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "RefM:%d, AngM:%d, RefE:%d, AngE:%d, D:%d, VOL:%d, a:%d, b:%d, c:%d, CURR:%d, a:%d, b:%d, c:%d\n", 
+                (int)(reference_angle * 1000), (int)(hfoc.encoder_angle_mechanical * 1000), 
+                (int)(reference_electrical_angle * 1000), (int)(hfoc.encoder_angle_electrical * 1000),
+                (int)(diff1 * 1000), 
+                (int)(magnitude * 1000), (int)(phase_voltages.a * 1000), (int)(phase_voltages.b * 1000), (int)(phase_voltages.c * 1000),
+                (int)(current_magnitude * 1000), (int)(hfoc.phase_current.a * 1000), (int)(hfoc.phase_current.b * 1000), (int)(hfoc.phase_current.c * 1000)
+                );
+
+                // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "RefM:%d, AngM:%d\n", 
+                // (int)(reference_angle * 1000), (int)(hfoc.encoder_angle_mechanical * 1000)
+                // );
+
+                HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
 
 
                 substep_counter++;
@@ -665,7 +673,7 @@ static uint8_t Alignment_Test_Loop(){
                     }
                     next_step_time = HAL_GetTick() + 100; //next step
                 }else{
-                    next_step_time = HAL_GetTick() + 10; //next substep
+                    next_step_time = HAL_GetTick() + 15; //next substep
                 }
             }
             break;
