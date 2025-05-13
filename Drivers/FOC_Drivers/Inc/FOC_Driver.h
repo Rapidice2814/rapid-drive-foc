@@ -16,33 +16,33 @@ typedef struct {
     float a;
     float b;
     float c;
-} PhaseCurrents;
+} PhaseCurrentsTypeDef;
 
 typedef struct {
     float alpha;
     float beta;
-} AlphaBetaCurrents;
+} ABCurrentsTypeDef;
 
 typedef struct {
     float d;
     float q;
-} DQCurrents;
+} DQCurrentsTypeDef;
 
 typedef struct {
     float a;
     float b;
     float c;
-} PhaseVoltages;
+} PhaseVoltagesTypeDef;
 
 typedef struct {
     float alpha;
     float beta;
-} AlphaBetaVoltages;
+} ABVoltagesTypeDef;
 
 typedef struct {
     float d;
     float q;
-} DQVoltages;
+} DQVoltagesTypeDef;
 
 typedef struct {
     /* Flags */
@@ -57,8 +57,8 @@ typedef struct {
     FLASH_DataTypeDef flash_data; // flash data structure
 
     /* ADC buffers */
-    PhaseCurrents phase_current;            //measured phase currents [A]
-    PhaseCurrents phase_current_offset;     //offset for the phase currents [A]
+    PhaseCurrentsTypeDef phase_current;            //measured phase currents [A]
+    PhaseCurrentsTypeDef phase_current_offset;     //offset for the phase currents [A]
     float vbus;                             //input voltage [V]
     float vbus_offset;                      //offset for the input voltage [V]
 
@@ -73,10 +73,10 @@ typedef struct {
 
 
     /* Currents and Voltages*/
-    AlphaBetaCurrents ab_current;   //alpha and beta currents [A]
-    DQCurrents dq_current;          //d and q currents [A]
-    DQVoltages dq_voltage;          //d and q voltages [V]
-    AlphaBetaVoltages ab_voltage;   //alpha and beta voltages [V]
+    ABCurrentsTypeDef ab_current;   //alpha and beta currents [A]
+    DQCurrentsTypeDef dq_current;          //d and q currents [A]
+    DQVoltagesTypeDef dq_voltage;          //d and q voltages [V]
+    ABVoltagesTypeDef ab_voltage;   //alpha and beta voltages [V]
 
 
     /* PID Controllers */
@@ -84,7 +84,7 @@ typedef struct {
     PIDControllerTypeDef pid_current_q;            //q current controller
     PIDControllerTypeDef pid_speed;                //speed controller
 
-    DQCurrents dq_current_setpoint; //d and q current setpoints [A]
+    DQCurrentsTypeDef dq_current_setpoint; //d and q current setpoints [A]
     float speed_setpoint; //speed setpoint [rad/s]
 
     /* PWM */
@@ -104,12 +104,12 @@ FOC_StatusTypeDef FOC_SetVoltageLimit(FOC_HandleTypeDef *hfoc, float voltage_lim
 
 
 /* Calculations */
-AlphaBetaCurrents FOC_Clarke_transform(PhaseCurrents current);
-DQCurrents FOC_Park_transform(AlphaBetaCurrents ab_current, float theta);
-AlphaBetaVoltages FOC_InvPark_transform(DQVoltages dq_voltage, float theta);
-PhaseVoltages FOC_InvClarke_transform(AlphaBetaVoltages ab_voltage);
+ABCurrentsTypeDef FOC_Clarke_transform(PhaseCurrentsTypeDef current);
+DQCurrentsTypeDef FOC_Park_transform(ABCurrentsTypeDef ab_current, float theta);
+ABVoltagesTypeDef FOC_InvPark_transform(DQVoltagesTypeDef dq_voltage, float theta);
+PhaseVoltagesTypeDef FOC_InvClarke_transform(ABVoltagesTypeDef ab_voltage);
 
-FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltages phase_voltages);
+FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTypeDef phase_voltages);
 
 /* Encoder */
 FOC_StatusTypeDef FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32_t *encoder_count);
@@ -118,7 +118,7 @@ FOC_StatusTypeDef FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc);
 FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha);
 /* PWM */
 FOC_StatusTypeDef FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, volatile uint32_t *pCCRb, volatile uint32_t *pCCRc, uint32_t max_ccr);
- void FOC_TuneCurrentPID(FOC_HandleTypeDef *hfoc, float tau);
+FOC_StatusTypeDef FOC_TuneCurrentPID(FOC_HandleTypeDef *hfoc);
 
 
 #endif // FOC_DRIVER_H

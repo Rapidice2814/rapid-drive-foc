@@ -22,7 +22,6 @@ typedef enum {
 #define MOTOR_POLE_PAIRS 11
 #define MOTOR_STATOR_RESISTANCE 0.15f // ohms
 #define MOTOR_STATOR_INDUCTANCE 4.2e-5f // henries
-#define MOTOR_MAGNET_FLUX_LINKAGE 5.47e-3f // webers
 
 #define OUTER_LOOP_FREQUENCY 2000
 

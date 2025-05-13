@@ -19,8 +19,8 @@ FOC_StatusTypeDef FOC_SetVoltageLimit(FOC_HandleTypeDef *hfoc, float voltage_lim
 }
 
 /* Calculations */
-AlphaBetaCurrents FOC_Clarke_transform(PhaseCurrents current){
-    AlphaBetaCurrents result;
+ABCurrentsTypeDef FOC_Clarke_transform(PhaseCurrentsTypeDef current){
+    ABCurrentsTypeDef result;
     
 	float mid = (1.f/3) * (current.a + current.b + current.c);
 	float a = current.a - mid;
@@ -30,8 +30,8 @@ AlphaBetaCurrents FOC_Clarke_transform(PhaseCurrents current){
     return result;
 }
 
-DQCurrents FOC_Park_transform(AlphaBetaCurrents ab_current, float theta){
-    DQCurrents result;
+DQCurrentsTypeDef FOC_Park_transform(ABCurrentsTypeDef ab_current, float theta){
+    DQCurrentsTypeDef result;
 
 	float cos_theta = cosf(theta);
 	float sin_theta = sinf(theta);
@@ -41,8 +41,8 @@ DQCurrents FOC_Park_transform(AlphaBetaCurrents ab_current, float theta){
     return result;
 }
 
-AlphaBetaVoltages FOC_InvPark_transform(DQVoltages dq_voltage, float theta){
-    AlphaBetaVoltages result;
+ABVoltagesTypeDef FOC_InvPark_transform(DQVoltagesTypeDef dq_voltage, float theta){
+    ABVoltagesTypeDef result;
 
 	float cos_theta = cosf(theta);
 	float sin_theta = sinf(theta);
@@ -52,8 +52,8 @@ AlphaBetaVoltages FOC_InvPark_transform(DQVoltages dq_voltage, float theta){
     return result;
 }
 
-PhaseVoltages FOC_InvClarke_transform(AlphaBetaVoltages ab_voltage){
-    PhaseVoltages result;
+PhaseVoltagesTypeDef FOC_InvClarke_transform(ABVoltagesTypeDef ab_voltage){
+    PhaseVoltagesTypeDef result;
     result.a = ab_voltage.alpha;
     result.b = -0.5f * ab_voltage.alpha + M_SQRT3_2F * ab_voltage.beta;
     result.c = -0.5f * ab_voltage.alpha - M_SQRT3_2F * ab_voltage.beta;
@@ -61,7 +61,7 @@ PhaseVoltages FOC_InvClarke_transform(AlphaBetaVoltages ab_voltage){
     return result;
 }
 
-FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltages phase_voltages){
+FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTypeDef phase_voltages){
     
 	float Umin = fminf(phase_voltages.a, fminf(phase_voltages.b, phase_voltages.c));
     float Umax = fmaxf(phase_voltages.a, fmaxf(phase_voltages.b, phase_voltages.c));
@@ -171,17 +171,24 @@ FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, floa
 
 /**
   * @brief Sets the Current controller PI gains based on the motor parameters
-  * @param Handle to the FOC structure, tau
-  * @note tau is the desired closed-loop current response time constant
-  * @retval none
+  * @param Handle to the FOC structure
+  * @note 
+  * @retval FOC_StatusTypeDef
   */
- void FOC_TuneCurrentPID(FOC_HandleTypeDef *hfoc, float tau){
-    hfoc->flash_data.PID_gains_d.Kp = hfoc->flash_data.motor_stator_inductance / tau;
-    hfoc->flash_data.PID_gains_q.Kp = hfoc->flash_data.motor_stator_inductance / tau;
+FOC_StatusTypeDef FOC_TuneCurrentPID(FOC_HandleTypeDef *hfoc){
     
-    hfoc->flash_data.PID_gains_d.Ki = hfoc->flash_data.motor_stator_resistance / tau;
-    hfoc->flash_data.PID_gains_q.Ki = hfoc->flash_data.motor_stator_resistance / tau;
- }
+
+    if(hfoc->flash_data.current_control_bandwidth <= 0.0f || hfoc->flash_data.current_control_bandwidth > 5000) return FOC_ERROR; // check if the bandwidth is in range
+    if(hfoc->flash_data.motor_identified_flag != 1) return FOC_ERROR; // check if the motor parameters are valid
+
+    hfoc->flash_data.PID_gains_d.Kp = hfoc->flash_data.motor_stator_inductance * hfoc->flash_data.current_control_bandwidth;
+    hfoc->flash_data.PID_gains_q.Kp = hfoc->flash_data.motor_stator_inductance * hfoc->flash_data.current_control_bandwidth;
+
+    hfoc->flash_data.PID_gains_d.Ki = hfoc->flash_data.motor_stator_resistance * hfoc->flash_data.current_control_bandwidth;
+    hfoc->flash_data.PID_gains_q.Ki = hfoc->flash_data.motor_stator_resistance * hfoc->flash_data.current_control_bandwidth;
+
+    return FOC_OK;
+}
 
 
 

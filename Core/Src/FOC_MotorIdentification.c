@@ -15,23 +15,18 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
 
     static uint8_t th_counter = 0;
 
-    static AlphaBetaCurrents PreviousPhaseCurrents = {0.0f, 0.0f};
+    static ABCurrentsTypeDef PreviousPhaseCurrents = {0.0f, 0.0f};
 
     static uint8_t measurement_step_counter = 0;
-    static AlphaBetaCurrents AlphaBetaArray[25] = {0.0f, 0.0f};
+    static ABCurrentsTypeDef AlphaBetaArray[25] = {{0.0f, 0.0f}};
 
-    static AlphaBetaCurrents prevlog = {0.0f, 0.0f};
-    static AlphaBetaCurrents cumlog = {0.0f, 0.0f};
+    static ABCurrentsTypeDef prevlog = {0.0f, 0.0f};
+    static ABCurrentsTypeDef cumlog = {0.0f, 0.0f};
 
     static float reference_electrical_angle = 0.0f;
 
     static float cumResistance = 0.0f;
     static float cumInductance = 0.0f;
-
-    static float tempbuffer[100] = {0.0f};
-    static float tempbuffer2[100] = {0.0f};
-    static uint8_t tempbuffer_index = 0;
-
 
     hfoc->ab_current = FOC_Clarke_transform(hfoc->phase_current);
 
@@ -60,12 +55,6 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                 }
 
 
-                for(int i = 0; i < 100; i++){
-                    tempbuffer[i] = 0.0f;
-                    tempbuffer2[i] = 0.0f;
-                }
-                tempbuffer_index = 0;
-
                 step++;
                 next_step_time = HAL_GetTick() + 10; //wait before the next step
             }
@@ -93,7 +82,6 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                         for(int i = 0; i < measurement_step_counter-5; i++){
                             if(fabsf(hfoc->ab_voltage.alpha) > 0.1f){
                                 float currlog = logf(1.0f - (AlphaBetaArray[i].alpha / AlphaBetaArray[measurement_step_counter].alpha)); 
-                                tempbuffer[i] = currlog - prevlog.alpha;
                                 if(i>2){
                                     cumlog.alpha += currlog - prevlog.alpha;
                                 }
@@ -103,7 +91,6 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                             
                             if(fabsf(hfoc->ab_voltage.beta) > 0.1f){
                                 float currlog = logf(1.0f - (AlphaBetaArray[i].beta / AlphaBetaArray[measurement_step_counter].beta));
-                                tempbuffer2[i] = currlog - prevlog.beta;
                                 if(i>2){
                                     cumlog.beta += currlog - prevlog.beta;
                                 }
@@ -152,11 +139,11 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                         if(substep_counter >= 3){
                             substep_counter = 0;
                             step++;
-                            next_step_time = HAL_GetTick() + 10; //wait before the next step
+                            next_step_time = HAL_GetTick() + 50; //wait before the next step
                         } else{
                             substep_counter++;
                             reference_electrical_angle += 2.0f * M_PIF / 4.0f;
-                            next_step_time = HAL_GetTick() + 2; //wait before the next substep
+                            next_step_time = HAL_GetTick() + 10; //wait before the next substep
                         }
                         
                     } else{
@@ -192,6 +179,7 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                 if((Resistance < 5.0f && Resistance > 0.0f) && (Inductance < 0.1f && Inductance > 0.0f)){
                     hfoc->flash_data.motor_stator_resistance = Resistance;
                     hfoc->flash_data.motor_stator_inductance = Inductance;
+                    hfoc->flash_data.motor_identified_flag = 1;
 
                     step = 0;
                     return 1; // complete
@@ -205,7 +193,7 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
     }
 
     // hfoc.ab_voltage = FOC_InvPark_transform(hfoc.dq_voltage, hfoc.encoder_angle_electrical);
-    PhaseVoltages phase_voltages = FOC_InvClarke_transform(hfoc->ab_voltage);
+    PhaseVoltagesTypeDef phase_voltages = FOC_InvClarke_transform(hfoc->ab_voltage);
     FOC_SetPhaseVoltages(hfoc, phase_voltages);
 
 return 0;

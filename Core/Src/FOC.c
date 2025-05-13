@@ -40,7 +40,6 @@ FOC_State Current_FOC_State = FOC_STATE_INIT;
 static uint8_t Current_Sensor_Calibration_Loop();
 static uint8_t Alignment_Loop(float magnitude);
 static uint8_t General_LED_Loop();
-static uint8_t FOC_Identify();
 static uint8_t Error_LED_Loop();
 static uint8_t Alignment_Test_Loop(float magnitude);
 static uint8_t Check_Current_Sensor_Loop();
@@ -74,25 +73,28 @@ void FOC_Setup(){
 
     FLASH_DataTypeDef flash_data = {0};
     FOC_FLASH_ReadData(&flash_data);
-    if(flash_data.contains_data == 1){
+    if(flash_data.contains_data_flag == 1){
         memcpy(&hfoc.flash_data, &flash_data, sizeof(FLASH_DataTypeDef));
     }else{
 
         hfoc.flash_data.motor_pole_pairs = MOTOR_POLE_PAIRS;
         hfoc.flash_data.motor_stator_resistance = MOTOR_STATOR_RESISTANCE;
         hfoc.flash_data.motor_stator_inductance = MOTOR_STATOR_INDUCTANCE;
-        hfoc.flash_data.motor_magnet_flux_linkage = MOTOR_MAGNET_FLUX_LINKAGE;
 
-        hfoc.flash_data.PID_gains_d.Kp = 0.1f;
-        hfoc.flash_data.PID_gains_d.Ki = 1.0f;
+        hfoc.flash_data.motor_direction_swapped_flag = 0;
+
+        hfoc.flash_data.PID_gains_d.Kp = 0.0f;
+        hfoc.flash_data.PID_gains_d.Ki = 0.0f;
         hfoc.flash_data.PID_gains_d.Kd = 0.0f;
 
-        hfoc.flash_data.PID_gains_q.Kp = 0.7f;
-        hfoc.flash_data.PID_gains_q.Ki = 5.0f;
+        hfoc.flash_data.PID_gains_q.Kp = 0.0f;
+        hfoc.flash_data.PID_gains_q.Ki = 0.0f;
         hfoc.flash_data.PID_gains_q.Kd = 0.0f;
 
-        // hfoc.flash_data.contains_data = 1;
-        // FOC_FLASH_WriteData(&hfoc.flash_data);
+        hfoc.flash_data.current_control_bandwidth = 3000.0f; // 3000 rad/s
+
+        hfoc.flash_data.contains_data_flag = 1;
+        FOC_FLASH_WriteData(&hfoc.flash_data);
     }
 
     WS2812b_Setup(&htim4, TIM_CHANNEL_1);
@@ -131,7 +133,7 @@ void FOC_Setup(){
     FOC_SetInputVoltage(&hfoc, INPUT_VOLTAGE); //set the input voltage, as default
     FOC_SetVoltageLimit(&hfoc, VOLTAGE_LIMIT); //set the voltage limit, as default
 
-    FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){0.0f, 0.0f}));
+    FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
 
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
@@ -217,7 +219,7 @@ void FOC_Loop(){
         if(DRV8323_CheckFault(&hfoc.hdrv8323)){ //check for motor driver fault
             DRV8323_Disable(&hfoc.hdrv8323); //disable the driver
             HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //disable the inverter
-            FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){0.0f, 0.0f}));
+            FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
             Current_FOC_State = FOC_STATE_ERROR;
         }
 
@@ -256,7 +258,8 @@ void FOC_Loop(){
             case FOC_STATE_IDENTIFY:
                 if(FOC_MotorIdentification(&hfoc)){
 
-                    FOC_TuneCurrentPID(&hfoc, 0.002f);
+                    FOC_TuneCurrentPID(&hfoc);
+
                     snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Motor Identified! Resistance: %d, Inductance: %d\n", 
                     (int)(hfoc.flash_data.motor_stator_resistance * 1000), (int)(hfoc.flash_data.motor_stator_inductance * 1000000));
                     HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
@@ -283,7 +286,7 @@ void FOC_Loop(){
                 break;
             case FOC_STATE_ENCODER_TEST:
                 if(Encoder_Test_Loop()){
-                    FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){0.3f, 0.0f}));
+                    FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.3f, 0.0f}));
                     // Current_FOC_State = FOC_GENERAL_TEST;
                 }
                 break;
@@ -303,7 +306,7 @@ void FOC_Loop(){
                 break;
             case FOC_STATE_FLASH_SAVE:
 
-                hfoc.flash_data.contains_data = 1;
+                hfoc.flash_data.contains_data_flag = 1;
                 if(FOC_FLASH_WriteData(&hfoc.flash_data) != FLASH_OK){
                     Current_FOC_State = FOC_STATE_ERROR;
                 }
@@ -338,12 +341,8 @@ static uint8_t Current_Loop(){
     hfoc.dq_voltage.d = PID_Update(&hfoc.pid_current_d, hfoc.dq_current_setpoint.d, hfoc.dq_current.d);
     hfoc.dq_voltage.q = PID_Update(&hfoc.pid_current_q, hfoc.dq_current_setpoint.q, hfoc.dq_current.q);
 
-    //feed forward terms
-    // hfoc.dq_voltage.q += hfoc.encoder_speed_electrical * (hfoc.flash_data.motor_magnet_flux_linkage + hfoc.flash_data.motor_stator_inductance * hfoc.dq_current.d);
-    // hfoc.dq_voltage.d -= hfoc.encoder_speed_electrical * hfoc.flash_data.motor_stator_inductance * hfoc.dq_current.q;
-
     hfoc.ab_voltage = FOC_InvPark_transform(hfoc.dq_voltage, hfoc.encoder_angle_electrical);
-    PhaseVoltages phase_voltages = FOC_InvClarke_transform(hfoc.ab_voltage);
+    PhaseVoltagesTypeDef phase_voltages = FOC_InvClarke_transform(hfoc.ab_voltage);
     FOC_SetPhaseVoltages(&hfoc, phase_voltages);
 
     return 0;
@@ -418,7 +417,7 @@ static uint8_t Current_Sensor_Calibration_Loop(){
     switch(step){
         case 0:
             if(HAL_GetTick() >= next_step_time){
-                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){magnitude, 0.0f}));
+                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){magnitude, 0.0f}));
                 step++;
                 next_step_time = HAL_GetTick() + 500; //wait before the next step
             }
@@ -432,7 +431,7 @@ static uint8_t Current_Sensor_Calibration_Loop(){
             break;
         case 2:
             if(HAL_GetTick() >= next_step_time){
-                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){0.0f, 0.0f}));
+                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
                 
                 snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Aligned! Offset: %d\n", (int)(hfoc.flash_data.encoder_angle_mechanical_offset * 1000));
                 HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
@@ -580,7 +579,7 @@ static uint8_t Alignment_Test_Loop(float magnitude){
     switch(step){
         case 0:
             if(HAL_GetTick() >= next_step_time){
-                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){0.3f, 0.0f}));
+                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.3f, 0.0f}));
                 step++;
                 next_step_time = HAL_GetTick() + 100; 
             }
@@ -596,7 +595,7 @@ static uint8_t Alignment_Test_Loop(float magnitude){
         case 2:
             if(HAL_GetTick() >= next_step_time){
 
-                AlphaBetaCurrents Iab = FOC_Clarke_transform(hfoc.phase_current);
+                ABCurrentsTypeDef Iab = FOC_Clarke_transform(hfoc.phase_current);
                 current_angle = atan2f(Iab.beta, Iab.alpha);
                 normalize_angle(&current_angle);
                 current_magnitude = sqrtf(Iab.alpha * Iab.alpha + Iab.beta * Iab.beta);
@@ -629,10 +628,10 @@ static uint8_t Alignment_Test_Loop(float magnitude){
                 normalize_angle(&reference_electrical_angle);
 
 
-                AlphaBetaVoltages Vab;
+                ABVoltagesTypeDef Vab;
                 Vab.alpha = magnitude * cosf(reference_electrical_angle);
                 Vab.beta = magnitude * sinf(reference_electrical_angle);
-                PhaseVoltages phase_voltages = FOC_InvClarke_transform(Vab);
+                PhaseVoltagesTypeDef phase_voltages = FOC_InvClarke_transform(Vab);
                 FOC_SetPhaseVoltages(&hfoc, phase_voltages);
 
 
@@ -671,7 +670,7 @@ static uint8_t Alignment_Test_Loop(float magnitude){
                     }else{
                         if(hfoc.encoder_speed_electrical > 0.0f){
                             if(dir_swapped){
-                               hfoc.flash_data.motor_direction_swapped = !hfoc.flash_data.motor_direction_swapped;
+                               hfoc.flash_data.motor_direction_swapped_flag = !hfoc.flash_data.motor_direction_swapped_flag;
                             }else{
                                 __NOP(); //error
                             }
@@ -688,9 +687,9 @@ static uint8_t Alignment_Test_Loop(float magnitude){
         case 3:
             if(HAL_GetTick() >= next_step_time){
 
-                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((AlphaBetaVoltages){0.0f, 0.0f}));
+                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
 
-                snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Alignment test:\nAbs Diff CW:%d, CCW:%d\nAbs Diff2 CW:%d, CCW %d\n", (int)(abs_diff_cw * 1000), (int)(abs_diff_ccw * 1000), (int)(abs_diff2_cw * 1000), (int)(abs_diff2_ccw * 1000));
+                snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Alignment test:\nAbs Diff CW:%d, CCW:%d\nAbs Diff2 CW:%d, CCW %d\nDirection:%d", (int)(abs_diff_cw * 1000), (int)(abs_diff_ccw * 1000), (int)(abs_diff2_cw * 1000), (int)(abs_diff2_ccw * 1000), hfoc.flash_data.motor_direction_swapped_flag);
                 HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
                 abs_diff_cw = 0.0f;
                 abs_diff_ccw = 0.0f;
@@ -730,7 +729,7 @@ static uint32_t next_step_time = 0;
         case 0:
             if(HAL_GetTick() >= next_step_time){
 
-                FOC_SetPhaseVoltages(&hfoc, (PhaseVoltages){0.1f, 0.0f, 0.0f});
+                FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.1f, 0.0f, 0.0f});
 
                 step++;
                 next_step_time = HAL_GetTick() + 10;
@@ -739,7 +738,7 @@ static uint32_t next_step_time = 0;
         case 1:
             if(HAL_GetTick() >= next_step_time){
 
-                FOC_SetPhaseVoltages(&hfoc, (PhaseVoltages){0.0f, 0.1f, 0.0f});
+                FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.1f, 0.0f});
 
                 step++;
                 next_step_time = HAL_GetTick() + 10;
@@ -748,7 +747,7 @@ static uint32_t next_step_time = 0;
         case 2:
             if(HAL_GetTick() >= next_step_time){
 
-                FOC_SetPhaseVoltages(&hfoc, (PhaseVoltages){0.0f, 0.0f, 0.1f});
+                FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.1f});
 
                 step++;
                 next_step_time = HAL_GetTick() + 10;
