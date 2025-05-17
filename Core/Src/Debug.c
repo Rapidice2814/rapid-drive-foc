@@ -128,7 +128,7 @@ void Debug_Loop(){
                     if(usart2_rx_buffer[i] == 'A'){
                         Current_FOC_State = FOC_STATE_ALIGNMENT;
                     }
-                    if(usart2_rx_buffer[i] == 'N'){
+                    if(usart2_rx_buffer[i] == 'R'){
                         Current_FOC_State = FOC_STATE_RUN;
                     }
                     if(usart2_rx_buffer[i] == 'M'){
@@ -139,6 +139,9 @@ void Debug_Loop(){
                     }
                     if(usart2_rx_buffer[i] == 'E'){
                         Current_FOC_State = FOC_STATE_ENCODER_TEST;
+                    }
+                    if(usart2_rx_buffer[i] == 'O'){
+                        Current_FOC_State = FOC_STATE_OPENLOOP;
                     }
                     if(usart2_rx_buffer[i] == 'K'){
                         hfoc.motor_disable_flag = 1;

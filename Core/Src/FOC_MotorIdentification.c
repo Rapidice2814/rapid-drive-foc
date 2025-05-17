@@ -27,6 +27,7 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
 
     static float cumResistance = 0.0f;
     static float cumInductance = 0.0f;
+    static uint8_t cumCounter = 0;
 
     hfoc->ab_current = FOC_Clarke_transform(hfoc->phase_current);
 
@@ -48,6 +49,7 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
 
                 cumResistance = 0.0f;
                 cumInductance = 0.0f;
+                cumCounter = 0;
 
                 for(int i = 0; i < 25; i++){
                     AlphaBetaArray[i].alpha = 0.0f;
@@ -135,15 +137,16 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
 
                         cumResistance += Resistance_total;
                         cumInductance += Inductance_total;
+                        cumCounter++;
                         
                         if(substep_counter >= 3){
                             substep_counter = 0;
                             step++;
-                            next_step_time = HAL_GetTick() + 50; //wait before the next step
+                            next_step_time = HAL_GetTick() + 100; //wait before the next step
                         } else{
                             substep_counter++;
                             reference_electrical_angle += 2.0f * M_PIF / 4.0f;
-                            next_step_time = HAL_GetTick() + 10; //wait before the next substep
+                            next_step_time = HAL_GetTick() + 200; //wait before the next substep
                         }
                         
                     } else{
@@ -171,8 +174,8 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                 hfoc->ab_voltage.alpha = 0.0f;
                 hfoc->ab_voltage.beta = 0.0f;
 
-                float Resistance = cumResistance /4.0f;
-                float Inductance = cumInductance /4.0f;
+                float Resistance = cumResistance / cumCounter;
+                float Inductance = cumInductance / cumCounter;
 
 
 
