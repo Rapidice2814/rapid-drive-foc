@@ -13,7 +13,7 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
     static uint32_t next_step_time = 0;
     static uint32_t substep_counter = 0;
 
-    static uint8_t th_counter = 0;
+    static uint8_t th_counter = 0; 
 
     static ABCurrentsTypeDef PreviousPhaseCurrents = {0.0f, 0.0f};
 
@@ -58,7 +58,7 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
 
 
                 step++;
-                next_step_time = HAL_GetTick() + 10; //wait before the next step
+                next_step_time = HAL_GetTick() + 1; //wait before the next step
             }
             break;
         case 1:
@@ -158,10 +158,9 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                 PreviousPhaseCurrents.beta = hfoc->ab_current.beta;
 
                 if(measurement_step_counter >= 25){
-                    //error
                     measurement_step_counter = 0;
                     step++;
-                    __NOP();
+                    return 2; //error
                 } else{
                     measurement_step_counter++;
                 }

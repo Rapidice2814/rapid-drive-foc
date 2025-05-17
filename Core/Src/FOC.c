@@ -38,7 +38,6 @@ FOC_State Current_FOC_State = FOC_STATE_INIT;
 
 
 static uint8_t Current_Sensor_Calibration_Loop();
-static uint8_t Alignment_Loop(float magnitude);
 static uint8_t General_LED_Loop();
 static uint8_t Error_LED_Loop();
 static uint8_t Alignment_Test_Loop(float magnitude);
@@ -226,6 +225,8 @@ void FOC_Loop(){
         FOC_UpdateEncoderAngle(&hfoc);
         FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY, 0.01f);
 
+        uint8_t ret = 0;
+
         switch(Current_FOC_State){
         
             case FOC_STATE_INIT:
@@ -256,7 +257,8 @@ void FOC_Loop(){
             case FOC_STATE_CALIBRATION:
                 break;
             case FOC_STATE_IDENTIFY:
-                if(FOC_MotorIdentification(&hfoc)){
+                ret = FOC_MotorIdentification(&hfoc);
+                if(ret == 1){
 
                     FOC_TuneCurrentPID(&hfoc);
 
@@ -265,11 +267,20 @@ void FOC_Loop(){
                     HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
                     
                     Current_FOC_State = FOC_STATE_ALIGNMENT_TEST;
-                }
+                } else if(ret == 2){
+                    Current_FOC_State = FOC_STATE_ERROR;
+                } 
                 break;
             case FOC_STATE_ALIGNMENT:
-                if(Alignment_Loop(1.0f)){
+                __NOP();
+                ret = FOC_Alignment(&hfoc, 0.5f);
+                if(ret == 1){
                     Current_FOC_State = FOC_STATE_IDENTIFY;
+
+                    snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Aligned! Offset: %d\n", (int)(hfoc.flash_data.encoder_angle_mechanical_offset * 1000));
+                    HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+                } else if(ret == 2){
+                    Current_FOC_State = FOC_STATE_ERROR;
                 }
                 break;
             case FOC_STATE_ALIGNMENT_TEST:
@@ -410,54 +421,7 @@ static uint8_t Current_Sensor_Calibration_Loop(){
     return 0;
 }
 
-/**
-  * @brief This is alligns the encoder zero to the motor zero (electrical angle).
-  * @note 
-  * @param None
-  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
-  */
- static uint8_t Alignment_Loop(float magnitude){
 
-    static uint8_t step = 0;
-    static uint32_t next_step_time = 0;
-    
-    switch(step){
-        case 0:
-            if(HAL_GetTick() >= next_step_time){
-                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){magnitude, 0.0f}));
-                step++;
-                next_step_time = HAL_GetTick() + 500; //wait before the next step
-            }
-            break;
-        case 1:
-            if(HAL_GetTick() >= next_step_time){
-                FOC_SetEncoderZero(&hfoc);
-                step++;
-                next_step_time = HAL_GetTick() + 100; //wait before the next step
-            }
-            break;
-        case 2:
-            if(HAL_GetTick() >= next_step_time){
-                FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
-                
-                snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Aligned! Offset: %d\n", (int)(hfoc.flash_data.encoder_angle_mechanical_offset * 1000));
-                HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
-
-
-                step++;
-                next_step_time = HAL_GetTick() + 2000; //wait before the next step
-            }
-            break;
-        default:
-            if(HAL_GetTick() >= next_step_time){
-                step = 0;
-                return 1; // complete
-            }
-            break;
-        }
-
-    return 0;
-    }
 
 /**
   * @brief 
