@@ -17,5 +17,5 @@
     },
     "search.useGlobalIgnoreFiles": false,
     "search.useIgnoreFiles": false,
-    "cortex-debug.variableUseNaturalFormat": false
+    "cortex-debug.variableUseNaturalFormat": true
 }

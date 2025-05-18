@@ -38,7 +38,7 @@ uint8_t FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
                 FOC_SetPhaseVoltages(hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
                 
                 step++;
-                next_step_time = HAL_GetTick() + 10; //wait before the next step
+                next_step_time = HAL_GetTick() + 100; //wait before the next step
             }
             break;
         default:

@@ -1,5 +1,10 @@
 #include "FOC_Loops.h"
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
+
+extern char usart3_tx_buffer[200];
+extern UART_HandleTypeDef huart3;
 
 /**
   * @brief 
@@ -7,7 +12,7 @@
   * @param None
   * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
   */
-uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
+uint8_t FOC_MotorIdentification2(FOC_HandleTypeDef *hfoc){
 
     static uint8_t step = 0;
     static uint32_t next_step_time = 0;
@@ -201,3 +206,114 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
 return 0;
 }
 
+/**
+  * @brief 
+  * @note 
+  * @param None
+  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
+  */
+uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
+
+    static uint8_t step = 0;
+    static uint8_t substep = 0;
+    static uint32_t next_step_time = 0;
+    
+    static uint8_t selector = 0;
+
+    static PhaseCurrentsTypeDef PhaseCurrentArray[25] = {{0.0f, 0.0f, 0.0f}};
+
+
+
+    switch(step){
+        case 0:
+            if(HAL_GetTick() >= next_step_time){
+
+                if(selector == 0){
+                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.5f, 0.0f, 0.0f});
+                } else if(selector == 1){
+                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.5f, 0.0f});
+                } else if(selector == 2){
+                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.5f});
+                }
+
+                step++;
+                next_step_time = HAL_GetTick() + 100; //wait before the next step
+            }
+            break;
+        case 1:
+            if(HAL_GetTick() >= next_step_time){
+
+                FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
+                step++;
+                next_step_time = HAL_GetTick() + 100; //wait before the next step 
+            }
+            break;
+        case 2:
+            if(HAL_GetTick() >= next_step_time){
+
+                if(selector == 0){
+                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.5f, 0.0f, 0.0f});
+                } else if(selector == 1){
+                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.5f, 0.0f});
+                } else if(selector == 2){
+                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.5f});
+                }
+
+                step++;
+                next_step_time = HAL_GetTick() + 0; //no wait before the next step
+            }
+            break;
+        case 3:
+            if(HAL_GetTick() >= next_step_time){
+                PhaseCurrentArray[substep] = hfoc->phase_current;
+                if(substep >= 25){
+                    substep = 0;
+                    step++;
+                    next_step_time = HAL_GetTick() + 1; //wait before the next step
+                } else{
+                    substep++;
+                }
+                
+            }
+            break;
+        case 4:
+            if(HAL_GetTick() >= next_step_time){
+
+                snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Phase currents %d:\n", selector);
+                HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+                HAL_Delay(2);
+
+
+                for(int i = 0; i < 25; i++){
+                    snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "%d,%d,%d;", 
+                    (int)(PhaseCurrentArray[i].a * 1000), (int)(PhaseCurrentArray[i].b * 1000), (int)(PhaseCurrentArray[i].c * 1000));
+                    HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+                    HAL_Delay(2);
+                }
+
+                snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "\n");
+                HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+                HAL_Delay(2);
+                
+                step++;
+                next_step_time = HAL_GetTick() + 200; //wait before the next step
+            }
+            break;
+        default:
+            if(HAL_GetTick() >= next_step_time){
+
+                step = 0;
+                if(selector == 2){
+                    selector = 0;
+                    return 1; //complete  
+                } else{
+                    selector++;
+                }
+                
+            }
+            break;
+    }
+
+
+return 0;
+}

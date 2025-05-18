@@ -250,7 +250,7 @@ void FOC_Loop(){
                 break;
             case FOC_STATE_GENERAL_TEST:
                 if(General_LED_Loop()){
-                    Current_FOC_State = FOC_STATE_RUN;
+                    // Current_FOC_State = FOC_STATE_RUN;
                     __NOP();
                 }
                 break;
@@ -260,22 +260,22 @@ void FOC_Loop(){
                 ret = FOC_MotorIdentification(&hfoc);
                 if(ret == 1){
 
-                    FOC_TuneCurrentPID(&hfoc);
+                    // FOC_TuneCurrentPID(&hfoc);
 
-                    snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Motor Identified! Resistance: %d, Inductance: %d\n", 
-                    (int)(hfoc.flash_data.motor_stator_resistance * 1000), (int)(hfoc.flash_data.motor_stator_inductance * 1000000));
-                    HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+                    // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Motor Identified! Resistance: %d, Inductance: %d\n", 
+                    // (int)(hfoc.flash_data.motor_stator_resistance * 1000), (int)(hfoc.flash_data.motor_stator_inductance * 1000000));
+                    // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
                     
-                    Current_FOC_State = FOC_STATE_ALIGNMENT_TEST;
+                    Current_FOC_State = FOC_STATE_RUN;
                 } else if(ret == 2){
                     Current_FOC_State = FOC_STATE_ERROR;
                 } 
                 break;
             case FOC_STATE_ALIGNMENT:
                 __NOP();
-                ret = FOC_Alignment(&hfoc, 0.5f);
+                ret = FOC_Alignment(&hfoc, 1.0f);
                 if(ret == 1){
-                    Current_FOC_State = FOC_STATE_IDENTIFY;
+                    Current_FOC_State = FOC_STATE_ALIGNMENT_TEST;
 
                     snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Aligned! Offset: %d\n", (int)(hfoc.flash_data.encoder_angle_mechanical_offset * 1000));
                     HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
@@ -284,13 +284,13 @@ void FOC_Loop(){
                 }
                 break;
             case FOC_STATE_ALIGNMENT_TEST:
-                if(Alignment_Test_Loop(0.5f)){
-                    Current_FOC_State = FOC_STATE_GENERAL_TEST;
+                if(Alignment_Test_Loop(0.7f)){
+                    Current_FOC_State = FOC_STATE_RUN;
                 }
                 break;
             case FOC_STATE_CHECK_CURRENT_SENSOR:
                 if(Check_Current_Sensor_Loop()){
-                    Current_FOC_State = FOC_STATE_GENERAL_TEST;
+                    Current_FOC_State = FOC_STATE_RUN;
                 }
                 break;
             case FOC_STATE_ENCODER_TEST:
