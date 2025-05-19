@@ -50,6 +50,9 @@ static uint8_t Current_Loop();
 volatile uint8_t adc1_complete_flag = 0;
 volatile uint8_t adc1_half_complete_flag = 0;
 
+volatile uint8_t adc2_complete_flag = 0;
+volatile uint8_t adc2_half_complete_flag = 0;
+
 volatile uint8_t foc_adc1_measurement_flag = 0;
 volatile uint8_t foc_outer_loop_flag = 0;
 volatile uint8_t debug_loop_flag = 0;
@@ -57,15 +60,17 @@ volatile uint8_t debug_loop_flag = 0;
 
 /* ADC */
 #define ADC_LOOP_ALPHA (2.0f/(CURRENT_LOOP_CLOCK_DIVIDER+1))
+#define TEMP_LOOP_ALPHA (2.0f/(1000))
 #define CURRENT_SENSE_CONVERSION_FACTOR (3.3f/4096.0f)/(0.02f * 10.0f) //10 V/V gain, 20 mOhm shunt
 #define VOLTAGE_SENSE_CONVERSION_FACTOR 11.0f/1.0f * 3.3f / 4096.0f // 100:10 voltage divider
 
 static volatile uint16_t adc1_buffer[ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2] = {0};
+static volatile uint16_t adc2_buffer[ADC2_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2] = {0};
 
 
 
 void FOC_Setup(){
-    HAL_Delay(10);
+    FOC_Init(&hfoc); 
     // HAL_GetUIDw0();
     // HAL_GetUIDw1();
     // HAL_GetUIDw2();
@@ -75,22 +80,6 @@ void FOC_Setup(){
     if(flash_data.contains_data_flag == 1){
         memcpy(&hfoc.flash_data, &flash_data, sizeof(FLASH_DataTypeDef));
     }else{
-
-        hfoc.flash_data.motor_pole_pairs = MOTOR_POLE_PAIRS;
-        hfoc.flash_data.motor_stator_resistance = MOTOR_STATOR_RESISTANCE;
-        hfoc.flash_data.motor_stator_inductance = MOTOR_STATOR_INDUCTANCE;
-
-        hfoc.flash_data.motor_direction_swapped_flag = 0;
-
-        hfoc.flash_data.PID_gains_d.Kp = 0.0f;
-        hfoc.flash_data.PID_gains_d.Ki = 0.0f;
-        hfoc.flash_data.PID_gains_d.Kd = 0.0f;
-
-        hfoc.flash_data.PID_gains_q.Kp = 0.0f;
-        hfoc.flash_data.PID_gains_q.Ki = 0.0f;
-        hfoc.flash_data.PID_gains_q.Kd = 0.0f;
-
-        hfoc.flash_data.current_control_bandwidth = 3000.0f; // 3000 rad/s
 
         hfoc.flash_data.contains_data_flag = 1;
         FOC_FLASH_WriteData(&hfoc.flash_data);
@@ -142,7 +131,8 @@ void FOC_Setup(){
     HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, GPIO_PIN_SET);
 
     HAL_TIM_Base_Start(&htim1); //pwm timer and also adc trigger
-    HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc1_buffer, ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2); //start adc in dma mode
+    HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc1_buffer, ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2); //start adc in dma mode for the current and vbus
+    HAL_ADC_Start_DMA(&hadc2, (uint32_t*)adc2_buffer, ADC2_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2); //adc for temp sensor
 
     
     HAL_TIM_Base_Start(&htim2); //timer for the counter
@@ -165,6 +155,7 @@ void FOC_Setup(){
     // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Aligned! Offset: %d\n", (int)(hfoc.flash_data.encoder_angle_mechanical_offset * 1000));
     // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
 
+
 }
 
 
@@ -175,6 +166,10 @@ static uint32_t max_execution_time = 0;
 static uint32_t adc1_start_time = 0;
 static uint32_t adc1_time = 0;
 static uint32_t max_adc1_time = 0;
+
+static uint32_t adc2_start_time = 0;
+static uint32_t adc2_time = 0;
+static uint32_t max_adc2_time = 0;
 
 
 char usart3_tx_buffer[200];
@@ -201,8 +196,6 @@ void FOC_Loop(){
                 }
             }
 
-            HAL_GPIO_TogglePin(PB2_GPIO_Port, PB2_Pin);
-
             foc_adc1_measurement_flag = 1; //triggered after the adc conversion is complete (either first or second half of the buffer)
             adc1_half_complete_flag = 0;
             adc1_complete_flag = 0;
@@ -213,7 +206,35 @@ void FOC_Loop(){
         }
     }
 
+    if(adc2_half_complete_flag || adc2_complete_flag){
+        adc2_start_time = __HAL_TIM_GET_COUNTER(&htim2);
+
+            int start_index = adc2_half_complete_flag ? 0 : CURRENT_LOOP_CLOCK_DIVIDER * ADC2_CHANNELS;
+            int end_index = start_index + CURRENT_LOOP_CLOCK_DIVIDER * ADC2_CHANNELS;
+
+            for (int i = start_index; i < end_index; i += ADC2_CHANNELS) {
+                if(adc2_buffer[i] > 0){
+                    hfoc.NTC_resistance = hfoc.NTC_resistance * (1 - TEMP_LOOP_ALPHA) + TEMP_LOOP_ALPHA * 100e3f * (4095.0f / (float)adc2_buffer[i] - 1);
+                } else{
+                    hfoc.NTC_resistance = 0.0f;
+                }
+            }
+
+            hfoc.NTC_temp = (1.0f / ((1.0f / 298.15f) + (1.0f / 3950.0f) * log(hfoc.NTC_resistance / 100e3f)) - 273.15f); //tales too long
+
+            adc2_half_complete_flag = 0;
+            adc2_complete_flag = 0;
+
+        adc2_time = __HAL_TIM_GET_COUNTER(&htim2) - adc2_start_time;
+        if (adc2_time > max_adc2_time) {
+            max_adc2_time = adc2_time;
+        }
+    }
+
+
+
     if(foc_adc1_measurement_flag){
+
 
         if(DRV8323_CheckFault(&hfoc.hdrv8323)){ //check for motor driver fault
             DRV8323_Disable(&hfoc.hdrv8323); //disable the driver
@@ -221,6 +242,14 @@ void FOC_Loop(){
             FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
             Current_FOC_State = FOC_STATE_ERROR;
         }
+
+        if(hfoc.NTC_temp > 50.0f || hfoc.NTC_temp < 0.0f){ //check for over temperature
+            DRV8323_Disable(&hfoc.hdrv8323); //disable the driver
+            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //disable the inverter
+            FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
+            Current_FOC_State = FOC_STATE_ERROR;
+        }
+
 
         FOC_UpdateEncoderAngle(&hfoc);
         FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY, 0.01f);
@@ -273,7 +302,7 @@ void FOC_Loop(){
                 break;
             case FOC_STATE_ALIGNMENT:
                 __NOP();
-                ret = FOC_Alignment(&hfoc, 1.0f);
+                ret = FOC_Alignment(&hfoc, 0.7f);
                 if(ret == 1){
                     Current_FOC_State = FOC_STATE_ALIGNMENT_TEST;
 
@@ -284,7 +313,7 @@ void FOC_Loop(){
                 }
                 break;
             case FOC_STATE_ALIGNMENT_TEST:
-                if(Alignment_Test_Loop(0.7f)){
+                if(Alignment_Test_Loop(0.5f)){
                     Current_FOC_State = FOC_STATE_RUN;
                 }
                 break;
@@ -861,6 +890,10 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) { //when the adc conversi
         if(!adc1_complete_flag){
             adc1_complete_flag = 1;  
         }
+    } else if(hadc->Instance == ADC2){
+        if(!adc2_complete_flag){
+            adc2_complete_flag = 1;  
+        }
     }
 }
 
@@ -869,8 +902,11 @@ void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc) { //when the adc conv
         if(!adc1_half_complete_flag){
             adc1_half_complete_flag = 1;
         }
+    } else if(hadc->Instance == ADC2){
+        if(!adc2_half_complete_flag){
+            adc2_half_complete_flag = 1;
+        }
     }
-    
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){

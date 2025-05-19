@@ -78,6 +78,10 @@ typedef struct {
     DQVoltagesTypeDef dq_voltage;          //d and q voltages [V]
     ABVoltagesTypeDef ab_voltage;   //alpha and beta voltages [V]
 
+    /* Temperature */
+    float NTC_resistance; //resistance [ohms]
+    float NTC_temp; //temperature [C]
+
 
     /* PID Controllers */
     PIDControllerTypeDef pid_current_d;            //d current controller
@@ -99,6 +103,7 @@ typedef struct {
 } FOC_HandleTypeDef;
 
 /* General */
+FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc);
 FOC_StatusTypeDef FOC_SetInputVoltage(FOC_HandleTypeDef *hfoc, float vin);
 FOC_StatusTypeDef FOC_SetVoltageLimit(FOC_HandleTypeDef *hfoc, float voltage_limit);
 

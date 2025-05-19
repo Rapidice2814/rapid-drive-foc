@@ -11,7 +11,6 @@ uint8_t FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
 
     static uint8_t step = 0;
     static uint32_t next_step_time = 0;
-    magnitude = 0.0f;
 
     switch(step){
         case 0:

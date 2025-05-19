@@ -3,10 +3,35 @@
 
 #include "FOC_Driver.h"
 #include "FOC_Utils.h"
+#include "FOC.h"
 
 /* uncomment these to use the cos and sin optimizations */
 #define cosf _cosf
 #define sinf _sinf
+
+//Sets default values for the FOC structure
+FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
+
+    hfoc->flash_data.motor_pole_pairs = MOTOR_POLE_PAIRS;
+    hfoc->flash_data.motor_stator_resistance = MOTOR_STATOR_RESISTANCE;
+    hfoc->flash_data.motor_stator_inductance = MOTOR_STATOR_INDUCTANCE;
+
+    hfoc->flash_data.motor_direction_swapped_flag = 0;
+
+    hfoc->flash_data.PID_gains_d.Kp = 0.0f;
+    hfoc->flash_data.PID_gains_d.Ki = 0.0f;
+    hfoc->flash_data.PID_gains_d.Kd = 0.0f;
+
+    hfoc->flash_data.PID_gains_q.Kp = 0.0f;
+    hfoc->flash_data.PID_gains_q.Ki = 0.0f;
+    hfoc->flash_data.PID_gains_q.Kd = 0.0f;
+
+    hfoc->flash_data.current_control_bandwidth = 3000.0f; // 3000 rad/s
+
+    hfoc->NTC_resistance = 100e3f; // initial resistance
+
+    return FOC_OK;
+}
 
 /* General */
 FOC_StatusTypeDef FOC_SetInputVoltage(FOC_HandleTypeDef *hfoc, float vbus){
