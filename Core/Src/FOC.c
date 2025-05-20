@@ -11,6 +11,7 @@
 #include "WS2812b_Driver.h"
 #include "Debug.h"
 #include "FOC_Loops.h"
+#include "Logging.h"
 
 extern ADC_HandleTypeDef hadc1;
 extern ADC_HandleTypeDef hadc2;
@@ -155,6 +156,11 @@ void FOC_Setup(){
     // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Aligned! Offset: %d\n", (int)(hfoc.flash_data.encoder_angle_mechanical_offset * 1000));
     // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
 
+    uint32_t start_time = __HAL_TIM_GET_COUNTER(&htim2);
+    int arr[10] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    my_printf("Hello: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7], arr[8], arr[9]);
+    uint32_t execution_time = __HAL_TIM_GET_COUNTER(&htim2) - start_time;
+    execution_time;
 
 }
 
@@ -221,6 +227,7 @@ void FOC_Loop(){
             }
 
             hfoc.NTC_temp = (1.0f / ((1.0f / 298.15f) + (1.0f / 3950.0f) * log(hfoc.NTC_resistance / 100e3f)) - 273.15f); //tales too long
+            
 
             adc2_half_complete_flag = 0;
             adc2_complete_flag = 0;
@@ -243,7 +250,7 @@ void FOC_Loop(){
             Current_FOC_State = FOC_STATE_ERROR;
         }
 
-        if(hfoc.NTC_temp > 50.0f || hfoc.NTC_temp < 0.0f){ //check for over temperature
+        if(hfoc.NTC_temp > 50.0f || hfoc.NTC_temp < -200.0f){ //check for over temperature
             DRV8323_Disable(&hfoc.hdrv8323); //disable the driver
             HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //disable the inverter
             FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
@@ -265,7 +272,13 @@ void FOC_Loop(){
                 HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
                 HAL_Delay(1000);
 
-                Current_FOC_State = FOC_STATE_CURRENT_SENSOR_CALIBRATION;
+                Current_FOC_State = FOC_STATE_BOOTUP_SOUND;
+                break;
+            case FOC_STATE_BOOTUP_SOUND:
+                if(FOC_BootupSound(&hfoc, CURRENT_LOOP_FREQUENCY)){
+                    Current_FOC_State = FOC_STATE_CURRENT_SENSOR_CALIBRATION;
+                    __NOP();
+                }
                 break;
             case FOC_STATE_CURRENT_SENSOR_CALIBRATION:
                 if(Current_Sensor_Calibration_Loop()){

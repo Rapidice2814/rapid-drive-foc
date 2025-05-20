@@ -49,6 +49,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_MotorIdentification.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_OpenLoop.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Alignment.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_BootupSound.c
 
 
 
@@ -58,6 +59,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/AS5047P_Driver.c
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Utils.c
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/WS2812b_Driver.c
+    ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/Logging.c
 )
 
 # Add include paths

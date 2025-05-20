@@ -4,6 +4,8 @@
 #include "main.h"
 #include "FOC_Driver.h"
 
+uint8_t FOC_BootupSound(FOC_HandleTypeDef *hfoc, float loop_frequency);
+uint8_t FOC_BootupSound2(FOC_HandleTypeDef *hfoc, float loop_frequency);
 uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc);
 uint8_t FOC_OpenLoop(FOC_HandleTypeDef *hfoc, float espeed, float magnitude, float loop_frequency);
 uint8_t FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude);
