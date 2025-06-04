@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+void test();
 void my_printf(const char *fmt, ...);
 
 

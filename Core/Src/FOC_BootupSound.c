@@ -8,7 +8,7 @@ typedef struct {
     uint16_t duration;   // ms
 } NoteTypeDef;
 
-static NoteTypeDef esc[] = {
+static NoteTypeDef melody[] = {
     {1046.50f, 200},  // C4
     {1318.51f, 200},  // E4
     {1567.98f, 200},  // G4
@@ -19,7 +19,7 @@ static NoteTypeDef esc[] = {
 #define NOTE_DURATION 150 // ms
 #define NOTE_PAUSE 15 // ms
 
-static NoteTypeDef melody[] = {
+static NoteTypeDef mario[] = {
     {1318.51f, NOTE_DURATION}, // E6
     {0.0f,     NOTE_PAUSE}, // rest
     {1318.51f, NOTE_DURATION}, // E6
@@ -199,7 +199,7 @@ uint8_t FOC_BootupSound(FOC_HandleTypeDef *hfoc, float loop_frequency){
         play_sound(hfoc, 0.0f, 0.0f, loop_frequency);
         return 1; // complete
     } else{
-        play_sound(hfoc, melody[step-1].frequency, 2.0f, loop_frequency);
+        play_sound(hfoc, melody[step-1].frequency, 1.0f, loop_frequency);
         if(HAL_GetTick() >= next_step_time){
             step++;
             next_step_time = HAL_GetTick() + melody[step-1].duration; //wait before the next step
