@@ -225,7 +225,7 @@ void FOC_Loop(){
                 }
             }
 
-            hfoc.NTC_temp = (1.0f / ((1.0f / 298.15f) + (1.0f / 3950.0f) * log(hfoc.NTC_resistance / 100e3f)) - 273.15f); //tales too long
+            hfoc.NTC_temp = (1.0f / ((1.0f / 298.15f) + (1.0f / 3950.0f) * log(hfoc.NTC_resistance / 100e3f)) - 273.15f); //takes too long
             
 
             adc2_half_complete_flag = 0;

@@ -1,21 +1,150 @@
 #include "Logging.h"
 #include "main.h"
+#include <stdlib.h>
 #include <string.h>
 
 int mini_snprintf(char* buffer, size_t size, const char* format, ...);
 void int_to_str(int value, char* buffer);
 uint8_t int_to_str2(int value, char* buffer);
 
+void testqueue(const char* format, ...);
+void testqueue2(const char* format, ...);
+
 extern UART_HandleTypeDef huart3;
 char buffer[200];
 
 void test(){
-    int arr[10] = {0543, -1531, 2456, 376, -4678, 56879, -6345, 7234, -837, 9653};
-    mini_snprintf(buffer, sizeof(buffer), "Hello: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7], arr[8], arr[9]);
+    int arr[10] = {543, -1531, 2456, 376, -4678, 56879, -6345, 7234, -837, 9653};
+    // mini_snprintf(buffer, sizeof(buffer), "Hello: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7], arr[8], arr[9]);
     // snprintf(buffer, sizeof(buffer), "Hello: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7], arr[8], arr[9]);
-
-    buffer;
+    // snprintf(buffer, sizeof(buffer), "Hello: ");
+    // snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "%d, ", arr[0]);
+    // snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "%d, ", arr[1]);
+    // snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "%d, ", arr[2]);
+    // snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "%d, ", arr[3]);
+    // snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "%d, ", arr[4]);
+    // snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "%d, ", arr[5]);
+    // snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "%d, ", arr[6]);
+    // snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "%d, ", arr[7]);
+    // snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "%d, ", arr[8]);
+    // snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "%d\n", arr[9]);
+    testqueue("Hello: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7], arr[8], arr[9]);
+    testqueue("Hello: ");
+    testqueue("%d, ", arr[0]);
+    testqueue("%d, ", arr[1]);
+    testqueue("%d, ", arr[2]);
+    testqueue("%d, ", arr[3]);
+    testqueue("%d, ", arr[4]);
+    testqueue("%d, ", arr[5]);
+    testqueue("%d, ", arr[6]);
+    testqueue("%d, ", arr[7]);
+    testqueue("%d, ", arr[8]);
+    testqueue("%d\n", arr[9]);
+    __NOP();
 }
+
+typedef struct {
+    char *format;     // pointer to the format string
+    int *args;        // pointer to an array of arguments
+    int arg_count;
+} LogEntryTypeDef;
+
+
+void testqueue2(const char* format, ...){
+
+    // Step 1: Allocate entry
+    LogEntryTypeDef *entry = malloc(sizeof(LogEntryTypeDef));
+    if (!entry) return; // Allocation failed
+
+    // Step 2: Copy format string
+    entry->format = strdup(format);
+    if (!entry->format) { // Allocation failed
+        free(entry);
+        return;
+    }
+
+    // Step 3: Parse number of %d's in the format
+    entry->arg_count = 0;
+    const char *p = format;
+    while (*p) {
+        if (*p == '%' && *(p + 1) == 'd') {
+            entry->arg_count++;
+            p++; // Skip 'd'
+        }
+        p++;
+    }
+
+
+    // Step 4: Allocate argument buffer
+    entry->args = malloc(sizeof(int) * entry->arg_count);
+    if (!entry->args) { // Allocation failed
+        free(entry->format);
+        free(entry);
+        return;
+    }
+
+
+    // Step 5: Extract args using va_list
+    va_list args;
+    va_start(args, format);
+    for (int i = 0; i < entry->arg_count; i++) {
+        entry->args[i] = va_arg(args, int);
+    }
+    va_end(args);
+    __NOP();
+    
+    free(entry->format);
+    free(entry->args);
+    free(entry);
+
+}
+
+static uint8_t buffer_selector = 0;
+static char unformatted_buffer[2][200] = {{0}};
+static int32_t argument_buffer[2][20] = {{0}};
+
+static uint32_t buffer_max_index = 0;
+static uint32_t buffer_max_arg = 0;
+
+void testqueue(const char* format, ...){
+    
+    uint32_t format_size = strlen(format);
+    uint32_t format_buffer_size = sizeof(unformatted_buffer[0]) / sizeof(unformatted_buffer[0][0]);
+    if (buffer_max_index + format_size >= format_buffer_size) return; // Does not fit in the format buffer
+
+    uint32_t arg_count = 0;
+    const char *p = format;
+    while (*p) {
+        if (*p == '%' && *(p + 1) == 'd') {
+            arg_count++;
+            p++; // Skip 'd'
+        }
+        p++;
+    }
+
+    uint32_t arg_buffer_size = sizeof(argument_buffer[0]) / sizeof(argument_buffer[0][0]);
+    if (buffer_max_arg + arg_count > arg_buffer_size) return; // Does not fit in the argument buffer
+
+
+    strcpy(&unformatted_buffer[buffer_selector][buffer_max_index], format);
+    buffer_max_index += strlen(format);
+
+    va_list args;
+    va_start(args, format);
+    for (uint32_t i = buffer_max_arg; i < (buffer_max_arg + arg_count); i++) {
+        argument_buffer[buffer_selector][i] = va_arg(args, int);
+    }
+    va_end(args);
+    
+    buffer_max_arg += arg_count;
+    __NOP();
+
+}
+
+
+
+
+
 
 
 int mini_snprintf(char* buffer, size_t size, const char* format, ...) {
