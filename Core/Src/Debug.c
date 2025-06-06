@@ -233,7 +233,7 @@ void Debug_Loop(){
 
 
 
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
+void HAL_UART_TxCpltCallback2(UART_HandleTypeDef *huart){
     if(huart->Instance == huart3.Instance){
         uart2_tx_free_flag = 1;
     }

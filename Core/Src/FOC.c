@@ -161,6 +161,13 @@ void FOC_Setup(){
     uint32_t execution_time = __HAL_TIM_GET_COUNTER(&htim2) - start_time;
     execution_time;
 
+    while(1){
+        uint32_t start_time = __HAL_TIM_GET_COUNTER(&htim2);
+        testloop();
+        uint32_t execution_time = __HAL_TIM_GET_COUNTER(&htim2) - start_time;
+        execution_time;
+    }
+
 }
 
 

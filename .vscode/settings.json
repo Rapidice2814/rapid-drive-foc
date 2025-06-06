@@ -13,7 +13,11 @@
         "foc_flash.h": "c",
         "parameter_estimator.h": "c",
         "stdio.h": "c",
-        "foc_loops.h": "c"
+        "foc_loops.h": "c",
+        "string.h": "c",
+        "stdarg.h": "c",
+        "logging.h": "c",
+        "debug.h": "c"
     },
     "search.useGlobalIgnoreFiles": false,
     "search.useIgnoreFiles": false,
