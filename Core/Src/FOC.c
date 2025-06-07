@@ -90,8 +90,6 @@ void FOC_Setup(){
 
     WS2812b_Setup(&htim4, TIM_CHANNEL_1);
 
-    
-
 
     if(DRV8323_SetPins(&hfoc.hdrv8323, &hspi2, DRV_NCS_GPIO_Port, DRV_NCS_Pin, DRV_ENABLE_GPIO_Port, DRV_ENABLE_Pin, DRV_NFAULT_GPIO_Port, DRV_NFAULT_Pin) != DRV8323_OK){
         while(1){};
@@ -155,6 +153,9 @@ void FOC_Setup(){
     /* UART */
     // Debug_Setup();
     Log_Setup(&huart3);
+
+    GenerateNtcLut(); //generate the NTC lookup table
+
 
     uint32_t rand32;
     uint8_t rand8;
@@ -250,15 +251,13 @@ void FOC_Loop(){
 
             for (int i = start_index; i < end_index; i += ADC2_CHANNELS) {
                 if(adc2_buffer[i] > 0){
-                    hfoc.NTC_resistance = hfoc.NTC_resistance * (1 - TEMP_LOOP_ALPHA) + TEMP_LOOP_ALPHA * 100e3f * (4095.0f / (float)adc2_buffer[i] - 1);
+                    hfoc.NTC_resistance = hfoc.NTC_resistance * (1 - TEMP_LOOP_ALPHA) + TEMP_LOOP_ALPHA * 100e3f * ((4095.0f / (float)adc2_buffer[i]) - 1);
                 } else{
                     hfoc.NTC_resistance = 0.0f;
                 }
             }
 
-            // hfoc.NTC_temp = 20;
-            hfoc.NTC_temp = (1.0f / ((1.0f / 298.15f) + (1.0f / 3950.0f) * log(hfoc.NTC_resistance / 100e3f)) - 273.15f); //takes too long
-            
+            hfoc.NTC_temp = GetNtcTemperature(hfoc.NTC_resistance);
 
             adc2_half_complete_flag = 0;
             adc2_complete_flag = 0;

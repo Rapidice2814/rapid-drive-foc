@@ -39,4 +39,8 @@ float _atan2(float y, float x);
 void normalize_angle(float *angle);
 void normalize_angle2(float *angle);
 
+float GetNtcTemperature(float ntc_resistance);
+
+void GenerateNtcLut();
+
 #endif // FOC_UTILS_H
