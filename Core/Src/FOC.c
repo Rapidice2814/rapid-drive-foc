@@ -170,6 +170,24 @@ void FOC_Setup(){
     // Log_queue("Hello: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7], arr[8], arr[9]);
 
     Log_Queue("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
+
+    // uint32_t start_time = __HAL_TIM_GET_COUNTER(&htim2);
+    //     Log_Queue("Vq:%d,Vd:%d,Id:%d,Iq:%d,Id_set:%d,Iq_set:%d,EAngle:%d,Espeed:%d,Vbus:%d,Temp:%d\n",
+    //         (int)(arr[0]), (int)(arr[1]), (int)(arr[2]), (int)(arr[3]),
+    //         (int)(arr[4]), (int)(arr[5]), (int)(arr[6]), (int)(arr[7]),
+    //         (int)(arr[8]), (int)(arr[9]));
+
+    //     Log_Queue("Time: %d, ADC1 Time: %d, ADC2 Time: %d, Log Time: %d\n",
+    //         (int)arr[0], (int)arr[1], (int)arr[2], (int)arr[3]);
+    // uint32_t execution_time = __HAL_TIM_GET_COUNTER(&htim2) - start_time;
+
+    // while(1){
+    //     uint32_t start_time = __HAL_TIM_GET_COUNTER(&htim2);
+    //     Log_Queue("Time: %d, ADC1 Time: %d, ADC2 Time: %d, Log Time: %d\n",
+    //         (int)arr[0], (int)arr[1], (int)arr[2], (int)arr[3]);
+    //     Log_Loop();
+    //     uint32_t execution_time = __HAL_TIM_GET_COUNTER(&htim2) - start_time;
+    // }
 }
 
 
@@ -192,7 +210,6 @@ static uint32_t max_log_time = 0;
 
 char usart3_tx_buffer[200];
 uint8_t timeout_flag = 0;
-
 
 void FOC_Loop(){
     start_time = __HAL_TIM_GET_COUNTER(&htim2);
@@ -239,6 +256,7 @@ void FOC_Loop(){
                 }
             }
 
+            // hfoc.NTC_temp = 20;
             hfoc.NTC_temp = (1.0f / ((1.0f / 298.15f) + (1.0f / 3950.0f) * log(hfoc.NTC_resistance / 100e3f)) - 273.15f); //takes too long
             
 
@@ -365,19 +383,21 @@ void FOC_Loop(){
                 if(debug_loop_flag){
                     // Debug_Queue(&hfoc);
                     static uint8_t call_counter = 0;
+                    static uint32_t counter = 0;
                     if (++call_counter >= 1)
                     {
+                        counter++;
                         call_counter = 0;
 
-                        Log_Queue("Vq:%d,Vd:%d,Id:%d,Iq:%d,Id_set:%d,Iq_set:%d,EAngle:%d,Espeed:%d,Vbus:%d,Temp:%d\n",
+                        Log_Queue("Vq:%d,Vd:%d,Id:%d,Iq:%d,Id_set:%d,Iq_set:%d,EAngle:%d,Espeed:%d,Vbus:%d,Temp:%d,Count:%d\n",
                         (int)(hfoc.dq_voltage.q * 1000), (int)(hfoc.dq_voltage.d * 1000),
                         (int)(hfoc.dq_current.d * 1000), (int)(hfoc.dq_current.q * 1000),
                         (int)(hfoc.dq_current_setpoint.d * 1000), (int)(hfoc.dq_current_setpoint.q * 1000),
                         (int)(hfoc.encoder_angle_electrical * 1000), (int)(hfoc.encoder_speed_electrical * 1000),
-                        (int)(hfoc.vbus * 10), (int)(hfoc.NTC_temp * 10));
+                        (int)(hfoc.vbus * 10), (int)(hfoc.NTC_temp * 10), counter);
 
-                        Log_Queue("Time: %d, ADC1 Time: %d, ADC2 Time: %d, Log Time: %d\n",
-                            (int)execution_time, (int)adc1_time, (int)adc2_time, (int)log_time);
+                        Log_Queue("Time: %d, ADC1 Time: %d, ADC2 Time: %d, Log Time: %d, Count:%d\n",
+                            (int)max_execution_time, (int)max_adc1_time, (int)max_adc2_time, (int)max_log_time, counter);
                     }
                     
 

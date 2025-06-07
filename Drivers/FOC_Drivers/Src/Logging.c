@@ -23,11 +23,8 @@ void Log_Setup(UART_HandleTypeDef *huart){
     huart_log = huart;
     format_write_index = 0;
     format_read_index = 0;
-    arg_write_index = 0;
-    arg_read_index = 0;
-    memset(format_buffer, 1, sizeof(format_buffer));
-    memset(argument_buffer, 0, sizeof(argument_buffer));
-    memset(tx_buffer, 1, sizeof(tx_buffer));
+    arg_write_index = 25;
+    arg_read_index = 25;
     tx_packet_length = 0;
     buffer_selector = 0;
     uart_tx_free_flag = 1; // Set the flag to indicate UART is ready for transmission
@@ -39,8 +36,6 @@ void Log_Queue(const char* format, ...){
     uint32_t format_buffer_size = sizeof(format_buffer) / sizeof(format_buffer[0]);
     uint32_t format_buffer_space_available = (format_read_index - format_write_index + format_buffer_size- 1) % format_buffer_size;
     if (format_size > format_buffer_space_available){
-        // format_buffer[format_write_index] = '?'; // Indicate buffer overflow
-        // format_write_index = (format_write_index + 1) % format_buffer_size;
         return;
     } 
 
@@ -57,8 +52,6 @@ void Log_Queue(const char* format, ...){
     uint32_t arg_buffer_size = sizeof(argument_buffer) / sizeof(argument_buffer[0]);
     uint32_t arg_buffer_space_available = (arg_read_index - arg_write_index + arg_buffer_size-1) % arg_buffer_size;
     if (arg_count > arg_buffer_space_available){
-        // format_buffer[format_write_index] = '?'; // Indicate buffer overflow
-        // format_write_index = (format_write_index + 1) % format_buffer_size;
         return;
     } 
 
@@ -86,7 +79,6 @@ void Log_Queue(const char* format, ...){
     
     arg_write_index = (arg_write_index + arg_count) % arg_buffer_size;
     __NOP();
-    // format_read_index = format_write_index;
 }
 
 void Log_Loop(){
@@ -105,24 +97,35 @@ void Log_Loop(){
 
     if (format_write_index == format_read_index) return; // No new data to process
 
-    for(;format_read_index != format_write_index;format_read_index = (format_read_index + 1) % format_buffer_size){
-        // if(format_buffer[format_read_index] == '\0') break;
+    for(uint32_t loop_counter = 0;format_read_index != format_write_index;format_read_index = (format_read_index + 1) % format_buffer_size, loop_counter++){
     
         if(format_buffer[format_read_index] == '%' && format_buffer[(format_read_index + 1) % format_buffer_size] == 'd'){
-                tx_packet_length += snprintf(tx_buffer[buffer_selector] + tx_packet_length, sizeof(tx_buffer[0]) - tx_packet_length - 1, "%d", argument_buffer[arg_read_index]);
+                uint32_t tx_buffer_space_available = sizeof(tx_buffer[0]) - tx_packet_length; //this includes the null terminator
+                uint32_t tx_buffer_characters_needed = snprintf(tx_buffer[buffer_selector] + tx_packet_length, tx_buffer_space_available, "%d", argument_buffer[arg_read_index]); //this excludes the null terminator
+
+                if(tx_buffer_characters_needed >= tx_buffer_space_available){
+                    tx_packet_length += tx_buffer_space_available; //the number is truncated to fit the buffer
+                }else{
+                    tx_packet_length += tx_buffer_characters_needed;
+                }
+
                 arg_read_index = (arg_read_index + 1) % arg_buffer_size;
 
                 format_read_index = (format_read_index + 2) % format_buffer_size; // Skip the '%d'
-                break;
-
+                break; //end loop after processing one argument
         } else{
+            if(loop_counter > 20){
+                break; //end loop if we have processed too many characters without finding a '%d'
+            }
 
             if(tx_packet_length < sizeof(tx_buffer[0])){
                 tx_buffer[buffer_selector][tx_packet_length] = format_buffer[format_read_index];
                 tx_packet_length++;
             } else{
-                tx_buffer[buffer_selector][tx_packet_length-2] = '!'; // Indicate buffer overflow
-                tx_buffer[buffer_selector][tx_packet_length-1] = '\0';
+                if(tx_packet_length > 300){
+                    __NOP(); //error
+                }
+                tx_buffer[buffer_selector][tx_packet_length-1] = '!'; // Indicate buffer overflow
                 break;
             }
 

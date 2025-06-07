@@ -8,6 +8,7 @@
 void Log_Setup(UART_HandleTypeDef *huart);
 void Log_Queue(const char* format, ...);
 void Log_Loop();
+void Log_TxCompleteCallback(UART_HandleTypeDef *huart);
 
 
 
