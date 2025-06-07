@@ -3,9 +3,11 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include "main.h"
 
-void test();
-void testloop();
+void Log_Setup(UART_HandleTypeDef *huart);
+void Log_Queue(const char* format, ...);
+void Log_Loop();
 
 
 

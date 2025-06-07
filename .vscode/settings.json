@@ -17,7 +17,8 @@
         "string.h": "c",
         "stdarg.h": "c",
         "logging.h": "c",
-        "debug.h": "c"
+        "debug.h": "c",
+        "limits": "c"
     },
     "search.useGlobalIgnoreFiles": false,
     "search.useIgnoreFiles": false,

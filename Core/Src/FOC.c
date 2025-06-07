@@ -151,22 +151,17 @@ void FOC_Setup(){
 
 
     /* UART */
-    Debug_Setup();
+    // Debug_Setup();
+    Log_Setup(&huart3);
 
     // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Aligned! Offset: %d\n", (int)(hfoc.flash_data.encoder_angle_mechanical_offset * 1000));
     // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
 
-    uint32_t start_time = __HAL_TIM_GET_COUNTER(&htim2);
-    test();
-    uint32_t execution_time = __HAL_TIM_GET_COUNTER(&htim2) - start_time;
-    execution_time;
+    // int arr[10] = {543, -1531, 2456, 376, -4678, 56879, -6345, 7234, -837, 9653};
+    // Log_queue("Hello: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7], arr[8], arr[9]);
 
-    while(1){
-        uint32_t start_time = __HAL_TIM_GET_COUNTER(&htim2);
-        testloop();
-        uint32_t execution_time = __HAL_TIM_GET_COUNTER(&htim2) - start_time;
-        execution_time;
-    }
+    Log_Queue("FOC Setup Complete\n");
+
 
 }
 
@@ -182,6 +177,10 @@ static uint32_t max_adc1_time = 0;
 static uint32_t adc2_start_time = 0;
 static uint32_t adc2_time = 0;
 static uint32_t max_adc2_time = 0;
+
+static uint32_t log_start_time = 0;
+static uint32_t log_time = 0;
+static uint32_t max_log_time = 0;
 
 
 char usart3_tx_buffer[200];
@@ -245,9 +244,13 @@ void FOC_Loop(){
     }
 
 
-
     if(foc_adc1_measurement_flag){
-
+        log_start_time = __HAL_TIM_GET_COUNTER(&htim2);
+            Log_Loop();
+        log_time = __HAL_TIM_GET_COUNTER(&htim2) - log_start_time;
+        if (log_time > max_log_time) {
+            max_log_time = log_time;
+        }
 
         if(DRV8323_CheckFault(&hfoc.hdrv8323)){ //check for motor driver fault
             DRV8323_Disable(&hfoc.hdrv8323); //disable the driver
@@ -274,9 +277,9 @@ void FOC_Loop(){
             case FOC_STATE_INIT:
                 __NOP();
 
-                snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Loaded flash data!: Offset: %d\n", (int)(hfoc.flash_data.encoder_angle_mechanical_offset * 1000));
-                HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
-                HAL_Delay(1000);
+                // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Loaded flash data!: Offset: %d\n", (int)(hfoc.flash_data.encoder_angle_mechanical_offset * 1000));
+                // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+                // HAL_Delay(1000);
 
                 Current_FOC_State = FOC_STATE_BOOTUP_SOUND;
                 break;
@@ -325,8 +328,8 @@ void FOC_Loop(){
                 if(ret == 1){
                     Current_FOC_State = FOC_STATE_ALIGNMENT_TEST;
 
-                    snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Aligned! Offset: %d\n", (int)(hfoc.flash_data.encoder_angle_mechanical_offset * 1000));
-                    HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+                    // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Aligned! Offset: %d\n", (int)(hfoc.flash_data.encoder_angle_mechanical_offset * 1000));
+                    // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
                 } else if(ret == 2){
                     Current_FOC_State = FOC_STATE_ERROR;
                 }
@@ -391,9 +394,7 @@ void FOC_Loop(){
     if (execution_time > max_execution_time) {
         max_execution_time = execution_time;
     }
-    if(execution_time > 110){
-        // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Execution time: %lu us\r\n", execution_time);
-        // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+    if(execution_time > 110){ //max 125us for 8kHz loop
         __NOP();
     }
 }
@@ -708,8 +709,8 @@ static uint8_t Alignment_Test_Loop(float magnitude){
 
                 FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
 
-                snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Alignment test:\nAbs Diff CW:%d, CCW:%d\nAbs Diff2 CW:%d, CCW %d\nDirection:%d", (int)(abs_diff_cw * 1000), (int)(abs_diff_ccw * 1000), (int)(abs_diff2_cw * 1000), (int)(abs_diff2_ccw * 1000), hfoc.flash_data.motor_direction_swapped_flag);
-                HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+                // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Alignment test:\nAbs Diff CW:%d, CCW:%d\nAbs Diff2 CW:%d, CCW %d\nDirection:%d", (int)(abs_diff_cw * 1000), (int)(abs_diff_ccw * 1000), (int)(abs_diff2_cw * 1000), (int)(abs_diff2_ccw * 1000), hfoc.flash_data.motor_direction_swapped_flag);
+                // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
                 abs_diff_cw = 0.0f;
                 abs_diff_ccw = 0.0f;
                 abs_diff2_cw = 0.0f;
@@ -813,8 +814,8 @@ static uint8_t Encoder_Test_Loop(){
                 AS5047P_GetAngle_Raw(&hfoc.has5047p, &ap5047p_angle_raw);
                 angle_raw = ((float)ap5047p_angle / 16384.0f) * 2.0f * M_PIF; //convert to radians
 
-                snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "angleM:%d, angleE:%d, RAW:%d\n", (int)(hfoc.encoder_angle_mechanical * 1000), (int)(hfoc.encoder_angle_electrical * 1000), (int)((angle - hfoc.flash_data.encoder_angle_mechanical_offset) * 1000));
-                HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+                // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "angleM:%d, angleE:%d, RAW:%d\n", (int)(hfoc.encoder_angle_mechanical * 1000), (int)(hfoc.encoder_angle_electrical * 1000), (int)((angle - hfoc.flash_data.encoder_angle_mechanical_offset) * 1000));
+                // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
                 step++;
                 next_step_time = HAL_GetTick() + 100;
             }
@@ -902,7 +903,9 @@ return 0;
 
 
 
-
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
+    Log_TxCompleteCallback(huart);
+}
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) { //when the adc conversion is complete
     if(hadc->Instance == ADC1){ 

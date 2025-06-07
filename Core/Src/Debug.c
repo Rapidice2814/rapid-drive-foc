@@ -27,7 +27,7 @@ static uint32_t debug_step_counter = 0;
 extern FOC_HandleTypeDef hfoc;
 
 void Debug_Setup(){
-    HAL_UART_Transmit(&huart3, (uint8_t*)"FOC Setup Complete\n", 20, 1000);
+    // HAL_UART_Transmit(&huart3, (uint8_t*)"FOC Setup Complete\n", 20, 1000);
     HAL_UARTEx_ReceiveToIdle_DMA(&huart3, (uint8_t*)usart2_rx_buffer, sizeof(usart2_rx_buffer));
 }
 
@@ -118,7 +118,7 @@ void Debug_Loop(){
         case 10:
             if(uart2_tx_free_flag){
                 uart2_tx_free_flag = 0;
-                HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart2_tx_buffer, tx_packet_length);
+                // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart2_tx_buffer, tx_packet_length);
                 usart2_tx_message_counter++;
                 tx_packet_length = 0;
             }
