@@ -279,20 +279,20 @@ uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
         case 4:
             if(HAL_GetTick() >= next_step_time){
 
-                snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Phase currents %d:\n", selector);
-                HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+                // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Phase currents %d:\n", selector);
+                // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
                 HAL_Delay(2);
 
 
                 for(int i = 0; i < 25; i++){
-                    snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "%d,%d,%d;", 
-                    (int)(PhaseCurrentArray[i].a * 1000), (int)(PhaseCurrentArray[i].b * 1000), (int)(PhaseCurrentArray[i].c * 1000));
-                    HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+                    // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "%d,%d,%d;", 
+                    // (int)(PhaseCurrentArray[i].a * 1000), (int)(PhaseCurrentArray[i].b * 1000), (int)(PhaseCurrentArray[i].c * 1000));
+                    // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
                     HAL_Delay(2);
                 }
 
-                snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "\n");
-                HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
+                // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "\n");
+                // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
                 HAL_Delay(2);
                 
                 step++;

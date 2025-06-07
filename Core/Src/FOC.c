@@ -20,6 +20,8 @@ extern FDCAN_HandleTypeDef hfdcan1;
 
 extern  I2C_HandleTypeDef hi2c1;
 
+extern RNG_HandleTypeDef hrng;
+
 extern  SPI_HandleTypeDef hspi2;
 
 extern TIM_HandleTypeDef htim1;
@@ -154,15 +156,20 @@ void FOC_Setup(){
     // Debug_Setup();
     Log_Setup(&huart3);
 
+    uint32_t rand32;
+    uint8_t rand8;
+    if (HAL_RNG_GenerateRandomNumber(&hrng, &rand32) == HAL_OK)
+    {
+        rand8 = (uint8_t)(rand32 & 0xFF);
+    }
+
     // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Aligned! Offset: %d\n", (int)(hfoc.flash_data.encoder_angle_mechanical_offset * 1000));
     // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
 
     // int arr[10] = {543, -1531, 2456, 376, -4678, 56879, -6345, 7234, -837, 9653};
     // Log_queue("Hello: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7], arr[8], arr[9]);
 
-    Log_Queue("FOC Setup Complete\n");
-
-
+    Log_Queue("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
 }
 
 
@@ -185,6 +192,7 @@ static uint32_t max_log_time = 0;
 
 char usart3_tx_buffer[200];
 uint8_t timeout_flag = 0;
+
 
 void FOC_Loop(){
     start_time = __HAL_TIM_GET_COUNTER(&htim2);
@@ -352,10 +360,27 @@ void FOC_Loop(){
                 break;
             case FOC_STATE_RUN:
                 Current_Loop();
-                Debug_Loop();
+                // Debug_Loop();
 
                 if(debug_loop_flag){
-                    Debug_Queue(&hfoc);
+                    // Debug_Queue(&hfoc);
+                    static uint8_t call_counter = 0;
+                    if (++call_counter >= 1)
+                    {
+                        call_counter = 0;
+
+                        Log_Queue("Vq:%d,Vd:%d,Id:%d,Iq:%d,Id_set:%d,Iq_set:%d,EAngle:%d,Espeed:%d,Vbus:%d,Temp:%d\n",
+                        (int)(hfoc.dq_voltage.q * 1000), (int)(hfoc.dq_voltage.d * 1000),
+                        (int)(hfoc.dq_current.d * 1000), (int)(hfoc.dq_current.q * 1000),
+                        (int)(hfoc.dq_current_setpoint.d * 1000), (int)(hfoc.dq_current_setpoint.q * 1000),
+                        (int)(hfoc.encoder_angle_electrical * 1000), (int)(hfoc.encoder_speed_electrical * 1000),
+                        (int)(hfoc.vbus * 10), (int)(hfoc.NTC_temp * 10));
+
+                        Log_Queue("Time: %d, ADC1 Time: %d, ADC2 Time: %d, Log Time: %d\n",
+                            (int)execution_time, (int)adc1_time, (int)adc2_time, (int)log_time);
+                    }
+                    
+
                     debug_loop_flag = 0;
                 }
                 break;
