@@ -4,32 +4,54 @@
 
 static UART_HandleTypeDef *huart_log;
 
-
+/* Transmit buffers*/
 static char format_buffer[300] = {0}; //the size of the buffer determines how many characters can be queued
 static int argument_buffer[30] = {0}; //the size of the buffer determines how many arguments can be queued
-static char tx_buffer[2][300] = {{0}}; //the size of the buffer determines how many characters can be sent at once
+static char uart_tx_buffer[2][300] = {{0}}; //the size of the buffer determines how many characters can be sent at once
 
-static uint32_t format_write_index = 0;
-static uint32_t format_read_index = 0;
-static uint32_t arg_write_index = 0;
-static uint32_t arg_read_index = 0;
+static uint16_t format_write_index = 0;
+static uint16_t format_read_index = 0;
+static uint16_t arg_write_index = 0;
+static uint16_t arg_read_index = 0;
 
 static uint8_t buffer_selector = 0;
-static uint32_t tx_packet_length = 0;
-static volatile uint8_t uart_tx_free_flag = 1;
-int cnt = 0;
+static uint16_t tx_packet_length = 0;
+static volatile uint8_t uart_tx_free_flag = 1; // Set to 1 when the UART is ready for new transmission
 
+/* Receive buffer */
+static char uart_rx_buffer[100] = {0};
+static volatile uint16_t rx_packet_length = 0;
+static volatile uint8_t uart_rx_flag = 0; //set to 1 when a new packet is received
+
+
+/*Functions*/
+static void Log_Transmit();
+static void Log_Receive();
+
+/**
+ * @brief Initializes the logging system with the specified UART handle.
+ * @param huart Pointer to the UART handle used for logging.
+ * @note This function sets up the UART for DMA reception and initializes internal buffers.
+ */
 void Log_Setup(UART_HandleTypeDef *huart){
     huart_log = huart;
     format_write_index = 0;
     format_read_index = 0;
-    arg_write_index = 25;
-    arg_read_index = 25;
+    arg_write_index = 0;
+    arg_read_index = 0;
     tx_packet_length = 0;
     buffer_selector = 0;
     uart_tx_free_flag = 1; // Set the flag to indicate UART is ready for transmission
+
+    HAL_UARTEx_ReceiveToIdle_DMA(huart_log, (uint8_t*)uart_rx_buffer, sizeof(uart_rx_buffer));
 }
 
+/**
+ * @brief Queues a message to be printed to the UART.
+ * @param format The format string for the log message. It uses the same format as printf.
+ * @param ... The integer arguments to be included in the log message.
+ * @note Only %d is supported. If the mesasge does not fit in the buffer, it will be skipped.
+ */
 void Log_Queue(const char* format, ...){
     
     uint32_t format_size = strlen(format);
@@ -81,12 +103,21 @@ void Log_Queue(const char* format, ...){
     __NOP();
 }
 
+/**
+ * @brief Main loop for the logging system. It handles both transmission and reception of log messages.
+ * @note This function should be called periodically to ensure that log messages are processed. 
+ *       One call only processes a part of the queue, so it should be called multiple times per in order to sent the whole queue.
+ */
 void Log_Loop(){
+    Log_Transmit();
+    Log_Receive();
+}
 
+/* The Tx part of the loop*/
+static void Log_Transmit(){
     if(uart_tx_free_flag && tx_packet_length > 0){
-        cnt++;
         uart_tx_free_flag = 0;
-        HAL_UART_Transmit_DMA(huart_log, (uint8_t*)tx_buffer[buffer_selector], tx_packet_length);
+        HAL_UART_Transmit_DMA(huart_log, (uint8_t*)uart_tx_buffer[buffer_selector], tx_packet_length);
         tx_packet_length = 0; // Reset for next transmission
         buffer_selector ^= 1; // Switch buffer
     }
@@ -100,13 +131,13 @@ void Log_Loop(){
     for(uint32_t loop_counter = 0;format_read_index != format_write_index;format_read_index = (format_read_index + 1) % format_buffer_size, loop_counter++){
     
         if(format_buffer[format_read_index] == '%' && format_buffer[(format_read_index + 1) % format_buffer_size] == 'd'){
-                uint32_t tx_buffer_space_available = sizeof(tx_buffer[0]) - tx_packet_length; //this includes the null terminator
-                uint32_t tx_buffer_characters_needed = snprintf(tx_buffer[buffer_selector] + tx_packet_length, tx_buffer_space_available, "%d", argument_buffer[arg_read_index]); //this excludes the null terminator
+                uint32_t uart_tx_buffer_space_available = sizeof(uart_tx_buffer[0]) - tx_packet_length; //this includes the null terminator
+                uint32_t uart_tx_buffer_characters_needed = snprintf(uart_tx_buffer[buffer_selector] + tx_packet_length, uart_tx_buffer_space_available, "%d", argument_buffer[arg_read_index]); //this excludes the null terminator
 
-                if(tx_buffer_characters_needed >= tx_buffer_space_available){
-                    tx_packet_length += tx_buffer_space_available; //the number is truncated to fit the buffer
+                if(uart_tx_buffer_characters_needed >= uart_tx_buffer_space_available){
+                    tx_packet_length += uart_tx_buffer_space_available; //the number is truncated to fit the buffer
                 }else{
-                    tx_packet_length += tx_buffer_characters_needed;
+                    tx_packet_length += uart_tx_buffer_characters_needed;
                 }
 
                 arg_read_index = (arg_read_index + 1) % arg_buffer_size;
@@ -118,27 +149,63 @@ void Log_Loop(){
                 break; //end loop if we have processed too many characters without finding a '%d'
             }
 
-            if(tx_packet_length < sizeof(tx_buffer[0])){
-                tx_buffer[buffer_selector][tx_packet_length] = format_buffer[format_read_index];
+            if(tx_packet_length < sizeof(uart_tx_buffer[0])){
+                uart_tx_buffer[buffer_selector][tx_packet_length] = format_buffer[format_read_index];
                 tx_packet_length++;
             } else{
                 if(tx_packet_length > 300){
                     __NOP(); //error
                 }
-                tx_buffer[buffer_selector][tx_packet_length-1] = '!'; // Indicate buffer overflow
+                uart_tx_buffer[buffer_selector][tx_packet_length-1] = '!'; // Indicate buffer overflow
                 break;
             }
 
         }
     }
+}
 
-    __NOP();
+/* The Rx part of the loop*/
+static void Log_Receive(){
+    if(uart_rx_flag){
+        Log_ProcessRxPacket(uart_rx_buffer, rx_packet_length);
+        HAL_UARTEx_ReceiveToIdle_DMA(huart_log, (uint8_t*)uart_rx_buffer, sizeof(uart_rx_buffer));
+        uart_rx_flag = 0;
+    }
+}
+
+/**
+ * @brief Processes a received packet.
+ * @param packet The received packet.
+ * @param Length The length of the received packet.
+ * @note This function can be overwritten
+ */
+__weak void Log_ProcessRxPacket(const char* packet, uint16_t Length){
+    //null terminate
+    if(Length < sizeof(uart_rx_buffer)){
+        uart_rx_buffer[Length] = '\0'; // Ensure null termination
+    } else {
+        uart_rx_buffer[sizeof(uart_rx_buffer) - 1] = '\0'; // Truncate if too long
+    }
+    Log_Queue("Received packet: ");
+    Log_Queue(packet);
+    Log_Queue(" Length:%d\n", Length);
 }
 
 
 
-void Log_TxCompleteCallback(UART_HandleTypeDef *huart){
+
+
+
+
+void Log_UART_TxCpltCallback(UART_HandleTypeDef *huart){
     if(huart->Instance == huart_log->Instance){
         uart_tx_free_flag = 1;
     }
+}
+
+void Log_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size){
+    if(huart->Instance == huart_log->Instance){
+        rx_packet_length = Size;
+        uart_rx_flag = 1;
+    }  
 }

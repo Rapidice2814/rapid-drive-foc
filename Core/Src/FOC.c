@@ -9,7 +9,6 @@
 #include "PID.h"
 #include "FOC_Flash.h"
 #include "WS2812b_Driver.h"
-#include "Debug.h"
 #include "FOC_Loops.h"
 #include "Logging.h"
 
@@ -208,8 +207,6 @@ static uint32_t log_start_time = 0;
 static uint32_t log_time = 0;
 static uint32_t max_log_time = 0;
 
-
-char usart3_tx_buffer[200];
 uint8_t timeout_flag = 0;
 
 void FOC_Loop(){
@@ -381,24 +378,16 @@ void FOC_Loop(){
 
                 if(debug_loop_flag){
                     // Debug_Queue(&hfoc);
-                    static uint8_t call_counter = 0;
-                    static uint32_t counter = 0;
-                    if (++call_counter >= 1)
-                    {
-                        counter++;
-                        call_counter = 0;
+                    Log_Queue("Vq:%d,Vd:%d,Id:%d,Iq:%d,Id_set:%d,Iq_set:%d,EAngle:%d,Espeed:%d,Vbus:%d,Temp:%d\n",
+                    (int)(hfoc.dq_voltage.q * 1000), (int)(hfoc.dq_voltage.d * 1000),
+                    (int)(hfoc.dq_current.d * 1000), (int)(hfoc.dq_current.q * 1000),
+                    (int)(hfoc.dq_current_setpoint.d * 1000), (int)(hfoc.dq_current_setpoint.q * 1000),
+                    (int)(hfoc.encoder_angle_electrical * 1000), (int)(hfoc.encoder_speed_electrical * 1000),
+                    (int)(hfoc.vbus * 10), (int)(hfoc.NTC_temp * 10));
 
-                        Log_Queue("Vq:%d,Vd:%d,Id:%d,Iq:%d,Id_set:%d,Iq_set:%d,EAngle:%d,Espeed:%d,Vbus:%d,Temp:%d,Count:%d\n",
-                        (int)(hfoc.dq_voltage.q * 1000), (int)(hfoc.dq_voltage.d * 1000),
-                        (int)(hfoc.dq_current.d * 1000), (int)(hfoc.dq_current.q * 1000),
-                        (int)(hfoc.dq_current_setpoint.d * 1000), (int)(hfoc.dq_current_setpoint.q * 1000),
-                        (int)(hfoc.encoder_angle_electrical * 1000), (int)(hfoc.encoder_speed_electrical * 1000),
-                        (int)(hfoc.vbus * 10), (int)(hfoc.NTC_temp * 10), counter);
+                    // Log_Queue("Time: %d, ADC1 Time: %d, ADC2 Time: %d, Log Time: %d, Count:%d\n",
+                    //     (int)max_execution_time, (int)max_adc1_time, (int)max_adc2_time, (int)max_log_time);
 
-                        Log_Queue("Time: %d, ADC1 Time: %d, ADC2 Time: %d, Log Time: %d, Count:%d\n",
-                            (int)max_execution_time, (int)max_adc1_time, (int)max_adc2_time, (int)max_log_time, counter);
-                    }
-                    
 
                     debug_loop_flag = 0;
                 }
@@ -420,10 +409,10 @@ void FOC_Loop(){
                 break;
             case FOC_STATE_OPENLOOP:
                 FOC_OpenLoop(&hfoc, hfoc.speed_setpoint, 1.0f, CURRENT_LOOP_FREQUENCY);
-                Debug_Loop();
+                // Debug_Loop();
 
                 if(debug_loop_flag){
-                    Debug_Queue(&hfoc);
+                    // Debug_Queue(&hfoc);
                     debug_loop_flag = 0;
                 }
                 break;
@@ -438,8 +427,8 @@ void FOC_Loop(){
     if (execution_time > max_execution_time) {
         max_execution_time = execution_time;
     }
-    if(execution_time > 110){ //max 125us for 8kHz loop
-        __NOP();
+    if(execution_time > 100){ //max 125us for 8kHz loop
+        Log_Queue("Execution time: %dus\n", (int)execution_time);
     }
 }
 
@@ -934,7 +923,85 @@ return 0;
 
 
 
+void Log_ProcessRxPacket(const char* packet, uint16_t Length){
+    for(int i = 0; i < Length; i++){
+        if(packet[i] == 'D'){
+            Current_FOC_State = FOC_STATE_ALIGNMENT_TEST;
+        }
+        if(packet[i] == 'A'){
+            Current_FOC_State = FOC_STATE_ALIGNMENT;
+        }
+        if(packet[i] == 'R'){
+            Current_FOC_State = FOC_STATE_RUN;
+        }
+        if(packet[i] == 'M'){
+            Current_FOC_State = FOC_STATE_IDENTIFY;
+        }
+        if(packet[i] == 'F'){
+            Current_FOC_State = FOC_STATE_FLASH_SAVE;
+        }
+        if(packet[i] == 'E'){
+            Current_FOC_State = FOC_STATE_ENCODER_TEST;
+        }
+        if(packet[i] == 'O'){
+            Current_FOC_State = FOC_STATE_OPENLOOP;
+        }
+        if(packet[i] == 'K'){
+            hfoc.motor_disable_flag = 1;
+        }
+        if(packet[i] == 'T'){
+            timeout_flag = !timeout_flag;
+        }
+    }
 
+    if(packet[0] == 'P' && packet[1] == 'd'){
+        int Pd = 0;
+        sscanf(packet, "Pd%d", &Pd);
+        hfoc.flash_data.PID_gains_d.Kp = (float)Pd / 1000.0f;
+    }
+    if(packet[0] == 'P' && packet[1] == 'q'){
+        int Pq = 0;
+        sscanf(packet, "Pq%d", &Pq);
+        hfoc.flash_data.PID_gains_q.Kp = (float)Pq / 1000.0f;
+    }
+    if(packet[0] == 'P' && packet[1] == 's'){
+        int Ps = 0;
+        sscanf(packet, "Ps%d", &Ps);
+        // hfoc.pid_speed.K->Ki = (float)Ps / 1000000.0f;
+    }
+    
+    if(packet[0] == 'I' && packet[1] == 'd'){
+        int Id = 0;
+        sscanf(packet, "Id%d", &Id);
+        hfoc.flash_data.PID_gains_d.Ki = (float)Id / 1000.0f;
+    }
+    if(packet[0] == 'I' && packet[1] == 'q'){
+        int Iq = 0;
+        sscanf(packet, "Iq%d", &Iq);
+        hfoc.flash_data.PID_gains_q.Ki = (float)Iq / 1000.0f;
+    }
+    if(packet[0] == 'I' && packet[1] == 's'){
+        int Is = 0;
+        sscanf(packet, "Is%d", &Is);
+        // hfoc.pid_speed.Ki = (float)Is / 1000000.0f;
+    }
+
+    if(packet[0] == 'S' && packet[1] == 'q'){
+        int Sq = 0;
+        sscanf(packet, "Sq%d", &Sq);
+        hfoc.dq_current_setpoint.q = (float)Sq / 1000.0f;
+    }
+    if(packet[0] == 'S' && packet[1] == 'd'){
+        int Sd = 0;
+        sscanf(packet, "Sd%d", &Sd);
+        hfoc.dq_current_setpoint.d = (float)Sd / 1000.0f;
+    }
+    if(packet[0] == 'S' && packet[1] == 's'){
+        int Ss = 0;
+        sscanf(packet, "Ss%d", &Ss);
+        hfoc.speed_setpoint = (float)Ss;
+    }
+}
 
 
 
@@ -948,7 +1015,11 @@ return 0;
 
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
-    Log_TxCompleteCallback(huart);
+    Log_UART_TxCpltCallback(huart);
+}
+
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
+    Log_UARTEx_RxEventCallback(huart, Size);
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) { //when the adc conversion is complete

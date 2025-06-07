@@ -44,13 +44,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Flash.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC.c
-    ${CMAKE_SOURCE_DIR}/Core/Src/Debug.c
-
+    
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_MotorIdentification.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_OpenLoop.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Alignment.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_BootupSound.c
-
 
 
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Driver.c

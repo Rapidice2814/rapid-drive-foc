@@ -122,7 +122,7 @@ void GenerateNtcLut(){
   * @brief Convert the NTC resistance to temperature, using a LUT
   * @note The LUT needs to be generated first using GenerateNtcLut(). The temperature deviates less than 0.1°C from the actual value.
   * @param ntc_resistance
-  * @retval None
+  * @retval The temperature in °C
   */
 float GetNtcTemperature(float ntc_resistance){
   if (ntc_resistance >= resistance_LUT[0])
