@@ -204,26 +204,6 @@ FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, floa
     return FOC_OK;
 }
 
-/**
-  * @brief Sets the Current controller PI gains based on the motor parameters
-  * @param Handle to the FOC structure
-  * @note 
-  * @retval FOC_StatusTypeDef
-  */
-FOC_StatusTypeDef FOC_TuneCurrentPID(FOC_HandleTypeDef *hfoc){
-    
-
-    if(hfoc->flash_data.current_control_bandwidth <= 0.0f || hfoc->flash_data.current_control_bandwidth > 5000) return FOC_ERROR; // check if the bandwidth is in range
-    if(hfoc->flash_data.motor_identified_flag != 1) return FOC_ERROR; // check if the motor parameters are valid
-
-    hfoc->flash_data.PID_gains_d.Kp = hfoc->flash_data.motor_stator_inductance * hfoc->flash_data.current_control_bandwidth;
-    hfoc->flash_data.PID_gains_q.Kp = hfoc->flash_data.motor_stator_inductance * hfoc->flash_data.current_control_bandwidth;
-
-    hfoc->flash_data.PID_gains_d.Ki = hfoc->flash_data.motor_stator_resistance * hfoc->flash_data.current_control_bandwidth;
-    hfoc->flash_data.PID_gains_q.Ki = hfoc->flash_data.motor_stator_resistance * hfoc->flash_data.current_control_bandwidth;
-
-    return FOC_OK;
-}
 
 
 

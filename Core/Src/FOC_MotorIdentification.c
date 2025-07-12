@@ -3,317 +3,302 @@
 #include <stdio.h>
 #include <string.h>
 
-extern char usart3_tx_buffer[200];
-extern UART_HandleTypeDef huart3;
+
 
 /**
   * @brief 
   * @note 
-  * @param None
-  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
+  * @param t the time in seconds
+  * @param R the resistance in ohms
+  * @param L the inductance in henries
+  * @param V the voltage in volts
+  * @retval the current at time t in amperes
+  * This function models the current in an RL circuit with a step input voltage
   */
-uint8_t FOC_MotorIdentification2(FOC_HandleTypeDef *hfoc){
-
-    static uint8_t step = 0;
-    static uint32_t next_step_time = 0;
-    static uint32_t substep_counter = 0;
-
-    static uint8_t th_counter = 0; 
-
-    static ABCurrentsTypeDef PreviousPhaseCurrents = {0.0f, 0.0f};
-
-    static uint8_t measurement_step_counter = 0;
-    static ABCurrentsTypeDef AlphaBetaArray[25] = {{0.0f, 0.0f}};
-
-    static ABCurrentsTypeDef prevlog = {0.0f, 0.0f};
-    static ABCurrentsTypeDef cumlog = {0.0f, 0.0f};
-
-    static float reference_electrical_angle = 0.0f;
-
-    static float cumResistance = 0.0f;
-    static float cumInductance = 0.0f;
-    static uint8_t cumCounter = 0;
-
-    hfoc->ab_current = FOC_Clarke_transform(hfoc->phase_current);
-
-
-    switch(step){
-        case 0:
-            if(HAL_GetTick() >= next_step_time){
-
-                hfoc->ab_voltage.alpha = 0.0f;
-                hfoc->ab_voltage.beta = 0.0f;
-                PreviousPhaseCurrents.alpha = 0.0f;
-                PreviousPhaseCurrents.beta = 0.0f;
-                measurement_step_counter = 0;
-
-                prevlog.alpha = 0.0f;
-                prevlog.beta = 0.0f;
-                cumlog.alpha = 0.0f;
-                cumlog.beta = 0.0f;
-
-                cumResistance = 0.0f;
-                cumInductance = 0.0f;
-                cumCounter = 0;
-
-                for(int i = 0; i < 25; i++){
-                    AlphaBetaArray[i].alpha = 0.0f;
-                    AlphaBetaArray[i].beta = 0.0f;
-                }
-
-
-                step++;
-                next_step_time = HAL_GetTick() + 1; //wait before the next step
-            }
-            break;
-        case 1:
-            if(HAL_GetTick() >= next_step_time){
-                
-
-                float magnitude = 0.5f;
-
-                hfoc->ab_voltage.alpha = magnitude * cosf(reference_electrical_angle);
-                hfoc->ab_voltage.beta = magnitude * sinf(reference_electrical_angle);
-
-
-                AlphaBetaArray[measurement_step_counter].alpha = hfoc->ab_current.alpha;
-                AlphaBetaArray[measurement_step_counter].beta = hfoc->ab_current.beta;
-                
-
-                if((fabsf(hfoc->ab_current.alpha - PreviousPhaseCurrents.alpha) < 0.05f && fabsf(hfoc->ab_current.beta - PreviousPhaseCurrents.beta) < 0.05f)){
-                    th_counter++;
-                    if(th_counter > 5){
-                        th_counter = 0;
-
-
-                        for(int i = 0; i < measurement_step_counter-5; i++){
-                            if(fabsf(hfoc->ab_voltage.alpha) > 0.1f){
-                                float currlog = logf(1.0f - (AlphaBetaArray[i].alpha / AlphaBetaArray[measurement_step_counter].alpha)); 
-                                if(i>2){
-                                    cumlog.alpha += currlog - prevlog.alpha;
-                                }
-
-                                prevlog.alpha = currlog;
-                            } 
-                            
-                            if(fabsf(hfoc->ab_voltage.beta) > 0.1f){
-                                float currlog = logf(1.0f - (AlphaBetaArray[i].beta / AlphaBetaArray[measurement_step_counter].beta));
-                                if(i>2){
-                                    cumlog.beta += currlog - prevlog.beta;
-                                }
-
-                                prevlog.beta = currlog;
-                            }
-                            
-                        }
-                        
-                        float ResistanceA = 0.0f;
-                        float ResistanceB = 0.0f;
-
-                        float InductanceA = 0.0f;
-                        float InductanceB = 0.0f;
-
-                        if(fabsf(hfoc->ab_voltage.alpha) > 0.1f){
-                            ResistanceA = hfoc->ab_voltage.alpha / AlphaBetaArray[measurement_step_counter].alpha;
-                            float slope = ((cumlog.alpha * CURRENT_LOOP_FREQUENCY) / (measurement_step_counter - 5 - 2));
-                            float tau = -1.0f / slope;
-                            InductanceA = tau * ResistanceA;
-                        } else{
-                            ResistanceA = 0.0f;
-                            InductanceA = 0.0f;
-                        }
-                        if(fabsf(hfoc->ab_voltage.beta) > 0.1f){
-                            ResistanceB = hfoc->ab_voltage.beta / AlphaBetaArray[measurement_step_counter].beta;
-                            float slope2 = ((cumlog.beta * CURRENT_LOOP_FREQUENCY) / (measurement_step_counter - 5 - 2));
-                            float tau2 = -1.0f / slope2;
-                            InductanceB = tau2 * ResistanceB;
-                        } else{
-                            ResistanceB = 0.0f;
-                            InductanceB = 0.0f;
-                        }
-                        measurement_step_counter = 0;
-
-                        float weightA = hfoc->ab_voltage.alpha / (hfoc->ab_voltage.alpha + hfoc->ab_voltage.beta);
-                        float weightB = hfoc->ab_voltage.beta / (hfoc->ab_voltage.alpha + hfoc->ab_voltage.beta);
-
-
-                        float Inductance_total = weightA * InductanceA + weightB * InductanceB;
-                        float Resistance_total = weightA * ResistanceA + weightB * ResistanceB;
-
-                        cumResistance += Resistance_total;
-                        cumInductance += Inductance_total;
-                        cumCounter++;
-                        
-                        if(substep_counter >= 3){
-                            substep_counter = 0;
-                            step++;
-                            next_step_time = HAL_GetTick() + 100; //wait before the next step
-                        } else{
-                            substep_counter++;
-                            reference_electrical_angle += 2.0f * M_PIF / 4.0f;
-                            next_step_time = HAL_GetTick() + 200; //wait before the next substep
-                        }
-                        
-                    } else{
-                        
-                    }
-                }
-
-                PreviousPhaseCurrents.alpha = hfoc->ab_current.alpha;
-                PreviousPhaseCurrents.beta = hfoc->ab_current.beta;
-
-                if(measurement_step_counter >= 25){
-                    measurement_step_counter = 0;
-                    step++;
-                    return 2; //error
-                } else{
-                    measurement_step_counter++;
-                }
-                
-            }
-            break;
-        default:
-            if(HAL_GetTick() >= next_step_time){
-
-                hfoc->ab_voltage.alpha = 0.0f;
-                hfoc->ab_voltage.beta = 0.0f;
-
-                float Resistance = cumResistance / cumCounter;
-                float Inductance = cumInductance / cumCounter;
-
-
-
-                if((Resistance < 5.0f && Resistance > 0.0f) && (Inductance < 0.1f && Inductance > 0.0f)){
-                    hfoc->flash_data.motor_stator_resistance = Resistance;
-                    hfoc->flash_data.motor_stator_inductance = Inductance;
-                    hfoc->flash_data.motor_identified_flag = 1;
-
-                    step = 0;
-                    return 1; // complete
-                }
-
-
-                step = 0;
-                return 0; //retry      
-            }
-            break;
-    }
-
-    // hfoc.ab_voltage = FOC_InvPark_transform(hfoc.dq_voltage, hfoc.encoder_angle_electrical);
-    PhaseVoltagesTypeDef phase_voltages = FOC_InvClarke_transform(hfoc->ab_voltage);
-    FOC_SetPhaseVoltages(hfoc, phase_voltages);
-
-return 0;
+float model_current(float t, float R, float L, float V) {
+    return (V / R) * (1.0 - exp(-R * t / L));
 }
 
+float compute_error(float *predArr, float *measArr, int n) {
+    float error = 0.0;
+    for (int i = 0; i < n; ++i) {
+        float diff = predArr[i] - measArr[i];
+        error += diff * diff;
+    }
+    return error;
+}
+
+float percentDifferenceMaxMin(float* data, int size) {
+    if (size <= 1) return 0.0f;
+
+    float min = data[0];
+    float max = data[0];
+
+    for (int i = 1; i < size; i++) {
+        if (data[i] < min) min = data[i];
+        if (data[i] > max) max = data[i];
+    }
+
+    if (max == 0.0f) return 0.0f; // avoid divide by zero
+
+    float diff = max - min;
+    float percentDiff = (diff / max) * 100.0f;
+
+    return percentDiff;
+}
+
+
+
+#define MEASUREMENT_VOLTAGE 1.0f
+#define MEASUREMENT_STEPS 25
+#define DEFAULT_R (0.2f)
+#define DEFAULT_L (2.5e-05f)
+
 /**
   * @brief 
   * @note 
-  * @param None
-  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
+  * @param hfoc Handle to the FOC structure
+  * @retval FOC_LoopStatusTypeDef
   */
-uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
+FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
 
     static uint8_t step = 0;
-    static uint8_t substep = 0;
     static uint32_t next_step_time = 0;
     
     static uint8_t selector = 0;
 
-    static PhaseCurrentsTypeDef PhaseCurrentArray[25] = {{0.0f, 0.0f, 0.0f}};
+    static float timeArray[MEASUREMENT_STEPS] = {0.0f};
+    static float measuredCurrentArray[MEASUREMENT_STEPS] = {0.0f};
+    static float predictedCurrentArray[MEASUREMENT_STEPS] = {0.0f};
 
+    static float estimatedR = 0.0f;
+    static float estimatedL = 0.0f;
+
+    //a measurement has 2 phases in paraller and 1 in series, so this is 3/2 of the phase resistace
+    static float RArray[3] = {0.0f}; //contains the estimated resistance for each measurement
+    static float LArray[3] = {0.0f}; //contains the estimated inductance for each measurement
+    static float EArray[3] = {0.0f}; //contains the error for each measurement
+    
+
+    static float R = 0.0f;
+    static float L = 0.0f;
+    static float error = 0.0f;
+    static float gradient_R = 0, gradient_L = 0;
+
+    static uint8_t attempt = 0;
 
 
     switch(step){
         case 0:
-            if(HAL_GetTick() >= next_step_time){
+            Log_printf("Starting motor identification attempt %d\n", attempt);
 
-                if(selector == 0){
-                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.5f, 0.0f, 0.0f});
-                } else if(selector == 1){
-                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.5f, 0.0f});
-                } else if(selector == 2){
-                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.5f});
-                }
-
-                step++;
-                next_step_time = HAL_GetTick() + 100; //wait before the next step
-            }
+            FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
+            
+            step++;
+            next_step_time = HAL_GetTick() + 100;
             break;
         case 1:
             if(HAL_GetTick() >= next_step_time){
 
-                FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
+                estimatedR = DEFAULT_R * (3.0f/2);
+                estimatedL = DEFAULT_L * (3.0f/2);
+
+                for(int i = 0; i < MEASUREMENT_STEPS; i++){
+                    timeArray[i] = (float)i / (float)CURRENT_LOOP_FREQUENCY;
+                    measuredCurrentArray[i] = 0.0f;
+                }
+
+                if(selector == 0){
+                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){MEASUREMENT_VOLTAGE, 0.0f, 0.0f});
+                } else if(selector == 1){
+                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, MEASUREMENT_VOLTAGE, 0.0f});
+                } else if(selector == 2){
+                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, MEASUREMENT_VOLTAGE});
+                }
+
                 step++;
-                next_step_time = HAL_GetTick() + 100; //wait before the next step 
+                next_step_time = HAL_GetTick() + 100;
             }
             break;
         case 2:
             if(HAL_GetTick() >= next_step_time){
 
-                if(selector == 0){
-                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.5f, 0.0f, 0.0f});
-                } else if(selector == 1){
-                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.5f, 0.0f});
-                } else if(selector == 2){
-                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.5f});
-                }
+                FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
 
                 step++;
-                next_step_time = HAL_GetTick() + 0; //no wait before the next step
+                next_step_time = HAL_GetTick() + 100;
             }
             break;
         case 3:
             if(HAL_GetTick() >= next_step_time){
-                PhaseCurrentArray[substep] = hfoc->phase_current;
-                if(substep >= 25){
-                    substep = 0;
-                    step++;
-                    next_step_time = HAL_GetTick() + 1; //wait before the next step
-                } else{
-                    substep++;
-                }
-                
+
+                step++;
+                next_step_time = HAL_GetTick() + 0;
             }
             break;
         case 4:
             if(HAL_GetTick() >= next_step_time){
-
-                // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "Phase currents %d:\n", selector);
-                // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
-                HAL_Delay(2);
-
-
-                for(int i = 0; i < 25; i++){
-                    // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "%d,%d,%d;", 
-                    // (int)(PhaseCurrentArray[i].a * 1000), (int)(PhaseCurrentArray[i].b * 1000), (int)(PhaseCurrentArray[i].c * 1000));
-                    // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
-                    HAL_Delay(2);
+                static uint8_t substep = 0;
+                if(substep == 0){
+                    if(selector == 0){
+                        FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){MEASUREMENT_VOLTAGE, 0.0f, 0.0f});
+                    } else if(selector == 1){
+                        FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, MEASUREMENT_VOLTAGE, 0.0f});
+                    } else if(selector == 2){
+                        FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, MEASUREMENT_VOLTAGE});
+                    }
+                    substep++;
+                } else if(substep <= MEASUREMENT_STEPS){
+                    if(selector == 0){
+                        measuredCurrentArray[substep-1] = hfoc->phase_current.a;
+                    } else if(selector == 1){
+                        measuredCurrentArray[substep-1] = hfoc->phase_current.b;
+                    } else if(selector == 2){
+                        measuredCurrentArray[substep-1] = hfoc->phase_current.c;
+                    }                 
+                    substep++;
+                } else{
+                    substep = 0;
+                    step++;
+                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
+                    next_step_time = HAL_GetTick() + 1;
                 }
-
-                // snprintf(usart3_tx_buffer, sizeof(usart3_tx_buffer), "\n");
-                // HAL_UART_Transmit_DMA(&huart3, (uint8_t*)usart3_tx_buffer, strlen(usart3_tx_buffer));
-                HAL_Delay(2);
-                
-                step++;
-                next_step_time = HAL_GetTick() + 200; //wait before the next step
             }
             break;
-        default:
-            if(HAL_GetTick() >= next_step_time){
+        case 5:
+            {
+                static uint8_t substep = 0;
+                static float error_default;
+                static float error_R, error_L;
 
-                step = 0;
+                switch(substep){
+                    case 0:
+                        L = estimatedL;
+                        R = estimatedR;
+                        substep++;
+                        step++;
+                        break;
+                    case 1:
+                        error_default = error;
+                        L = estimatedL + 1e-6f;
+                        R = estimatedR;
+                        substep++;
+                        step++;
+                        break;
+                    case 2:
+                        error_L = error;
+                        L = estimatedL;
+                        R = estimatedR + 1e-2f;
+                        substep++;
+                        step++;
+                        break;
+                    case 3:
+                        error_R = error;
+                        gradient_L = (error_L - error_default) * 1e-5f;
+                        gradient_R = (error_R - error_default) * 1e-3f;
+
+                        estimatedL -= gradient_L;
+                        estimatedR -= gradient_R;
+
+                        substep = 0;
+
+                        if(error < 0.5f || (fabsf(gradient_L) < 1e-7f && fabsf(gradient_R) < 1e-4f)){ //wat until the error is below 0.5 or until the system converges
+                            RArray[selector] = estimatedR;
+                            LArray[selector] = estimatedL;
+                            EArray[selector] = error;
+
+                            Log_printf("Motor Identification step: %d, Resistance: %dmOhm, Inductance: %duH, Error: %d\n",
+                                 selector, (int)(estimatedR * 1000), (int)(estimatedL * 1000000), (int)(error * 1000));
+
+                            step += 2; //go to the next step
+                            next_step_time = HAL_GetTick() + 10;
+                        }else{
+                            // Log_printf("EError: %d\n", (int)(error * 1000));
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            }
+            break;
+        case 6:
+            {
+                static uint8_t substep = 0;
+                if(substep < MEASUREMENT_STEPS){
+                    predictedCurrentArray[substep] = model_current(timeArray[substep], R, L, MEASUREMENT_VOLTAGE);
+                    substep++;
+                } else if(substep == MEASUREMENT_STEPS){
+                    error = compute_error(predictedCurrentArray, measuredCurrentArray, MEASUREMENT_STEPS);
+                    // Log_printf("Error: %d\n", (int)(error * 1000));
+                    substep++;
+                } else{
+                    substep = 0;
+                    step--;
+                }
+            }
+            break;
+        case 7:
+            if(HAL_GetTick() >= next_step_time){
                 if(selector == 2){
                     selector = 0;
-                    return 1; //complete  
+                    step++;
                 } else{
                     selector++;
+                    step = 1;
                 }
-                
+            }
+            break;
+        case 8:
+            if(HAL_GetTick() >= next_step_time){
+                float spreadR = percentDifferenceMaxMin(RArray, 3);
+                float spreadL = percentDifferenceMaxMin(LArray, 3);
+                Log_printf("Percent deviation of Resistance: %d%%, Inductance: %d%%\n", (int)(spreadR), (int)(spreadL));
+
+                if(spreadR < 30.0f && spreadL < 30.0f){
+                    // Log_printf("Deviation is acceptable\n");
+                    float sumR = 0.0f;
+                    float sumL = 0.0f;
+                    for(int i = 0; i < 3; i++){
+                        sumR += RArray[i];
+                        sumL += LArray[i];
+                    }
+
+                    hfoc->flash_data.motor_stator_resistance = sumR * (2.0f / (3.0f * 3.0f));
+                    hfoc->flash_data.motor_stator_inductance = sumL * (2.0f / (3.0f * 3.0f));
+                    hfoc->flash_data.motor_identified_flag = 1;
+                    Log_printf("Motor Identified! Resistance: %dmOhm, Inductance: %duH\n", 
+                        (int)(hfoc->flash_data.motor_stator_resistance * 1000), 
+                        (int)(hfoc->flash_data.motor_stator_inductance * 1000000));
+
+                    step++;
+                    next_step_time = HAL_GetTick() + 10;
+                } else{
+                    Log_printf("Deviation is too high, retrying...\n");
+                    step = 0;
+                    attempt++;
+                    if(attempt > 3){
+                        Log_printf("Motor identification failed after 3 attempts\n");
+
+                        hfoc->flash_data.motor_identified_flag = 1;
+                        hfoc->flash_data.motor_stator_resistance = DEFAULT_R;
+                        hfoc->flash_data.motor_stator_inductance = DEFAULT_L;
+                        Log_printf("Using Default values. Resistance: %dmOhm, Inductance: %duH\n", 
+                            (int)(hfoc->flash_data.motor_stator_resistance * 1000), 
+                            (int)(hfoc->flash_data.motor_stator_inductance * 1000000));
+
+                        attempt = 0;
+                        return FOC_LOOP_ERROR; // error
+                    }
+                    next_step_time = HAL_GetTick() + 10;
+                }
+            }
+            break;
+        
+        default:
+            if(HAL_GetTick() >= next_step_time){
+                return FOC_LOOP_COMPLETED; // complete
             }
             break;
     }
-
-
-return 0;
+return FOC_LOOP_IN_PROGRESS;
 }

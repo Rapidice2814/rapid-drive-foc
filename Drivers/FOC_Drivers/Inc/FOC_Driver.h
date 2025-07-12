@@ -123,7 +123,6 @@ FOC_StatusTypeDef FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc);
 FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha);
 /* PWM */
 FOC_StatusTypeDef FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, volatile uint32_t *pCCRb, volatile uint32_t *pCCRc, uint32_t max_ccr);
-FOC_StatusTypeDef FOC_TuneCurrentPID(FOC_HandleTypeDef *hfoc);
 
 
 #endif // FOC_DRIVER_H

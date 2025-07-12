@@ -3,11 +3,20 @@
 
 #include "main.h"
 #include "FOC_Driver.h"
+#include "logging.h"
+
+typedef enum{
+	FOC_LOOP_IN_PROGRESS,
+	FOC_LOOP_COMPLETED,
+    FOC_LOOP_ERROR
+}FOC_LoopStatusTypeDef;
 
 uint8_t FOC_BootupSound(FOC_HandleTypeDef *hfoc, float loop_frequency);
 uint8_t FOC_BootupSound2(FOC_HandleTypeDef *hfoc, float loop_frequency);
-uint8_t FOC_MotorIdentification(FOC_HandleTypeDef *hfoc);
+FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc);
 uint8_t FOC_OpenLoop(FOC_HandleTypeDef *hfoc, float espeed, float magnitude, float loop_frequency);
 uint8_t FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude);
+FOC_LoopStatusTypeDef FOC_PIDAutotune(FOC_HandleTypeDef *hfoc);
+FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc);
 
 #endif // FOC_LOOPS_H

@@ -18,7 +18,8 @@
         "stdarg.h": "c",
         "logging.h": "c",
         "debug.h": "c",
-        "limits": "c"
+        "limits": "c",
+        "foc_currentsensorcalibration": "c"
     },
     "search.useGlobalIgnoreFiles": false,
     "search.useIgnoreFiles": false,

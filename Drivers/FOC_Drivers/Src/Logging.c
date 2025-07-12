@@ -5,9 +5,9 @@
 static UART_HandleTypeDef *huart_log;
 
 /* Transmit buffers*/
-static char format_buffer[300] = {0}; //the size of the buffer determines how many characters can be queued
+static char format_buffer[400] = {0}; //the size of the buffer determines how many characters can be queued
 static int argument_buffer[30] = {0}; //the size of the buffer determines how many arguments can be queued
-static char uart_tx_buffer[2][300] = {{0}}; //the size of the buffer determines how many characters can be sent at once
+static char uart_tx_buffer[2][500] = {{0}}; //the size of the buffer determines how many characters can be sent at once
 
 static uint16_t format_write_index = 0;
 static uint16_t format_read_index = 0;
@@ -50,9 +50,9 @@ void Log_Setup(UART_HandleTypeDef *huart){
  * @brief Queues a message to be printed to the UART.
  * @param format The format string for the log message. It uses the same format as printf.
  * @param ... The integer arguments to be included in the log message.
- * @note Only %d is supported. If the mesasge does not fit in the buffer, it will be skipped.
+ * @note Only %d, and %% is supported. If the mesasge does not fit in the buffer, it will be skipped.
  */
-void Log_Queue(const char* format, ...){
+void Log_printf(const char* format, ...){
     
     uint32_t format_size = strlen(format);
     uint32_t format_buffer_size = sizeof(format_buffer) / sizeof(format_buffer[0]);
@@ -131,20 +131,30 @@ static void Log_Transmit(){
     for(uint32_t loop_counter = 0;format_read_index != format_write_index;format_read_index = (format_read_index + 1) % format_buffer_size, loop_counter++){
     
         if(format_buffer[format_read_index] == '%' && format_buffer[(format_read_index + 1) % format_buffer_size] == 'd'){
-                uint32_t uart_tx_buffer_space_available = sizeof(uart_tx_buffer[0]) - tx_packet_length; //this includes the null terminator
-                uint32_t uart_tx_buffer_characters_needed = snprintf(uart_tx_buffer[buffer_selector] + tx_packet_length, uart_tx_buffer_space_available, "%d", argument_buffer[arg_read_index]); //this excludes the null terminator
+            uint32_t uart_tx_buffer_space_available = sizeof(uart_tx_buffer[0]) - tx_packet_length; //this includes the null terminator
+            uint32_t uart_tx_buffer_characters_needed = snprintf(uart_tx_buffer[buffer_selector] + tx_packet_length, uart_tx_buffer_space_available, "%d", argument_buffer[arg_read_index]); //this excludes the null terminator
 
-                if(uart_tx_buffer_characters_needed >= uart_tx_buffer_space_available){
-                    tx_packet_length += uart_tx_buffer_space_available; //the number is truncated to fit the buffer
-                }else{
-                    tx_packet_length += uart_tx_buffer_characters_needed;
-                }
+            if(uart_tx_buffer_characters_needed >= uart_tx_buffer_space_available){
+                tx_packet_length += uart_tx_buffer_space_available; //the number is truncated to fit the buffer
+            }else{
+                tx_packet_length += uart_tx_buffer_characters_needed;
+            }
 
-                arg_read_index = (arg_read_index + 1) % arg_buffer_size;
+            arg_read_index = (arg_read_index + 1) % arg_buffer_size;
 
-                format_read_index = (format_read_index + 2) % format_buffer_size; // Skip the '%d'
-                break; //end loop after processing one argument
-        } else{
+            format_read_index = (format_read_index + 2) % format_buffer_size; // Skip the '%d'
+            break; //end loop after processing one argument
+        } else if(format_buffer[format_read_index] == '%' && format_buffer[(format_read_index + 1) % format_buffer_size] == '%'){
+            uint32_t uart_tx_buffer_space_available = sizeof(uart_tx_buffer[0]) - tx_packet_length; //this includes the null terminator
+            if(uart_tx_buffer_space_available > 0){
+                uart_tx_buffer[buffer_selector][tx_packet_length] = '%'; // Add the '%' character
+                tx_packet_length++;
+            } else{
+                uart_tx_buffer[buffer_selector][tx_packet_length-1] = '!'; // Indicate buffer overflow
+            }
+            format_read_index = (format_read_index + 2) % format_buffer_size; // Skip the '%%'
+            break; //end loop after processing one argument
+        }else{
             if(loop_counter > 20){
                 break; //end loop if we have processed too many characters without finding a '%d'
             }
@@ -186,9 +196,9 @@ __weak void Log_ProcessRxPacket(const char* packet, uint16_t Length){
     } else {
         uart_rx_buffer[sizeof(uart_rx_buffer) - 1] = '\0'; // Truncate if too long
     }
-    Log_Queue("Received packet: ");
-    Log_Queue(packet);
-    Log_Queue(" Length:%d\n", Length);
+    Log_printf("Received packet: ");
+    Log_printf(packet);
+    Log_printf(" Length:%d\n", Length);
 }
 
 
