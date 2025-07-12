@@ -19,7 +19,8 @@
         "logging.h": "c",
         "debug.h": "c",
         "limits": "c",
-        "foc_currentsensorcalibration": "c"
+        "foc_currentsensorcalibration": "c",
+        "foc.h": "c"
     },
     "search.useGlobalIgnoreFiles": false,
     "search.useIgnoreFiles": false,

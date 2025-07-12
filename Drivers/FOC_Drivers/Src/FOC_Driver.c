@@ -17,6 +17,9 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
     hfoc->flash_data.motor_stator_inductance = MOTOR_STATOR_INDUCTANCE;
 
     hfoc->flash_data.motor_direction_swapped_flag = 0;
+    hfoc->flash_data.motor_identified_flag = 0;
+    hfoc->flash_data.encoder_aligned_flag = 0;
+    hfoc->flash_data.contains_data_flag = 0;
 
     hfoc->flash_data.PID_gains_d.Kp = 0.0f;
     hfoc->flash_data.PID_gains_d.Ki = 0.0f;
@@ -26,7 +29,15 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
     hfoc->flash_data.PID_gains_q.Ki = 0.0f;
     hfoc->flash_data.PID_gains_q.Kd = 0.0f;
 
+    hfoc->flash_data.PID_gains_speed.Kp = 0.0f;
+    hfoc->flash_data.PID_gains_speed.Ki = 0.0f;
+    hfoc->flash_data.PID_gains_speed.Kd = 0.0f;
+
     hfoc->flash_data.current_control_bandwidth = 3000.0f; // 3000 rad/s
+
+    hfoc->speed_setpoint = 0.0f;
+    hfoc->dq_current_setpoint.q = 0.0f;
+    hfoc->dq_current_setpoint.d = 0.0f;
 
     hfoc->NTC_resistance = 100e3f; // initial resistance
 

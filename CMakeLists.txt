@@ -51,6 +51,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_BootupSound.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_PIDAutotune.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_CurrentSensorCalibration.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_AlignmentTest.c
 
 
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Driver.c

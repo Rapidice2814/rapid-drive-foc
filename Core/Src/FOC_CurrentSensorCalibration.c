@@ -50,11 +50,11 @@ uint8_t FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
             break;
         case 3:
             if(HAL_GetTick() >= next_step_time){
-                Log_printf("Current sensor calibration done\n");
-                Log_printf("Phase current offsets: a: %d, b: %d, c: %d\n",
-                         (int)(hfoc->phase_current_offset.a * 1000),
-                         (int)(hfoc->phase_current_offset.b * 1000),
-                         (int)(hfoc->phase_current_offset.c * 1000));
+                Log_printf("Current sensor calibration complete!\n");
+                // Log_printf("Phase current offsets: a: %d, b: %d, c: %d\n",
+                //          (int)(hfoc->phase_current_offset.a * 1000),
+                //          (int)(hfoc->phase_current_offset.b * 1000),
+                //          (int)(hfoc->phase_current_offset.c * 1000));
 
                 step++;
                 next_step_time = HAL_GetTick() + 10;
