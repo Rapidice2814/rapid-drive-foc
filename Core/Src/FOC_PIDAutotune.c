@@ -51,6 +51,7 @@ FOC_LoopStatusTypeDef FOC_PIDAutotune(FOC_HandleTypeDef *hfoc){
                     return FOC_LOOP_ERROR;
                 } else{
                     step = 0;
+                    hfoc->flash_data.current_PID_set_flag = 1; // set the current PID set flag
                     Log_printf("PID gains tuned successfully\n");
                     Log_printf("Kp_d: %de-3, Ki_d: %d\n", (int)(hfoc->flash_data.PID_gains_d.Kp * 1000), (int)(hfoc->flash_data.PID_gains_d.Ki));
                     Log_printf("Kp_q: %de-3, Ki_q: %d\n", (int)(hfoc->flash_data.PID_gains_q.Kp * 1000), (int)(hfoc->flash_data.PID_gains_q.Ki));

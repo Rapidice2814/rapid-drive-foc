@@ -29,9 +29,13 @@ typedef struct {
     float encoder_angle_mechanical_offset;  //offset for the encoder angle [radians]
 
     /* Current PID controler*/
+    uint8_t current_PID_set_flag; // 1 if the current PID is set
     float current_control_bandwidth; //current control bandwidth [rad/s]
     PIDValuesTypeDef PID_gains_q;
     PIDValuesTypeDef PID_gains_d;
+
+    /* Speed PID controler */
+    PIDValuesTypeDef PID_gains_speed;
 
 
 } FLASH_DataTypeDef;

@@ -19,172 +19,134 @@ static NoteTypeDef melody[] = {
 #define NOTE_DURATION 150 // ms
 #define NOTE_PAUSE 15 // ms
 
-static NoteTypeDef mario[] = {
-    {1318.51f, NOTE_DURATION}, // E6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1318.51f, NOTE_DURATION}, // E6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {0.0f,     NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1318.51f, NOTE_DURATION}, // E6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {0.0f,     NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1046.50f, NOTE_DURATION}, // C6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1318.51f, NOTE_DURATION}, // E6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {0.0f,     NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1567.98f, NOTE_DURATION}, // G6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {0.0f,     3*NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE}, // rest
-    {784.00f,  NOTE_DURATION}, // G5
-    {0.0f,     NOTE_PAUSE}, // rest
+// static NoteTypeDef mario[] = {
+//     {1318.51f, NOTE_DURATION}, // E6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1318.51f, NOTE_DURATION}, // E6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {0.0f,     NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1318.51f, NOTE_DURATION}, // E6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {0.0f,     NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1046.50f, NOTE_DURATION}, // C6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1318.51f, NOTE_DURATION}, // E6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {0.0f,     NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1567.98f, NOTE_DURATION}, // G6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {0.0f,     3*NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {784.00f,  NOTE_DURATION}, // G5
+//     {0.0f,     NOTE_PAUSE}, // rest
     
-    {0.0f,     2*NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1046.50f, NOTE_DURATION}, // C6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {0.0f,     NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE}, // rest
-    {784.00f,  NOTE_DURATION}, // G5
-    {0.0f,     NOTE_PAUSE}, // rest
-    {0.0f,     NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE}, // rest
-    {698.46f,  NOTE_DURATION}, // F5
-    {0.0f,     NOTE_PAUSE}, // rest
-    {0.0f,     NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE}, // rest
-    {880.00f,  NOTE_DURATION}, // A5
-    {0.0f,     NOTE_PAUSE}, // rest
-    {0.0f,     NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE}, // rest
-    {987.77f,  NOTE_DURATION}, // B5
-    {0.0f,     NOTE_PAUSE}, // rest
-    {0.0f,     NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE}, // rest
-    {880.00f,  NOTE_DURATION}, // A5
-    {0.0f,     NOTE_PAUSE}, // rest
+//     {0.0f,     2*NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1046.50f, NOTE_DURATION}, // C6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {0.0f,     NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {784.00f,  NOTE_DURATION}, // G5
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {0.0f,     NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {698.46f,  NOTE_DURATION}, // F5
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {0.0f,     NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {880.00f,  NOTE_DURATION}, // A5
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {0.0f,     NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {987.77f,  NOTE_DURATION}, // B5
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {0.0f,     NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {880.00f,  NOTE_DURATION}, // A5
+//     {0.0f,     NOTE_PAUSE}, // rest
     
-    {0.0f,     NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE}, // rest
-    {784.00f,  NOTE_DURATION}, // G5
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1318.51f, NOTE_DURATION}, // E6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1567.98f, NOTE_DURATION}, // G6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1760.00f, NOTE_DURATION}, // A6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1396.91f, NOTE_DURATION}, // F6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1567.98f, NOTE_DURATION}, // G6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {0.0f,     NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1318.51f, NOTE_DURATION}, // E6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1046.50f, NOTE_DURATION}, // C6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {1174.66f, NOTE_DURATION}, // D6
-    {0.0f,     NOTE_PAUSE}, // rest
-    {987.77f,  NOTE_DURATION}, // B5
-    {0.0f,     NOTE_PAUSE}, // rest
+//     {0.0f,     NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {784.00f,  NOTE_DURATION}, // G5
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1318.51f, NOTE_DURATION}, // E6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1567.98f, NOTE_DURATION}, // G6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1760.00f, NOTE_DURATION}, // A6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1396.91f, NOTE_DURATION}, // F6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1567.98f, NOTE_DURATION}, // G6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {0.0f,     NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1318.51f, NOTE_DURATION}, // E6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1046.50f, NOTE_DURATION}, // C6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {1174.66f, NOTE_DURATION}, // D6
+//     {0.0f,     NOTE_PAUSE}, // rest
+//     {987.77f,  NOTE_DURATION}, // B5
+//     {0.0f,     NOTE_PAUSE}, // rest
 
-    {1046.50f, NOTE_DURATION}, // C6
-    {0.0f,     NOTE_PAUSE},    // rest
-    {987.77f,  NOTE_DURATION}, // B5
-    {0.0f,     NOTE_PAUSE},    // rest
-    {880.00f,  NOTE_DURATION}, // A5
-    {0.0f,     NOTE_PAUSE},    // rest
-    {1046.50f, NOTE_DURATION}, // C6
-    {0.0f,     NOTE_PAUSE},    // rest
-    {1174.66f, NOTE_DURATION}, // D6
-    {0.0f,     NOTE_PAUSE},    // rest
-    {1318.51f, NOTE_DURATION}, // E6
-    {0.0f,     NOTE_PAUSE},    // rest
+//     {1046.50f, NOTE_DURATION}, // C6
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {987.77f,  NOTE_DURATION}, // B5
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {880.00f,  NOTE_DURATION}, // A5
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {1046.50f, NOTE_DURATION}, // C6
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {1174.66f, NOTE_DURATION}, // D6
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {1318.51f, NOTE_DURATION}, // E6
+//     {0.0f,     NOTE_PAUSE},    // rest
 
-    {0.0f,     NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE},    // rest
-    {1174.66f, NOTE_DURATION}, // D6
-    {0.0f,     NOTE_PAUSE},    // rest
-    {1046.50f, NOTE_DURATION}, // C6
-    {0.0f,     NOTE_PAUSE},    // rest
-    {987.77f,  NOTE_DURATION}, // B5
-    {0.0f,     NOTE_PAUSE},    // rest
-    {880.00f,  NOTE_DURATION}, // A5
-    {0.0f,     NOTE_PAUSE},    // rest
+//     {0.0f,     NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {1174.66f, NOTE_DURATION}, // D6
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {1046.50f, NOTE_DURATION}, // C6
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {987.77f,  NOTE_DURATION}, // B5
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {880.00f,  NOTE_DURATION}, // A5
+//     {0.0f,     NOTE_PAUSE},    // rest
 
-    {0.0f,     NOTE_DURATION}, // rest
-    {0.0f,     NOTE_PAUSE},    // rest
-    {880.00f,  NOTE_DURATION}, // A5
-    {0.0f,     NOTE_PAUSE},    // rest
-    {1046.50f, NOTE_DURATION}, // C6
-    {0.0f,     NOTE_PAUSE},    // rest
-    {1318.51f, NOTE_DURATION}, // E6
-    {0.0f,     NOTE_PAUSE},    // rest
-    {1174.66f, NOTE_DURATION}, // D6
-    {0.0f,     NOTE_PAUSE},    // rest
-    {1046.50f, NOTE_DURATION}, // C6
-    {0.0f,     NOTE_PAUSE},    // rest
-    {987.77f,  NOTE_DURATION}, // B5
-    {0.0f,     NOTE_PAUSE},    // rest
+//     {0.0f,     NOTE_DURATION}, // rest
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {880.00f,  NOTE_DURATION}, // A5
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {1046.50f, NOTE_DURATION}, // C6
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {1318.51f, NOTE_DURATION}, // E6
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {1174.66f, NOTE_DURATION}, // D6
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {1046.50f, NOTE_DURATION}, // C6
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {987.77f,  NOTE_DURATION}, // B5
+//     {0.0f,     NOTE_PAUSE},    // rest
 
-    {1046.50f, NOTE_DURATION}, // C6
-    {0.0f,     NOTE_PAUSE},    // rest
-    {784.00f,  NOTE_DURATION}, // G5
-    {0.0f,     NOTE_PAUSE},    // rest
-    {784.00f,  NOTE_DURATION}, // G5
-    {0.0f,     NOTE_PAUSE},    // rest
-    {784.00f,  NOTE_DURATION}, // G5
-    {0.0f,     NOTE_PAUSE},    // rest
-    {0.0f,     3 * NOTE_DURATION}, // extended rest
-};
-
-static NoteTypeDef melody2[] = {
-// Boot sequence
-    {523.25f, NOTE_DURATION},   // C5
-    {0.0f,    NOTE_PAUSE},
-    {659.25f, NOTE_DURATION},   // E5
-    {0.0f,    NOTE_PAUSE},
-    {783.99f, NOTE_DURATION},   // G5
-    {0.0f,    NOTE_PAUSE},
-
-    // Staggered steps (march rhythm)
-    {440.00f, NOTE_DURATION},   // A4
-    {0.0f,    NOTE_PAUSE},
-    {440.00f, NOTE_DURATION},   // A4
-    {0.0f,    NOTE_PAUSE},
-    {440.00f, NOTE_DURATION},   // A4
-    {0.0f,    NOTE_PAUSE},
-
-    // Tactical tone blips
-    {392.00f, NOTE_DURATION},   // G4
-    {0.0f,    NOTE_PAUSE},
-    {523.25f, NOTE_DURATION},   // C5
-    {0.0f,    NOTE_PAUSE},
-    {659.25f, NOTE_DURATION},   // E5
-    {0.0f,    NOTE_PAUSE},
-
-    // Charging tone
-    {880.00f, NOTE_DURATION},   // A5
-    {0.0f,    NOTE_PAUSE},
-    {987.77f, NOTE_DURATION},   // B5
-    {0.0f,    NOTE_PAUSE},
-
-    // Final tone
-    {1046.50f, 2 * NOTE_DURATION}, // C6
-    {0.0f,     NOTE_PAUSE},
-
-    // Cooldown rest
-    {0.0f, 2 * NOTE_DURATION},
-    {0.0f,    NOTE_PAUSE},
-};
+//     {1046.50f, NOTE_DURATION}, // C6
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {784.00f,  NOTE_DURATION}, // G5
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {784.00f,  NOTE_DURATION}, // G5
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {784.00f,  NOTE_DURATION}, // G5
+//     {0.0f,     NOTE_PAUSE},    // rest
+//     {0.0f,     3 * NOTE_DURATION}, // extended rest
+// };
 
 
-uint8_t FOC_BootupSound(FOC_HandleTypeDef *hfoc, float loop_frequency){
+
+
+FOC_LoopStatusTypeDef FOC_BootupSound(FOC_HandleTypeDef *hfoc, float loop_frequency){
 
     static uint8_t step = 0;
     static uint32_t next_step_time = 0;
@@ -197,7 +159,7 @@ uint8_t FOC_BootupSound(FOC_HandleTypeDef *hfoc, float loop_frequency){
         next_step_time = HAL_GetTick() + melody[0].duration;
     } else if(step >= note_count+1){
         play_sound(hfoc, 0.0f, 0.0f, loop_frequency);
-        return 1; // complete
+        return FOC_LOOP_COMPLETED;
     } else{
         play_sound(hfoc, melody[step-1].frequency, 1.0f, loop_frequency);
         if(HAL_GetTick() >= next_step_time){
@@ -206,7 +168,7 @@ uint8_t FOC_BootupSound(FOC_HandleTypeDef *hfoc, float loop_frequency){
         }
     }
 
-    return 0;
+    return FOC_LOOP_IN_PROGRESS;
 }
 
 

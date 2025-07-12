@@ -1,4 +1,5 @@
 #include "FOC_Loops.h"
+#include "FOC.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -51,8 +52,6 @@ float percentDifferenceMaxMin(float* data, int size) {
 
 #define MEASUREMENT_VOLTAGE 1.0f
 #define MEASUREMENT_STEPS 25
-#define DEFAULT_R (0.2f)
-#define DEFAULT_L (2.5e-05f)
 
 /**
   * @brief 
@@ -77,7 +76,7 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
     //a measurement has 2 phases in paraller and 1 in series, so this is 3/2 of the phase resistace
     static float RArray[3] = {0.0f}; //contains the estimated resistance for each measurement
     static float LArray[3] = {0.0f}; //contains the estimated inductance for each measurement
-    static float EArray[3] = {0.0f}; //contains the error for each measurement
+    // static float EArray[3] = {0.0f}; //contains the error for each measurement
     
 
     static float R = 0.0f;
@@ -100,8 +99,8 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
         case 1:
             if(HAL_GetTick() >= next_step_time){
 
-                estimatedR = DEFAULT_R * (3.0f/2);
-                estimatedL = DEFAULT_L * (3.0f/2);
+                estimatedR = MOTOR_STATOR_RESISTANCE * (3.0f/2);
+                estimatedL = MOTOR_STATOR_INDUCTANCE * (3.0f/2);
 
                 for(int i = 0; i < MEASUREMENT_STEPS; i++){
                     timeArray[i] = (float)i / (float)CURRENT_LOOP_FREQUENCY;
@@ -205,7 +204,7 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                         if(error < 0.5f || (fabsf(gradient_L) < 1e-7f && fabsf(gradient_R) < 1e-4f)){ //wat until the error is below 0.5 or until the system converges
                             RArray[selector] = estimatedR;
                             LArray[selector] = estimatedL;
-                            EArray[selector] = error;
+                            // EArray[selector] = error;
 
                             Log_printf("Motor Identification step: %d, Resistance: %dmOhm, Inductance: %duH, Error: %d\n",
                                  selector, (int)(estimatedR * 1000), (int)(estimatedL * 1000000), (int)(error * 1000));
@@ -280,8 +279,8 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                         Log_printf("Motor identification failed after 3 attempts\n");
 
                         hfoc->flash_data.motor_identified_flag = 1;
-                        hfoc->flash_data.motor_stator_resistance = DEFAULT_R;
-                        hfoc->flash_data.motor_stator_inductance = DEFAULT_L;
+                        hfoc->flash_data.motor_stator_resistance = MOTOR_STATOR_RESISTANCE;
+                        hfoc->flash_data.motor_stator_inductance = MOTOR_STATOR_INDUCTANCE;
                         Log_printf("Using Default values. Resistance: %dmOhm, Inductance: %duH\n", 
                             (int)(hfoc->flash_data.motor_stator_resistance * 1000), 
                             (int)(hfoc->flash_data.motor_stator_inductance * 1000000));
@@ -296,6 +295,7 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
         
         default:
             if(HAL_GetTick() >= next_step_time){
+                step = 0;
                 return FOC_LOOP_COMPLETED; // complete
             }
             break;
