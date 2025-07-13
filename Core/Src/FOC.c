@@ -42,9 +42,6 @@ FOC_State Current_FOC_State = FOC_STATE_INIT;
 static uint8_t General_LED_Loop();
 static uint8_t Error_LED_Loop();
 
-static uint8_t Current_Loop();
-static uint8_t Speed_Loop();
-
 /* flags, used for the interrupts*/
 volatile uint8_t adc1_complete_flag = 0;
 volatile uint8_t adc1_half_complete_flag = 0;
@@ -75,7 +72,7 @@ void FOC_Setup(){
 
     FLASH_DataTypeDef flash_data = {0}; //temporary
     FOC_FLASH_ReadData(&flash_data);
-    if(flash_data.contains_data_flag == 1){
+    if(flash_data.contains_data_flag == 1 && flash_data.data_valid_flag == 1){
         memcpy(&hfoc.flash_data, &flash_data, sizeof(FLASH_DataTypeDef)); //only copy the data if it is valid
     }else{
         // hfoc.flash_data.contains_data_flag = 1;
@@ -134,10 +131,11 @@ void FOC_Setup(){
 
 
     /* PID controllers */
-    PID_Init(&hfoc.pid_current_d, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -CURRENT_PID_LIMIT, CURRENT_PID_LIMIT, -CURRENT_PID_INT_LIMIT, CURRENT_PID_INT_LIMIT, &hfoc.flash_data.PID_gains_d);
-    PID_Init(&hfoc.pid_current_q, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -CURRENT_PID_LIMIT, CURRENT_PID_LIMIT, -CURRENT_PID_INT_LIMIT, CURRENT_PID_INT_LIMIT, &hfoc.flash_data.PID_gains_q);
+    PID_Init(&hfoc.pid_current_d, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -CURRENT_PID_LIMIT, CURRENT_PID_LIMIT, -CURRENT_PID_INT_LIMIT, CURRENT_PID_INT_LIMIT, &hfoc.flash_data.PID_gains_d, 0);
+    PID_Init(&hfoc.pid_current_q, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -CURRENT_PID_LIMIT, CURRENT_PID_LIMIT, -CURRENT_PID_INT_LIMIT, CURRENT_PID_INT_LIMIT, &hfoc.flash_data.PID_gains_q, 0);
 
-    PID_Init(&hfoc.pid_speed, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, -SPEED_PID_LIMIT, SPEED_PID_LIMIT, -SPEED_PID_INT_LIMIT, SPEED_PID_INT_LIMIT, &hfoc.flash_data.PID_gains_speed);
+    PID_Init(&hfoc.pid_speed, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, -SPEED_PID_LIMIT, SPEED_PID_LIMIT, -SPEED_PID_INT_LIMIT, SPEED_PID_INT_LIMIT, &hfoc.flash_data.PID_gains_speed, 0);
+    PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, -SPEED_PID_LIMIT, SPEED_PID_LIMIT, -SPEED_PID_INT_LIMIT, SPEED_PID_INT_LIMIT, &hfoc.flash_data.PID_gains_position, 1);
 
     // hfoc.flash_data.PID_gains_speed.Kp = 0.0f;
     // hfoc.flash_data.PID_gains_speed.Ki = 0.0f;
@@ -312,6 +310,8 @@ static void FOC_StateLoop(){
                 Current_FOC_State = FOC_STATE_IDENTIFY;
             }else if(hfoc.flash_data.current_PID_set_flag != 1){
                 Current_FOC_State = FOC_STATE_PID_AUTOTUNE;
+            }else if(hfoc.flash_data.anticogging_enabled_flag != 1){
+                Current_FOC_State = FOC_STATE_ANTICOGGING;
             }else{
                 Current_FOC_State = FOC_STATE_RUN;
             }
@@ -324,9 +324,12 @@ static void FOC_StateLoop(){
             break;
         case FOC_STATE_CALIBRATION:
             break;
+
         case FOC_STATE_IDENTIFY:
             ret = FOC_MotorIdentification(&hfoc);
             if(ret == FOC_LOOP_COMPLETED){
+                hfoc.flash_data.current_PID_set_flag = 0;
+                hfoc.flash_data.motor_identified_flag = 1;
                 Current_FOC_State = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
                 Current_FOC_State = FOC_STATE_ERROR;
@@ -336,6 +339,7 @@ static void FOC_StateLoop(){
         case FOC_STATE_PID_AUTOTUNE:
             ret = FOC_PIDAutotune(&hfoc);
             if(ret == FOC_LOOP_COMPLETED){
+                hfoc.flash_data.current_PID_set_flag = 1;
                 Current_FOC_State = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
                 Current_FOC_State = FOC_STATE_ERROR;
@@ -346,31 +350,50 @@ static void FOC_StateLoop(){
             __NOP();
             ret = FOC_Alignment(&hfoc, 1.0f);
             if(ret == FOC_LOOP_COMPLETED){
+                hfoc.flash_data.anticogging_enabled_flag = 0;
+                hfoc.flash_data.encoder_aligned_flag = 1;
                 Current_FOC_State = FOC_STATE_ALIGNMENT_TEST;
             } else if(ret == FOC_LOOP_ERROR){
                 Current_FOC_State = FOC_STATE_ERROR;
             }
             break;
+
         case FOC_STATE_ALIGNMENT_TEST:
             if(Alignment_Test_Loop(&hfoc, 1.0f) == FOC_LOOP_COMPLETED){
                 Current_FOC_State = FOC_STATE_CHECKLIST;
             }
             break;
+        case FOC_STATE_ANTICOGGING:
+            ret = FOC_AntiCoggingMeasurement(&hfoc);
+            if(ret == FOC_LOOP_COMPLETED){
+                hfoc.flash_data.anticogging_enabled_flag = 1;
+                Current_FOC_State = FOC_STATE_CHECKLIST;
+            } else if(ret == FOC_LOOP_ERROR){
+                Current_FOC_State = FOC_STATE_ERROR;
+            }
+            break;
         case FOC_STATE_RUN:
-            Current_Loop();
+            Current_Loop(&hfoc);
             static uint8_t current_loop_counter = 0;
             if(++current_loop_counter >= SPEED_LOOP_CLOCK_DIVIDER){
                 current_loop_counter = 0;
-                Speed_Loop(); //runs at CURRENT_LOOP_FREQUENCY / CURRENT_LOOP_CLOCK_DIVIDER
+                Speed_Loop(&hfoc); //runs at CURRENT_LOOP_FREQUENCY / CURRENT_LOOP_CLOCK_DIVIDER
             }
 
+
             if(debug_loop_flag){
-                Log_printf("Vq:%d,Vd:%d,Id:%d,Iq:%d,Id_set:%d,Iq_set:%d,EAngle:%d,Espeed:%d,Vbus:%d,Temp:%d\n",
-                (int)(hfoc.dq_voltage.q * 1000), (int)(hfoc.dq_voltage.d * 1000),
-                (int)(hfoc.dq_current.d * 1000), (int)(hfoc.dq_current.q * 1000),
-                (int)(hfoc.dq_current_setpoint.d * 1000), (int)(hfoc.dq_current_setpoint.q * 1000),
-                (int)(hfoc.encoder_angle_electrical * 1000), (int)(hfoc.encoder_speed_electrical * 1000),
-                (int)(hfoc.vbus * 10), (int)(hfoc.NTC_temp * 10));
+                Log_printf("Vq:%d, Iq:%d, Iq_set:%d, Mspeed:%d, Vbus:%d, Temp:%d, Eang%d, Mang:%d\n",
+                (int)(hfoc.dq_voltage.q * 1000), (int)(hfoc.dq_current.q * 1000), 
+                (int)(hfoc.dq_current_setpoint.q * 1000), (int)(hfoc.encoder_speed_mechanical * 1000),
+                (int)(hfoc.vbus * 10), (int)(hfoc.NTC_temp * 10),
+                (int)(hfoc.encoder_angle_electrical * 1000), (int)(hfoc.encoder_angle_mechanical * 1000));
+
+                // Log_printf("Vq:%d,Vd:%d,Id:%d,Iq:%d,Id_set:%d,Iq_set:%d,EAngle:%d,Espeed:%d,Vbus:%d,Temp:%d\n",
+                // (int)(hfoc.dq_voltage.q * 1000), (int)(hfoc.dq_voltage.d * 1000),
+                // (int)(hfoc.dq_current.d * 1000), (int)(hfoc.dq_current.q * 1000),
+                // (int)(hfoc.dq_current_setpoint.d * 1000), (int)(hfoc.dq_current_setpoint.q * 1000),
+                // (int)(hfoc.encoder_angle_electrical * 1000), (int)(hfoc.encoder_speed_electrical * 1000),
+                // (int)(hfoc.vbus * 10), (int)(hfoc.NTC_temp * 10));
 
                 // Log_printf("Time: %d, ADC1 Time: %d, ADC2 Time: %d, Log Time: %d, Count:%d\n",
                 //     (int)max_execution_time, (int)max_adc1_time, (int)max_adc2_time, (int)max_log_time);
@@ -386,6 +409,7 @@ static void FOC_StateLoop(){
         case FOC_STATE_FLASH_SAVE:
 
             hfoc.flash_data.contains_data_flag = 1;
+            hfoc.flash_data.data_valid_flag = 1; //mark the data as valid
             if(FOC_FLASH_WriteData(&hfoc.flash_data) != FLASH_OK){
                 Current_FOC_State = FOC_STATE_ERROR;
             }
@@ -403,43 +427,8 @@ static void FOC_StateLoop(){
         
     }
 }
-static uint8_t Current_Loop(){
-    float encoder_angle_electrical, setpoint_q, setpoint_d;
-
-    if(hfoc.flash_data.motor_direction_swapped_flag == 1){
-        encoder_angle_electrical = 2 * M_PI - hfoc.encoder_angle_electrical;
-        setpoint_q = -hfoc.dq_current_setpoint.q;
-        setpoint_d = -hfoc.dq_current_setpoint.d;
-    }else{
-        encoder_angle_electrical = hfoc.encoder_angle_electrical;
-        setpoint_q = hfoc.dq_current_setpoint.q;
-        setpoint_d = hfoc.dq_current_setpoint.d;
-    }
 
 
-    hfoc.ab_current = FOC_Clarke_transform(hfoc.phase_current);
-    hfoc.dq_current = FOC_Park_transform(hfoc.ab_current, encoder_angle_electrical);
-
-    hfoc.dq_voltage.d = PID_Update(&hfoc.pid_current_d, setpoint_d, hfoc.dq_current.d);
-    hfoc.dq_voltage.q = PID_Update(&hfoc.pid_current_q, setpoint_q, hfoc.dq_current.q);
-
-    hfoc.ab_voltage = FOC_InvPark_transform(hfoc.dq_voltage, encoder_angle_electrical);
-    PhaseVoltagesTypeDef phase_voltages = FOC_InvClarke_transform(hfoc.ab_voltage);
-    FOC_SetPhaseVoltages(&hfoc, phase_voltages);
-
-    return 0;
-}
-
-static uint8_t Speed_Loop(){
-    float speed_setpoint = hfoc.speed_setpoint;
-    // if(hfoc.flash_data.motor_direction_swapped_flag == 1){
-    //     speed_setpoint = -speed_setpoint;
-    // }
-    
-    hfoc.dq_current_setpoint.q = PID_Update(&hfoc.pid_speed, speed_setpoint, hfoc.encoder_speed_electrical);
-
-    return 0;
-}
 
 
 /**
@@ -589,7 +578,7 @@ return 0;
 void Log_ProcessRxPacket(const char* packet, uint16_t Length){
     for(int i = 0; i < Length; i++){
         if(packet[i] == 'D'){
-            Current_FOC_State = FOC_STATE_ALIGNMENT_TEST;
+            Current_FOC_State = FOC_STATE_ANTICOGGING;
         }
         if(packet[i] == 'A'){
             Current_FOC_State = FOC_STATE_ALIGNMENT;
@@ -604,7 +593,16 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
             Current_FOC_State = FOC_STATE_FLASH_SAVE;
         }
         if(packet[i] == 'E'){
-            // Current_FOC_State = FOC_STATE_ERROR;
+            if(packet[i+1] == 's'){
+                hfoc.flash_data.speed_PID_enabled_flag = 1;
+                hfoc.flash_data.position_PID_enabled_flag = 0;
+            } else if(packet[i+1] == 'p'){
+                hfoc.flash_data.position_PID_enabled_flag = 1;
+                hfoc.flash_data.speed_PID_enabled_flag = 0;
+            } else if(packet[i+1] == 'o'){
+                hfoc.flash_data.speed_PID_enabled_flag = 0;
+                hfoc.flash_data.position_PID_enabled_flag = 0;
+            }
         }
         if(packet[i] == 'O'){
             Current_FOC_State = FOC_STATE_OPENLOOP;
@@ -669,6 +667,12 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
         int Ss = 0;
         sscanf(packet, "Ss%d", &Ss);
         hfoc.speed_setpoint = (float)Ss;
+    }
+    if(packet[0] == 'S' && packet[1] == 'p'){
+        int Sp = 0;
+        sscanf(packet, "Sp%d", &Sp);
+        hfoc.angle_setpoint = (float)Sp / 1000.0f;
+        normalize_angle2(&hfoc.angle_setpoint); //normalize the angle to [-pi, pi]
     }
 }
 

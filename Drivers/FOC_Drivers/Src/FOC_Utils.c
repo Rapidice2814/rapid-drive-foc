@@ -70,23 +70,16 @@ __attribute__((weak)) float _atan2(float y, float x) {
 
 //Normalize angle to [0, 2*PI]
 void normalize_angle(float *angle){
-  while (*angle > M_2PIF) {
-      *angle -= M_2PIF;
-  }
-  while (*angle <= 0) {
-      *angle += M_2PIF;
-  }
+  while (*angle > M_2PIF) *angle -= M_2PIF;
+  while (*angle <= 0) *angle += M_2PIF;
 }
 
 //Normalize angle to [-PI, PI]
 void normalize_angle2(float *angle){
-  while (*angle > M_PI) {
-      *angle -= M_2PIF;
-  }
-  while (*angle <= -M_PI) {
-      *angle += M_2PIF;
-  }
+  while (*angle > M_PI) *angle -= M_2PIF;
+  while (*angle <= -M_PI) *angle += M_2PIF;
 }
+
 
 
 #define TEMP_MIN 10       // Minimum temperature in °C

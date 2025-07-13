@@ -3,11 +3,12 @@
 
 
 static FLASH_EraseInitTypeDef EraseInitStruct;
-#define DATA_FLASH_PAGE 60 //the last 4 pages are reserved, pages 60-63
-#define STORAGE_FLASH_BASE (0x08000000 + FLASH_PAGE_SIZE * DATA_FLASH_PAGE) // 0x0801E000 for page 60
+#define DATA_FLASH_PAGE 56 //the last 8 pages are reserved, pages 56-63
+#define NUMBER_OF_FLASH_PAGES 8
+#define STORAGE_FLASH_BASE (0x08000000 + FLASH_PAGE_SIZE * DATA_FLASH_PAGE) // 0x0801C000 for page 56, 
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
 
-    if(sizeof(FLASH_DataTypeDef) > FLASH_PAGE_SIZE){
+    if(sizeof(FLASH_DataTypeDef) > FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAGES){
         return FLASH_ERROR;
     }
 
@@ -21,7 +22,7 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
 
     EraseInitStruct.TypeErase = FLASH_TYPEERASE_PAGES;
     EraseInitStruct.Page = DATA_FLASH_PAGE;
-    EraseInitStruct.NbPages = 1;
+    EraseInitStruct.NbPages = NUMBER_OF_FLASH_PAGES;
 
     uint32_t PAGEError = 0;
     if (HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError) != HAL_OK){
@@ -44,6 +45,9 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
 
 
 FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
+    if(sizeof(FLASH_DataTypeDef) > FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAGES){
+        return FLASH_ERROR;
+    }
     for(uint32_t i = 0; i < sizeof(FLASH_DataTypeDef); i += sizeof(uint64_t)){
         uint64_t data64 = *(uint64_t*)(STORAGE_FLASH_BASE + i);
 

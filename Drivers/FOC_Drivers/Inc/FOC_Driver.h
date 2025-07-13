@@ -65,11 +65,14 @@ typedef struct {
     /* Encoder */
     AS5047P_HandleTypeDef has5047p;         //encoder handle
     volatile uint32_t *pencoder_count;      //pointer to the encoder counter
+
     float encoder_angle_mechanical;         //angle in radians
+    float previous_encoder_angle_mechanical; //previous angle in radians
+    float encoder_speed_mechanical;         //mechanical speed in rad/s
     
     float encoder_angle_electrical;           //angle in radians
     float previous_encoder_angle_electrical;  //previous angle in radians
-    float encoder_speed_electrical;           //speed in rad/s
+    float encoder_speed_electrical;           //electrical speed in rad/s
 
 
     /* Currents and Voltages*/
@@ -87,9 +90,11 @@ typedef struct {
     PIDControllerTypeDef pid_current_d;            //d current controller
     PIDControllerTypeDef pid_current_q;            //q current controller
     PIDControllerTypeDef pid_speed;                //speed controller
+    PIDControllerTypeDef pid_position;             //position controller
 
     DQCurrentsTypeDef dq_current_setpoint; //d and q current setpoints [A]
-    float speed_setpoint; //speed setpoint [rad/s]
+    float speed_setpoint; //mechanical speed setpoint [rad/s]
+    float angle_setpoint; //mechanical position setpoint [rad]
 
     /* PWM */
     uint32_t max_ccr; //max pwm value

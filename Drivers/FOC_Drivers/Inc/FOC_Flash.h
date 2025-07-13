@@ -4,6 +4,7 @@
 #include "stm32g4xx_hal.h"
 #include "FOC_Utils.h"
 #include "PID.h"
+#include "FOC_Config.h"
 
 typedef enum {
     FLASH_OK = 0,
@@ -23,6 +24,7 @@ typedef struct {
     float motor_pole_pairs;                 //number of pole pairs
     float motor_stator_resistance;          //stator resistance [ohms]
     float motor_stator_inductance;          //stator inductance [henries]
+    float motor_torque_constant;            //motor torque constant [Nm/A]
 
     /* Encoder */
     uint8_t encoder_aligned_flag;  //flag for the encoder alignment
@@ -36,7 +38,17 @@ typedef struct {
 
     /* Speed PID controler */
     PIDValuesTypeDef PID_gains_speed;
+    uint8_t speed_PID_enabled_flag;
 
+    /* Position PID controler */
+    PIDValuesTypeDef PID_gains_position;
+    uint8_t position_PID_enabled_flag;
+
+    /* Anti-cogging */
+    uint8_t anticogging_enabled_flag; // 1 if the anti-cogging
+    float anticogging_measurements[2][NUMBER_OF_ANTICOG_MEASUREMENTS]; // array to store the anti-cogging measurements
+
+    uint8_t data_valid_flag; // 1 if the data is valid, 0 if not
 
 } FLASH_DataTypeDef;
 

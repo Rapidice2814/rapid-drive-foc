@@ -1,6 +1,8 @@
 #ifndef PID_H
 #define PID_H
 
+#include <stdint.h>
+
 typedef struct {
 	/* Controller gains */
 	float Kp;
@@ -35,10 +37,13 @@ typedef struct {
 	/* Controller output */
 	float out;
 
+	/* Angle normalization flag */
+	uint8_t useAngleNormalization;
+
 } PIDControllerTypeDef;
 
 
-void PID_Init(PIDControllerTypeDef *pid, float T, float tau, float limMin, float limMax, float limMinInt, float limMaxInt, PIDValuesTypeDef *K);
+void PID_Init(PIDControllerTypeDef *pid, float T, float tau, float limMin, float limMax, float limMinInt, float limMaxInt, PIDValuesTypeDef *K, uint8_t useAngleNormalization);
 float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement);
 
 

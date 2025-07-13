@@ -1,7 +1,9 @@
 #include "PID.h"
+#include <stdint.h>
+#include "FOC_Utils.h"
 
 
-void PID_Init(PIDControllerTypeDef *pid, float T, float tau, float limMin, float limMax, float limMinInt, float limMaxInt, PIDValuesTypeDef *K) {
+void PID_Init(PIDControllerTypeDef *pid, float T, float tau, float limMin, float limMax, float limMinInt, float limMaxInt, PIDValuesTypeDef *K, uint8_t useAngleNormalization) {
 
     pid->K = K;
 	/* Clear controller variables */
@@ -20,25 +22,20 @@ void PID_Init(PIDControllerTypeDef *pid, float T, float tau, float limMin, float
     pid->limMax = limMax;
     pid->limMinInt = limMinInt;
     pid->limMaxInt = limMaxInt;
+
+    pid->useAngleNormalization = useAngleNormalization;
 }
 
 float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement) {
 
-	/*
-	* Error signal
-	*/
     float error = setpoint - measurement;
 
+    if(pid->useAngleNormalization) {
+        normalize_angle2(&error); // Normalize the angle error to [-pi, pi]
+    }
 
-	/*
-	* Proportional
-	*/
     float proportional = pid->K->Kp * error;
 
-
-	/*
-	* Integral
-	*/
     pid->integrator = pid->integrator + 0.5f * pid->K->Ki * pid->T * (error + pid->prevError);
 
 	/* Anti-wind-up via integrator clamping */
@@ -51,20 +48,16 @@ float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement) {
         pid->integrator = pid->limMinInt;
 
     }
-
-
-	/*
-	* Derivative (band-limited differentiator)
-	*/
+    float difference = measurement - pid->prevMeasurement;
+    if (pid->useAngleNormalization) {
+        normalize_angle2(&difference); // Normalize the angle difference to [-pi, pi]
+    }
 		
-    pid->differentiator = -(2.0f * pid->K->Kd * (measurement - pid->prevMeasurement)	/* Note: derivative on measurement, therefore minus sign in front of equation! */
+    pid->differentiator = -(2.0f * pid->K->Kd * (difference)	/* Note: derivative on measurement, therefore minus sign in front of equation! */
                         + (2.0f * pid->tau - pid->T) * pid->differentiator)
                         / (2.0f * pid->tau + pid->T);
 
 
-	/*
-	* Compute output and apply limits
-	*/
     pid->out = proportional + pid->integrator + pid->differentiator;
 
     if (pid->out > pid->limMax) {

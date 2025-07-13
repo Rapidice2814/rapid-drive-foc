@@ -15,11 +15,13 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
     hfoc->flash_data.motor_pole_pairs = MOTOR_POLE_PAIRS;
     hfoc->flash_data.motor_stator_resistance = MOTOR_STATOR_RESISTANCE;
     hfoc->flash_data.motor_stator_inductance = MOTOR_STATOR_INDUCTANCE;
+    hfoc->flash_data.motor_torque_constant = MOTOR_TORQUE_CONSTANT;
 
     hfoc->flash_data.motor_direction_swapped_flag = 0;
     hfoc->flash_data.motor_identified_flag = 0;
     hfoc->flash_data.encoder_aligned_flag = 0;
     hfoc->flash_data.contains_data_flag = 0;
+    hfoc->flash_data.data_valid_flag = 0;
 
     hfoc->flash_data.PID_gains_d.Kp = 0.0f;
     hfoc->flash_data.PID_gains_d.Ki = 0.0f;
@@ -32,6 +34,9 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
     hfoc->flash_data.PID_gains_speed.Kp = 0.0f;
     hfoc->flash_data.PID_gains_speed.Ki = 0.0f;
     hfoc->flash_data.PID_gains_speed.Kd = 0.0f;
+
+    hfoc->flash_data.speed_PID_enabled_flag = 0;
+    hfoc->flash_data.position_PID_enabled_flag = 0;
 
     hfoc->flash_data.current_control_bandwidth = 3000.0f; // 3000 rad/s
 
@@ -203,14 +208,12 @@ FOC_StatusTypeDef FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
   * @retval FOC_StatusTypeDef
   */
 FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha){
-    float delta_angle = hfoc->encoder_angle_electrical - hfoc->previous_encoder_angle_electrical;
-    if (delta_angle > M_PIF) {
-        delta_angle -= 2 * M_PIF;
-    } else if (delta_angle < -M_PIF) {
-        delta_angle += 2 * M_PIF;
-    }
-    hfoc->encoder_speed_electrical = hfoc->encoder_speed_electrical * (1 - filter_alpha) + filter_alpha * delta_angle * dt;
-    hfoc->previous_encoder_angle_electrical = hfoc->encoder_angle_electrical;
+    float delta_angle = hfoc->encoder_angle_mechanical - hfoc->previous_encoder_angle_mechanical;
+    normalize_angle2(&delta_angle);
+    hfoc->encoder_speed_mechanical = hfoc->encoder_speed_mechanical * (1 - filter_alpha) + filter_alpha * delta_angle * dt;
+    hfoc->previous_encoder_angle_mechanical = hfoc->encoder_angle_mechanical;
+
+    hfoc->encoder_speed_electrical = hfoc->encoder_speed_mechanical * hfoc->flash_data.motor_pole_pairs;
 
     return FOC_OK;
 }

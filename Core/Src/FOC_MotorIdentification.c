@@ -278,7 +278,6 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                     if(attempt > 3){
                         Log_printf("Motor identification failed after 3 attempts\n");
 
-                        hfoc->flash_data.motor_identified_flag = 1;
                         hfoc->flash_data.motor_stator_resistance = MOTOR_STATOR_RESISTANCE;
                         hfoc->flash_data.motor_stator_inductance = MOTOR_STATOR_INDUCTANCE;
                         Log_printf("Using Default values. Resistance: %dmOhm, Inductance: %duH\n", 

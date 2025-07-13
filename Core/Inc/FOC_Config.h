@@ -1,0 +1,11 @@
+#ifndef FOC_CONFIG_H
+#define FOC_CONFIG_H
+
+
+/*Anticogging*/
+#define NUMBER_OF_ANTICOG_MEASUREMENTS 1000
+#define ANTICOG_ANGLE_STEP (2.0f * M_PI / NUMBER_OF_ANTICOG_MEASUREMENTS)
+
+
+
+#endif // FOC_CONFIG_H

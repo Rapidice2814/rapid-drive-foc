@@ -20,7 +20,8 @@
         "debug.h": "c",
         "limits": "c",
         "foc_currentsensorcalibration": "c",
-        "foc.h": "c"
+        "foc.h": "c",
+        "foc_config.h": "c"
     },
     "search.useGlobalIgnoreFiles": false,
     "search.useIgnoreFiles": false,

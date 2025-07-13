@@ -8,6 +8,7 @@ typedef enum {
     FOC_STATE_BOOTUP_SOUND,
     FOC_STATE_CURRENT_SENSOR_CALIBRATION,
     FOC_STATE_IDENTIFY,
+    FOC_STATE_ANTICOGGING,
     FOC_STATE_CHECKLIST,
     FOC_STATE_PID_AUTOTUNE,
     FOC_STATE_GENERAL_TEST,
@@ -24,6 +25,7 @@ typedef enum {
 #define MOTOR_POLE_PAIRS 11
 #define MOTOR_STATOR_RESISTANCE 0.2f // ohms
 #define MOTOR_STATOR_INDUCTANCE 2.5e-05f // henries
+#define MOTOR_TORQUE_CONSTANT (8.23 / 380) // Nm/A
 
 #define INPUT_VOLTAGE 24.0f
 #define VOLTAGE_LIMIT 4.0f //max voltage output by the inverter, limits max speed

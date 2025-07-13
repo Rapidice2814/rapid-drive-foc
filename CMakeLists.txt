@@ -52,6 +52,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_PIDAutotune.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_CurrentSensorCalibration.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_AlignmentTest.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_AntiCogging.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_ControlLoops.c
 
 
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Driver.c
@@ -66,6 +68,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    ${CMAKE_SOURCE_DIR}/Core/Inc
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Inc
 )
 
