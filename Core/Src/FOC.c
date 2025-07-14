@@ -11,6 +11,7 @@
 #include "WS2812b_Driver.h"
 #include "FOC_Loops.h"
 #include "Logging.h"
+#include "FOC_Config.h"
 
 extern ADC_HandleTypeDef hadc1;
 extern ADC_HandleTypeDef hadc2;
@@ -310,7 +311,7 @@ static void FOC_StateLoop(){
                 Current_FOC_State = FOC_STATE_IDENTIFY;
             }else if(hfoc.flash_data.current_PID_set_flag != 1){
                 Current_FOC_State = FOC_STATE_PID_AUTOTUNE;
-            }else if(hfoc.flash_data.anticogging_enabled_flag != 1){
+            }else if(hfoc.flash_data.anticogging_data_valid_flag != 1){
                 Current_FOC_State = FOC_STATE_ANTICOGGING;
             }else{
                 Current_FOC_State = FOC_STATE_RUN;
@@ -339,7 +340,9 @@ static void FOC_StateLoop(){
         case FOC_STATE_PID_AUTOTUNE:
             ret = FOC_PIDAutotune(&hfoc);
             if(ret == FOC_LOOP_COMPLETED){
+                hfoc.flash_data.anticogging_data_valid_flag = 0;
                 hfoc.flash_data.current_PID_set_flag = 1;
+                hfoc.flash_data.current_PID_FF_enabled_flag = 1;
                 Current_FOC_State = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
                 Current_FOC_State = FOC_STATE_ERROR;
@@ -350,7 +353,7 @@ static void FOC_StateLoop(){
             __NOP();
             ret = FOC_Alignment(&hfoc, 1.0f);
             if(ret == FOC_LOOP_COMPLETED){
-                hfoc.flash_data.anticogging_enabled_flag = 0;
+                hfoc.flash_data.anticogging_data_valid_flag = 0;
                 hfoc.flash_data.encoder_aligned_flag = 1;
                 Current_FOC_State = FOC_STATE_ALIGNMENT_TEST;
             } else if(ret == FOC_LOOP_ERROR){
@@ -366,7 +369,7 @@ static void FOC_StateLoop(){
         case FOC_STATE_ANTICOGGING:
             ret = FOC_AntiCoggingMeasurement(&hfoc);
             if(ret == FOC_LOOP_COMPLETED){
-                hfoc.flash_data.anticogging_enabled_flag = 1;
+                hfoc.flash_data.anticogging_data_valid_flag = 1;
                 Current_FOC_State = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
                 Current_FOC_State = FOC_STATE_ERROR;
@@ -578,21 +581,26 @@ return 0;
 void Log_ProcessRxPacket(const char* packet, uint16_t Length){
     for(int i = 0; i < Length; i++){
         if(packet[i] == 'D'){
-            Current_FOC_State = FOC_STATE_ANTICOGGING;
+            // Current_FOC_State = FOC_STATE_ANTICOGGING;
+            if(packet[i+1] == 'a'){
+                hfoc.flash_data.anticogging_enabled_flag = !hfoc.flash_data.anticogging_enabled_flag;
+            } else if(packet[i+1] == 'f'){
+                hfoc.flash_data.current_PID_FF_enabled_flag = !hfoc.flash_data.current_PID_FF_enabled_flag;
+            } 
         }
         if(packet[i] == 'A'){
-            Current_FOC_State = FOC_STATE_ALIGNMENT;
+            // Current_FOC_State = FOC_STATE_ALIGNMENT;
         }
         if(packet[i] == 'R'){
             Current_FOC_State = FOC_STATE_RUN;
         }
-        if(packet[i] == 'M'){
-            Current_FOC_State = FOC_STATE_IDENTIFY;
+        if(packet[i] == 'E'){
+            // Current_FOC_State = FOC_STATE_IDENTIFY;
         }
         if(packet[i] == 'F'){
             Current_FOC_State = FOC_STATE_FLASH_SAVE;
         }
-        if(packet[i] == 'E'){
+        if(packet[i] == 'M'){
             if(packet[i+1] == 's'){
                 hfoc.flash_data.speed_PID_enabled_flag = 1;
                 hfoc.flash_data.position_PID_enabled_flag = 0;

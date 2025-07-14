@@ -18,12 +18,11 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
     }
 
 
-    if(hfoc->flash_data.anticogging_enabled_flag == 1){
+    if(hfoc->flash_data.anticogging_enabled_flag == 1 && hfoc->flash_data.anticogging_data_valid_flag == 1){ //apply the anticog LUT to the setpoint
         float encoder_angle_mechanical = hfoc->encoder_angle_mechanical;
         normalize_angle(&encoder_angle_mechanical);
         uint16_t anticog_index = (uint16_t)(encoder_angle_mechanical / ANTICOG_ANGLE_STEP);
         uint8_t anticog_dir = (hfoc->encoder_speed_mechanical >= 0) ? 0 : 1;
-        
         setpoint_q += hfoc->flash_data.anticogging_measurements[anticog_dir][anticog_index];
     }
 
@@ -33,9 +32,11 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
     hfoc->dq_voltage.d = PID_Update(&hfoc->pid_current_d, setpoint_d, hfoc->dq_current.d);
     hfoc->dq_voltage.q = PID_Update(&hfoc->pid_current_q, setpoint_q, hfoc->dq_current.q);
     
-    float lambda = (2.0f/3.0f) * hfoc->flash_data.motor_torque_constant * (1/hfoc->flash_data.motor_pole_pairs);
-    hfoc->dq_voltage.d += -hfoc->encoder_speed_electrical * hfoc->flash_data.motor_stator_inductance * hfoc->dq_current.q;
-    hfoc->dq_voltage.q +=  hfoc->encoder_speed_electrical * (hfoc->flash_data.motor_stator_inductance * hfoc->dq_current.d + lambda);
+    if(hfoc->flash_data.current_PID_FF_enabled_flag == 1){
+        float lambda = (2.0f/3.0f) * hfoc->flash_data.motor_torque_constant * (1/hfoc->flash_data.motor_pole_pairs);
+        hfoc->dq_voltage.d += -hfoc->encoder_speed_electrical * hfoc->flash_data.motor_stator_inductance * hfoc->dq_current.q;
+        hfoc->dq_voltage.q +=  hfoc->encoder_speed_electrical * (hfoc->flash_data.motor_stator_inductance * hfoc->dq_current.d + lambda);
+    }
 
 
 

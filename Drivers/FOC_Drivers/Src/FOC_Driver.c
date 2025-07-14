@@ -4,6 +4,7 @@
 #include "FOC_Driver.h"
 #include "FOC_Utils.h"
 #include "FOC.h"
+#include "FOC_Config.h"
 
 /* uncomment these to use the cos and sin optimizations */
 #define cosf _cosf
@@ -31,20 +32,31 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
     hfoc->flash_data.PID_gains_q.Ki = 0.0f;
     hfoc->flash_data.PID_gains_q.Kd = 0.0f;
 
-    hfoc->flash_data.PID_gains_speed.Kp = 0.0f;
-    hfoc->flash_data.PID_gains_speed.Ki = 0.0f;
+    hfoc->flash_data.PID_gains_speed.Kp = 0.1f;
+    hfoc->flash_data.PID_gains_speed.Ki = 10.0f;
     hfoc->flash_data.PID_gains_speed.Kd = 0.0f;
+
+    hfoc->flash_data.PID_gains_position.Kp = 5.0f;
+    hfoc->flash_data.PID_gains_position.Ki = 10.0f;
+    hfoc->flash_data.PID_gains_position.Kd = 0.1f;
 
     hfoc->flash_data.speed_PID_enabled_flag = 0;
     hfoc->flash_data.position_PID_enabled_flag = 0;
 
     hfoc->flash_data.current_control_bandwidth = 3000.0f; // 3000 rad/s
+    hfoc->flash_data.current_PID_FF_enabled_flag = 0;
+
+    hfoc->flash_data.anticogging_enabled_flag = 0;
+    hfoc->flash_data.anticogging_data_valid_flag = 0;
+
 
     hfoc->speed_setpoint = 0.0f;
+    hfoc->angle_setpoint = 0.0f;
     hfoc->dq_current_setpoint.q = 0.0f;
     hfoc->dq_current_setpoint.d = 0.0f;
 
     hfoc->NTC_resistance = 100e3f; // initial resistance
+
 
     return FOC_OK;
 }

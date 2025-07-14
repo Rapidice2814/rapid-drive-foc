@@ -32,6 +32,7 @@ typedef struct {
 
     /* Current PID controler*/
     uint8_t current_PID_set_flag; // 1 if the current PID is set
+    uint8_t current_PID_FF_enabled_flag; // 1 if the current PID feedforward is enabled
     float current_control_bandwidth; //current control bandwidth [rad/s]
     PIDValuesTypeDef PID_gains_q;
     PIDValuesTypeDef PID_gains_d;
@@ -45,7 +46,8 @@ typedef struct {
     uint8_t position_PID_enabled_flag;
 
     /* Anti-cogging */
-    uint8_t anticogging_enabled_flag; // 1 if the anti-cogging
+    uint8_t anticogging_enabled_flag; // 1 if the anti-cogging is enabled in the loop
+    uint8_t anticogging_data_valid_flag; // 1 if the anti-cogging data is valid
     float anticogging_measurements[2][NUMBER_OF_ANTICOG_MEASUREMENTS]; // array to store the anti-cogging measurements
 
     uint8_t data_valid_flag; // 1 if the data is valid, 0 if not

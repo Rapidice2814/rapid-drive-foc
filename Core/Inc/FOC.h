@@ -22,22 +22,6 @@ typedef enum {
 } FOC_State;
 
 
-#define MOTOR_POLE_PAIRS 11
-#define MOTOR_STATOR_RESISTANCE 0.2f // ohms
-#define MOTOR_STATOR_INDUCTANCE 2.5e-05f // henries
-#define MOTOR_TORQUE_CONSTANT (8.23 / 380) // Nm/A
-
-#define INPUT_VOLTAGE 24.0f
-#define VOLTAGE_LIMIT 4.0f //max voltage output by the inverter, limits max speed
-
-#define CURRENT_PID_LIMIT (VOLTAGE_LIMIT * M_1_SQRT3F)
-#define CURRENT_PID_INT_LIMIT (CURRENT_PID_LIMIT * 0.8f)
-
-#define SPEED_PID_LIMIT 10.0f //Ampere setpoint
-#define SPEED_PID_INT_LIMIT (SPEED_PID_LIMIT * 0.8f)
-
-#define OUTER_LOOP_FREQUENCY 2000
-
 void FOC_Setup();
 void FOC_Loop();
 
