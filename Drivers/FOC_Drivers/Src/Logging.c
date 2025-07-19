@@ -106,7 +106,7 @@ void Log_printf(const char* format, ...){
 /**
  * @brief Main loop for the logging system. It handles both transmission and reception of log messages.
  * @note This function should be called periodically to ensure that log messages are processed. 
- *       One call only processes a part of the queue, so it should be called multiple times per in order to sent the whole queue.
+ *       One call only processes a part of the queue, so it should be called multiple times per message in order to sent the whole queue.
  */
 void Log_Loop(){
     Log_Transmit();

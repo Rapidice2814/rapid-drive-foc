@@ -11,6 +11,7 @@
 
 /*PCB parameters*/
 #define MAXIMUM_BUS_VOLTAGE 30.0f // [V]
+#define MINIMUM_BUS_VOLTAGE 8.0f // [V]
 #define MAXIMUM_PHASE_CURRENT 30.0f // [A], 30A when no cooling on the mosfets, this can be increased with proper cooling
 #define CURRENT_SENSE_RESISTANCE 0.02f // [Ohm], current sense resistor value to measure the phase currents
 #define VBUS_VOLTAGE_DIVIDER_RATIO (1.0f/(1.0f + 10.0f)) // R2/(R1+R2) voltage divider ratio for the bus voltage measurement, R1 = 100k, R2 = 10k

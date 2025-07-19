@@ -93,6 +93,8 @@ PhaseVoltagesTypeDef FOC_InvClarke_transform(ABVoltagesTypeDef ab_voltage){
 }
 
 FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTypeDef phase_voltages){
+
+    hfoc->phase_voltage = phase_voltages;
     
 	float Umin = fminf(phase_voltages.a, fminf(phase_voltages.b, phase_voltages.c));
     float Umax = fmaxf(phase_voltages.a, fmaxf(phase_voltages.b, phase_voltages.c));
@@ -206,6 +208,19 @@ FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, floa
     hfoc->encoder_speed_electrical = hfoc->encoder_speed_mechanical * (float)(hfoc->flash_data.motor.pole_pairs);
 
     return FOC_OK;
+}
+
+/**
+  * @brief Calculates the bus current based on the phase currents and voltages
+  * @param Handle to the FOC structure
+  * @retval bus current in Amperes
+  */
+float FOC_CalculateBusCurrent(FOC_HandleTypeDef *hfoc){
+    float Pelec = hfoc->phase_current.a * hfoc->phase_voltage.a + 
+                  hfoc->phase_current.b * hfoc->phase_voltage.b + 
+                  hfoc->phase_current.c * hfoc->phase_voltage.c;
+    float bus_current = Pelec / hfoc->vbus;
+    return bus_current;
 }
 
 

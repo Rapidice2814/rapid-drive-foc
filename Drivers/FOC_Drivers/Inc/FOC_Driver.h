@@ -81,6 +81,8 @@ typedef struct {
     DQVoltagesTypeDef dq_voltage;          //d and q voltages [V]
     ABVoltagesTypeDef ab_voltage;   //alpha and beta voltages [V]
 
+    PhaseVoltagesTypeDef phase_voltage; //phase voltages [V]
+
     /* Temperature */
     float NTC_resistance; //resistance [ohms]
     float NTC_temp; //temperature [C]
