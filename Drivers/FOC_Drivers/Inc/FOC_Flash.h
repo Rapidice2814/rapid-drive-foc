@@ -6,51 +6,80 @@
 #include "PID.h"
 #include "FOC_Config.h"
 
+
+#define DATA_FLASH_PAGE 56 //the last 8 pages are reserved, pages 56-63
+#define NUMBER_OF_FLASH_PAGES 8
+#define STORAGE_FLASH_BASE (0x08000000 + FLASH_PAGE_SIZE * DATA_FLASH_PAGE) // 0x0801C000 for page 56, 
+
 typedef enum {
     FLASH_OK = 0,
     FLASH_ERROR = 1
 } FLASH_StatusTypeDef;
 
+struct FLASH_MotorParameters {
+    uint8_t direction; // boolean, 0 for normal, 1 for reversed
+
+    uint8_t pole_pairs; // [-], number of pole pairs
+    uint8_t pole_pairs_valid; // boolean
+
+    float phase_resistance; // [ohms]
+    uint8_t phase_resistance_valid; // boolean
+
+    float phase_inductance; // [H]
+    uint8_t phase_inductance_valid; // boolean
+
+    float torque_constant; // [Nm/A]
+    uint8_t torque_constant_valid; // boolean
+};
+
+struct FLASH_ControllerParameters {
+    PIDValuesTypeDef PID_gains_d; // d-axis current PID gains
+    PIDValuesTypeDef PID_gains_q; // q-axis current PID gains
+    uint8_t current_PID_gains_valid; // boolean
+    uint8_t current_PID_FF_enabled; // boolean
+
+    float current_control_bandwidth; // [rad/s]
+    uint8_t current_control_bandwidth_valid; // boolean
+
+
+    PIDValuesTypeDef PID_gains_speed; // speed PID gains
+    PIDValuesTypeDef PID_gains_position; // position PID gains
+
+    uint8_t speed_PID_enabled; //boolean
+    uint8_t position_PID_enabled; //boolean
+
+    uint8_t anticogging_FF_enabled; //boolean
+    uint8_t anticogging_data_valid; //boolean
+    float anticogging_array[2][NUMBER_OF_ANTICOG_MEASUREMENTS]; // array to store the anti-cogging measurements
+
+};
+
+struct FLASH_EncoderParameters {
+    float mechanical_offset; // [radians]
+    uint8_t offset_valid; // boolean
+};
+
+struct FLASH_Limits {
+    float vbus_overvoltage; // [V]
+    float vbus_undervoltage; // [V]
+    float max_phase_current; // [A]
+};
+
+
+
+
 
 typedef struct {
     /* Flash settings*/
-    uint8_t contains_data_flag;
+    uint8_t contains_data_flag; // boolean, first byte of the flash data. 1 if the data is present, 0 if not
 
-    /* Motor settings */
-    uint8_t motor_direction_swapped_flag; // 1 if the motor direction is swapped
+    struct FLASH_MotorParameters motor; // motor parameters
 
-    /* Motor parameters */
-    uint8_t motor_identified_flag; // 1 if the motor parameters are valid
-    float motor_pole_pairs;                 //number of pole pairs
-    float motor_stator_resistance;          //stator resistance [ohms]
-    float motor_stator_inductance;          //stator inductance [henries]
-    float motor_torque_constant;            //motor torque constant [Nm/A]
+    struct FLASH_EncoderParameters encoder; // encoder parameters
 
-    /* Encoder */
-    uint8_t encoder_aligned_flag;  //flag for the encoder alignment
-    float encoder_angle_mechanical_offset;  //offset for the encoder angle [radians]
+    struct FLASH_ControllerParameters controller; // controller parameters
 
-    /* Current PID controler*/
-    uint8_t current_PID_set_flag; // 1 if the current PID is set
-    uint8_t current_PID_FF_enabled_flag; // 1 if the current PID feedforward is enabled
-    float current_control_bandwidth; //current control bandwidth [rad/s]
-    PIDValuesTypeDef PID_gains_q;
-    PIDValuesTypeDef PID_gains_d;
-
-    /* Speed PID controler */
-    PIDValuesTypeDef PID_gains_speed;
-    uint8_t speed_PID_enabled_flag;
-
-    /* Position PID controler */
-    PIDValuesTypeDef PID_gains_position;
-    uint8_t position_PID_enabled_flag;
-
-    /* Anti-cogging */
-    uint8_t anticogging_enabled_flag; // 1 if the anti-cogging is enabled in the loop
-    uint8_t anticogging_data_valid_flag; // 1 if the anti-cogging data is valid
-    float anticogging_measurements[2][NUMBER_OF_ANTICOG_MEASUREMENTS]; // array to store the anti-cogging measurements
-
-    uint8_t data_valid_flag; // 1 if the data is valid, 0 if not
+    uint8_t data_valid_flag; // boolean, last byte of the flash data. 1 if the data is valid, 0 if not. This is there to detect if the data is correctly read from flash
 
 } FLASH_DataTypeDef;
 

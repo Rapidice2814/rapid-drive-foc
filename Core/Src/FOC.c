@@ -132,14 +132,14 @@ void FOC_Setup(){
 
 
     /* PID controllers */
-    PID_Init(&hfoc.pid_current_d, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -CURRENT_PID_LIMIT, CURRENT_PID_LIMIT, -CURRENT_PID_INT_LIMIT, CURRENT_PID_INT_LIMIT, &hfoc.flash_data.PID_gains_d, 0);
-    PID_Init(&hfoc.pid_current_q, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -CURRENT_PID_LIMIT, CURRENT_PID_LIMIT, -CURRENT_PID_INT_LIMIT, CURRENT_PID_INT_LIMIT, &hfoc.flash_data.PID_gains_q, 0);
+    PID_Init(&hfoc.pid_current_d, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -CURRENT_PID_LIMIT, CURRENT_PID_LIMIT, -CURRENT_PID_INT_LIMIT, CURRENT_PID_INT_LIMIT, &hfoc.flash_data.controller.PID_gains_d, 0);
+    PID_Init(&hfoc.pid_current_q, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -CURRENT_PID_LIMIT, CURRENT_PID_LIMIT, -CURRENT_PID_INT_LIMIT, CURRENT_PID_INT_LIMIT, &hfoc.flash_data.controller.PID_gains_q, 0);
 
-    PID_Init(&hfoc.pid_speed, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, -SPEED_PID_LIMIT, SPEED_PID_LIMIT, -SPEED_PID_INT_LIMIT, SPEED_PID_INT_LIMIT, &hfoc.flash_data.PID_gains_speed, 0);
-    PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, -SPEED_PID_LIMIT, SPEED_PID_LIMIT, -SPEED_PID_INT_LIMIT, SPEED_PID_INT_LIMIT, &hfoc.flash_data.PID_gains_position, 1);
+    PID_Init(&hfoc.pid_speed, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, -SPEED_PID_LIMIT, SPEED_PID_LIMIT, -SPEED_PID_INT_LIMIT, SPEED_PID_INT_LIMIT, &hfoc.flash_data.controller.PID_gains_speed, 0);
+    PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, -SPEED_PID_LIMIT, SPEED_PID_LIMIT, -SPEED_PID_INT_LIMIT, SPEED_PID_INT_LIMIT, &hfoc.flash_data.controller.PID_gains_position, 1);
 
-    // hfoc.flash_data.PID_gains_speed.Kp = 0.0f;
-    // hfoc.flash_data.PID_gains_speed.Ki = 0.0f;
+    // hfoc.flash_data.controller.PID_gains_speed.Kp = 0.0f;
+    // hfoc.flash_data.controller.PID_gains_speed.Ki = 0.0f;
     // hfoc.speed_setpoint = 300.0f;
 
     /* UART */
@@ -194,7 +194,7 @@ void FOC_Loop(){
                 hfoc.phase_current.c = hfoc.phase_current.c * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 2] - 2048) - hfoc.phase_current_offset.c;
                 hfoc.vbus            = hfoc.vbus            * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * VOLTAGE_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 3] ) - hfoc.vbus_offset;
                 
-                //saturated
+                //TODO: saturated
                 if(adc1_buffer[i + 0] > 4000 || adc1_buffer[i + 1] > 4000 || adc1_buffer[i + 2] > 4000 || adc1_buffer[i + 3] > 4000){
                     __NOP();
                 }
@@ -286,7 +286,7 @@ static void FOC_StateLoop(){
     
         case FOC_STATE_INIT:
             if(hfoc.flash_data.contains_data_flag == 1){
-                Log_printf("Flash data loaded!: Offset: %d\n", (int)(hfoc.flash_data.encoder_angle_mechanical_offset * 1000));
+                Log_printf("Flash data loaded!: Offset: %d\n", (int)(hfoc.flash_data.encoder.mechanical_offset * 1000));
             }else{
                 Log_printf("Flash data is missing!\n");
             }
@@ -305,13 +305,13 @@ static void FOC_StateLoop(){
             }
             break;
         case FOC_STATE_CHECKLIST:
-            if(hfoc.flash_data.encoder_aligned_flag != 1){
+            if(hfoc.flash_data.encoder.offset_valid != 1){
                 Current_FOC_State = FOC_STATE_ALIGNMENT;
-            }else if(hfoc.flash_data.motor_identified_flag != 1){
+            }else if(hfoc.flash_data.motor.phase_resistance_valid != 1 || hfoc.flash_data.motor.phase_inductance_valid != 1){
                 Current_FOC_State = FOC_STATE_IDENTIFY;
-            }else if(hfoc.flash_data.current_PID_set_flag != 1){
+            }else if(hfoc.flash_data.controller.current_PID_gains_valid != 1){
                 Current_FOC_State = FOC_STATE_PID_AUTOTUNE;
-            }else if(hfoc.flash_data.anticogging_data_valid_flag != 1){
+            }else if(hfoc.flash_data.controller.anticogging_data_valid != 1){
                 Current_FOC_State = FOC_STATE_ANTICOGGING;
             }else{
                 Current_FOC_State = FOC_STATE_RUN;
@@ -329,8 +329,7 @@ static void FOC_StateLoop(){
         case FOC_STATE_IDENTIFY:
             ret = FOC_MotorIdentification(&hfoc);
             if(ret == FOC_LOOP_COMPLETED){
-                hfoc.flash_data.current_PID_set_flag = 0;
-                hfoc.flash_data.motor_identified_flag = 1;
+                hfoc.flash_data.controller.current_PID_gains_valid = 0;
                 Current_FOC_State = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
                 Current_FOC_State = FOC_STATE_ERROR;
@@ -340,9 +339,9 @@ static void FOC_StateLoop(){
         case FOC_STATE_PID_AUTOTUNE:
             ret = FOC_PIDAutotune(&hfoc);
             if(ret == FOC_LOOP_COMPLETED){
-                hfoc.flash_data.anticogging_data_valid_flag = 0;
-                hfoc.flash_data.current_PID_set_flag = 1;
-                hfoc.flash_data.current_PID_FF_enabled_flag = 1;
+                hfoc.flash_data.controller.anticogging_data_valid = 0;
+                hfoc.flash_data.controller.current_PID_gains_valid = 1;
+                hfoc.flash_data.controller.current_PID_FF_enabled = 1;
                 Current_FOC_State = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
                 Current_FOC_State = FOC_STATE_ERROR;
@@ -353,8 +352,7 @@ static void FOC_StateLoop(){
             __NOP();
             ret = FOC_Alignment(&hfoc, 1.0f);
             if(ret == FOC_LOOP_COMPLETED){
-                hfoc.flash_data.anticogging_data_valid_flag = 0;
-                hfoc.flash_data.encoder_aligned_flag = 1;
+                hfoc.flash_data.controller.anticogging_data_valid = 0;
                 Current_FOC_State = FOC_STATE_ALIGNMENT_TEST;
             } else if(ret == FOC_LOOP_ERROR){
                 Current_FOC_State = FOC_STATE_ERROR;
@@ -369,7 +367,7 @@ static void FOC_StateLoop(){
         case FOC_STATE_ANTICOGGING:
             ret = FOC_AntiCoggingMeasurement(&hfoc);
             if(ret == FOC_LOOP_COMPLETED){
-                hfoc.flash_data.anticogging_data_valid_flag = 1;
+                hfoc.flash_data.controller.anticogging_data_valid = 1;
                 Current_FOC_State = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
                 Current_FOC_State = FOC_STATE_ERROR;
@@ -583,9 +581,9 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
         if(packet[i] == 'D'){
             // Current_FOC_State = FOC_STATE_ANTICOGGING;
             if(packet[i+1] == 'a'){
-                hfoc.flash_data.anticogging_enabled_flag = !hfoc.flash_data.anticogging_enabled_flag;
+                hfoc.flash_data.controller.anticogging_FF_enabled = !hfoc.flash_data.controller.anticogging_FF_enabled;
             } else if(packet[i+1] == 'f'){
-                hfoc.flash_data.current_PID_FF_enabled_flag = !hfoc.flash_data.current_PID_FF_enabled_flag;
+                hfoc.flash_data.controller.current_PID_FF_enabled = !hfoc.flash_data.controller.current_PID_FF_enabled;
             } 
         }
         if(packet[i] == 'A'){
@@ -602,14 +600,14 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
         }
         if(packet[i] == 'M'){
             if(packet[i+1] == 's'){
-                hfoc.flash_data.speed_PID_enabled_flag = 1;
-                hfoc.flash_data.position_PID_enabled_flag = 0;
+                hfoc.flash_data.controller.speed_PID_enabled = 1;
+                hfoc.flash_data.controller.position_PID_enabled = 0;
             } else if(packet[i+1] == 'p'){
-                hfoc.flash_data.position_PID_enabled_flag = 1;
-                hfoc.flash_data.speed_PID_enabled_flag = 0;
+                hfoc.flash_data.controller.position_PID_enabled = 1;
+                hfoc.flash_data.controller.speed_PID_enabled = 0;
             } else if(packet[i+1] == 'o'){
-                hfoc.flash_data.speed_PID_enabled_flag = 0;
-                hfoc.flash_data.position_PID_enabled_flag = 0;
+                hfoc.flash_data.controller.speed_PID_enabled = 0;
+                hfoc.flash_data.controller.position_PID_enabled = 0;
             }
         }
         if(packet[i] == 'O'){
@@ -622,9 +620,10 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
             timeout_flag = !timeout_flag;
         }
         if(packet[i] == 'C'){
-            hfoc.flash_data.encoder_aligned_flag = 0;
-            hfoc.flash_data.motor_identified_flag = 0;
-            hfoc.flash_data.current_PID_set_flag = 0;
+            hfoc.flash_data.encoder.offset_valid = 0;
+            hfoc.flash_data.motor.phase_resistance_valid = 0;
+            hfoc.flash_data.motor.phase_inductance_valid = 0;
+            hfoc.flash_data.controller.current_PID_gains_valid = 0;
             Current_FOC_State = FOC_STATE_CHECKLIST;
         }
     }
@@ -632,33 +631,33 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
     if(packet[0] == 'P' && packet[1] == 'd'){
         int Pd = 0;
         sscanf(packet, "Pd%d", &Pd);
-        hfoc.flash_data.PID_gains_d.Kp = (float)Pd / 1000.0f;
+        hfoc.flash_data.controller.PID_gains_d.Kp = (float)Pd / 1000.0f;
     }
     if(packet[0] == 'P' && packet[1] == 'q'){
         int Pq = 0;
         sscanf(packet, "Pq%d", &Pq);
-        hfoc.flash_data.PID_gains_q.Kp = (float)Pq / 1000.0f;
+        hfoc.flash_data.controller.PID_gains_q.Kp = (float)Pq / 1000.0f;
     }
     if(packet[0] == 'P' && packet[1] == 's'){
         int Ps = 0;
         sscanf(packet, "Ps%d", &Ps);
-        hfoc.flash_data.PID_gains_speed.Kp = (float)Ps / 1000.0f;
+        hfoc.flash_data.controller.PID_gains_speed.Kp = (float)Ps / 1000.0f;
     }
     
     if(packet[0] == 'I' && packet[1] == 'd'){
         int Id = 0;
         sscanf(packet, "Id%d", &Id);
-        hfoc.flash_data.PID_gains_d.Ki = (float)Id / 1000.0f;
+        hfoc.flash_data.controller.PID_gains_d.Ki = (float)Id / 1000.0f;
     }
     if(packet[0] == 'I' && packet[1] == 'q'){
         int Iq = 0;
         sscanf(packet, "Iq%d", &Iq);
-        hfoc.flash_data.PID_gains_q.Ki = (float)Iq / 1000.0f;
+        hfoc.flash_data.controller.PID_gains_q.Ki = (float)Iq / 1000.0f;
     }
     if(packet[0] == 'I' && packet[1] == 's'){
         int Is = 0;
         sscanf(packet, "Is%d", &Is);
-        hfoc.flash_data.PID_gains_speed.Ki = (float)Is / 1000.0f;
+        hfoc.flash_data.controller.PID_gains_speed.Ki = (float)Is / 1000.0f;
     }
 
     if(packet[0] == 'S' && packet[1] == 'q'){

@@ -13,41 +13,19 @@
 //Sets default values for the FOC structure
 FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
 
-    hfoc->flash_data.motor_pole_pairs = MOTOR_POLE_PAIRS;
-    hfoc->flash_data.motor_stator_resistance = MOTOR_STATOR_RESISTANCE;
-    hfoc->flash_data.motor_stator_inductance = MOTOR_STATOR_INDUCTANCE;
-    hfoc->flash_data.motor_torque_constant = MOTOR_TORQUE_CONSTANT;
+    hfoc->flash_data.motor.pole_pairs = MOTOR_POLE_PAIRS; //TODO: remove this
+    hfoc->flash_data.motor.pole_pairs_valid = 1;
 
-    hfoc->flash_data.motor_direction_swapped_flag = 0;
-    hfoc->flash_data.motor_identified_flag = 0;
-    hfoc->flash_data.encoder_aligned_flag = 0;
-    hfoc->flash_data.contains_data_flag = 0;
-    hfoc->flash_data.data_valid_flag = 0;
+    hfoc->flash_data.controller.PID_gains_speed.Kp = 0.1f; //TODO: remove this
+    hfoc->flash_data.controller.PID_gains_speed.Ki = 10.0f;
+    hfoc->flash_data.controller.PID_gains_speed.Kd = 0.0f;
 
-    hfoc->flash_data.PID_gains_d.Kp = 0.0f;
-    hfoc->flash_data.PID_gains_d.Ki = 0.0f;
-    hfoc->flash_data.PID_gains_d.Kd = 0.0f;
+    hfoc->flash_data.controller.PID_gains_position.Kp = 5.0f; //TODO: remove this
+    hfoc->flash_data.controller.PID_gains_position.Ki = 10.0f;
+    hfoc->flash_data.controller.PID_gains_position.Kd = 0.1f;
 
-    hfoc->flash_data.PID_gains_q.Kp = 0.0f;
-    hfoc->flash_data.PID_gains_q.Ki = 0.0f;
-    hfoc->flash_data.PID_gains_q.Kd = 0.0f;
-
-    hfoc->flash_data.PID_gains_speed.Kp = 0.1f;
-    hfoc->flash_data.PID_gains_speed.Ki = 10.0f;
-    hfoc->flash_data.PID_gains_speed.Kd = 0.0f;
-
-    hfoc->flash_data.PID_gains_position.Kp = 5.0f;
-    hfoc->flash_data.PID_gains_position.Ki = 10.0f;
-    hfoc->flash_data.PID_gains_position.Kd = 0.1f;
-
-    hfoc->flash_data.speed_PID_enabled_flag = 0;
-    hfoc->flash_data.position_PID_enabled_flag = 0;
-
-    hfoc->flash_data.current_control_bandwidth = 3000.0f; // 3000 rad/s
-    hfoc->flash_data.current_PID_FF_enabled_flag = 0;
-
-    hfoc->flash_data.anticogging_enabled_flag = 0;
-    hfoc->flash_data.anticogging_data_valid_flag = 0;
+    hfoc->flash_data.controller.current_control_bandwidth = 3000.0f; // 3000 rad/s
+    hfoc->flash_data.controller.current_PID_FF_enabled = 0;
 
 
     hfoc->speed_setpoint = 0.0f;
@@ -171,7 +149,7 @@ FOC_StatusTypeDef FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32
   */
 FOC_StatusTypeDef FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
 
-    hfoc->flash_data.encoder_aligned_flag = 0;
+    hfoc->flash_data.encoder.offset_valid = 0;
 
     if(hfoc->has5047p.setup_complete != 1) return FOC_ERROR;
 
@@ -185,9 +163,9 @@ FOC_StatusTypeDef FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
     uint16_t ap5047p_angle = 0;
     AS5047P_GetAngle(&(hfoc->has5047p), &ap5047p_angle);
 
-    hfoc->flash_data.encoder_angle_mechanical_offset = ((float)ap5047p_angle / 16384.0f) * 2.0f * M_PIF;
-    hfoc->flash_data.encoder_aligned_flag = 1; //set the encoder aligned flag
-    // *(hfoc->pencoder_count) = (int32_t)(hfoc->flash_data.encoder_angle_mechanical_offset * ENCODER_PULSES_PER_ROTATION / (2 * M_PIF));
+    hfoc->flash_data.encoder.mechanical_offset = ((float)ap5047p_angle / 16384.0f) * 2.0f * M_PIF;
+    hfoc->flash_data.encoder.offset_valid = 1;
+    // *(hfoc->pencoder_count) = (int32_t)(hfoc->flash_data.encoder.mechanical_offset * ENCODER_PULSES_PER_ROTATION / (2 * M_PIF));
 
     return FOC_OK;
 }
@@ -199,14 +177,14 @@ FOC_StatusTypeDef FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
   * @retval FOC_StatusTypeDef
   */
 FOC_StatusTypeDef FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
-    hfoc->encoder_angle_mechanical = (((float)(*(hfoc->pencoder_count)) / ENCODER_PULSES_PER_ROTATION) * 2 * M_PIF) - hfoc->flash_data.encoder_angle_mechanical_offset;
+    hfoc->encoder_angle_mechanical = (((float)(*(hfoc->pencoder_count)) / ENCODER_PULSES_PER_ROTATION) * 2 * M_PIF) - hfoc->flash_data.encoder.mechanical_offset;
 
     // uint16_t as5047p_angle = 0;
     // AS5047P_GetAngle(&hfoc->has5047p, &as5047p_angle);
-    // hfoc->encoder_angle_mechanical = (((float)as5047p_angle / 16384.0f) * 2.0f * M_PIF) - hfoc->encoder_angle_mechanical_offset;
+    // hfoc->encoder_angle_mechanical = (((float)as5047p_angle / 16384.0f) * 2.0f * M_PIF) - hfoc->flash_data.encoder.mechanical_offset;
 
     normalize_angle(&hfoc->encoder_angle_mechanical);
-    hfoc->encoder_angle_electrical = hfoc->encoder_angle_mechanical * hfoc->flash_data.motor_pole_pairs;
+    hfoc->encoder_angle_electrical = hfoc->encoder_angle_mechanical * (float)(hfoc->flash_data.motor.pole_pairs);
     normalize_angle(&hfoc->encoder_angle_electrical);
 
     return FOC_OK;
@@ -225,7 +203,7 @@ FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, floa
     hfoc->encoder_speed_mechanical = hfoc->encoder_speed_mechanical * (1 - filter_alpha) + filter_alpha * delta_angle * dt;
     hfoc->previous_encoder_angle_mechanical = hfoc->encoder_angle_mechanical;
 
-    hfoc->encoder_speed_electrical = hfoc->encoder_speed_mechanical * hfoc->flash_data.motor_pole_pairs;
+    hfoc->encoder_speed_electrical = hfoc->encoder_speed_mechanical * (float)(hfoc->flash_data.motor.pole_pairs);
 
     return FOC_OK;
 }

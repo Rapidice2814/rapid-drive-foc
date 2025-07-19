@@ -38,7 +38,7 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
             if(HAL_GetTick() >= next_step_time){
 
                 float diff;
-                if(hfoc->flash_data.motor_direction_swapped_flag == 1){
+                if(hfoc->flash_data.motor.direction == 1){
                     diff = 2*M_PI - reference_electrical_angle - hfoc->encoder_angle_electrical;
                 } else{
                     diff = reference_electrical_angle - hfoc->encoder_angle_electrical;
@@ -53,7 +53,7 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
                     abs_diff_ccw += fabsf(diff) / 200.0f;
                 }
                 normalize_angle(&reference_angle);
-                reference_electrical_angle = reference_angle * hfoc->flash_data.motor_pole_pairs;
+                reference_electrical_angle = reference_angle * (float)(hfoc->flash_data.motor.pole_pairs);
                 normalize_angle(&reference_electrical_angle);
 
                 ABVoltagesTypeDef Vab;
@@ -77,9 +77,9 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
                     }else{
                         if(hfoc->encoder_speed_electrical > 0.0f){
                             if(dir_swapped){
-                               hfoc->flash_data.motor_direction_swapped_flag = 1;
+                               hfoc->flash_data.motor.direction = 1;
                             }else{
-                                hfoc->flash_data.motor_direction_swapped_flag = 0;
+                                hfoc->flash_data.motor.direction = 0;
                             }
                         }
                         direction = 0;
@@ -96,7 +96,7 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
 
                 FOC_SetPhaseVoltages(hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
 
-                Log_printf("Alignment test:\nAbs Diff CW:%d, CCW:%d\nDirection:%d\n", (int)(abs_diff_cw * 1000), (int)(abs_diff_ccw * 1000), hfoc->flash_data.motor_direction_swapped_flag);
+                Log_printf("Alignment test:\nAbs Diff CW:%d, CCW:%d\nDirection:%d\n", (int)(abs_diff_cw * 1000), (int)(abs_diff_ccw * 1000), hfoc->flash_data.motor.direction);
                 if(abs_diff_cw < 0.3f && abs_diff_ccw < 0.3f){
                     Log_printf("Alignment test passed!\n");
                     step++;

@@ -69,7 +69,7 @@ FOC_LoopStatusTypeDef FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
                     return FOC_LOOP_ERROR;
                 }else{
                     Log_printf("Encoder zero set successfully\n");
-                    Log_printf("Encoder angle mechanical offset: %dmRad\n", (int)(hfoc->flash_data.encoder_angle_mechanical_offset * 1000));
+                    Log_printf("Encoder angle mechanical offset: %dmRad\n", (int)(hfoc->flash_data.encoder.mechanical_offset * 1000));
                     step++;
                     next_step_time = HAL_GetTick() + 100; //wait before the next step
                 }

@@ -1,0 +1,19 @@
+#ifndef CAN_COMMANDS_H
+#define CAN_COMMANDS_H
+
+typedef enum {
+    CMD_ESTOP,
+    CMD_PING,
+    CMD_HEARTBEAT,
+    CMD_GET_ERROR,
+    CMD_GET_STATUS,
+    CMD_ADDRESS,
+    CMD_SET_STATE,
+    CMD_SET_INPUT_TORQUE,
+    CMD_SET_INPUT_SPEED,
+    CMD_SET_INPUT_POSITION,
+    CMD_SET_LIMITS
+} CommandTypeDef;
+
+
+#endif // CAN_COMMANDS_H

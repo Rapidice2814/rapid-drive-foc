@@ -2,10 +2,12 @@
 #include <string.h>
 
 
+
+_Static_assert(sizeof(FLASH_DataTypeDef) <= FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAGES,
+    "FLASH_DataTypeDef too large: exceeds total flash space. Consider reducing the size of the structure or increasing the number of flash pages used for storage.");
+
 static FLASH_EraseInitTypeDef EraseInitStruct;
-#define DATA_FLASH_PAGE 56 //the last 8 pages are reserved, pages 56-63
-#define NUMBER_OF_FLASH_PAGES 8
-#define STORAGE_FLASH_BASE (0x08000000 + FLASH_PAGE_SIZE * DATA_FLASH_PAGE) // 0x0801C000 for page 56, 
+
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
 
     if(sizeof(FLASH_DataTypeDef) > FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAGES){

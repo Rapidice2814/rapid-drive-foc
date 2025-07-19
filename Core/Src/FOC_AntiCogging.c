@@ -30,13 +30,13 @@ FOC_LoopStatusTypeDef FOC_AntiCoggingMeasurement(FOC_HandleTypeDef *hfoc){
         switch(step){
             case 0:
                 start_time = HAL_GetTick();
-                hfoc->flash_data.position_PID_enabled_flag = 1;
-                hfoc->flash_data.speed_PID_enabled_flag = 0;
+                hfoc->flash_data.controller.position_PID_enabled = 1;
+                hfoc->flash_data.controller.speed_PID_enabled = 0;
 
-                old_pid_gains = hfoc->flash_data.PID_gains_position; //change the PID gains temporarily
-                hfoc->flash_data.PID_gains_position.Kp = 10.0f;
-                hfoc->flash_data.PID_gains_position.Kd = 0.2f;
-                hfoc->flash_data.PID_gains_position.Ki = 20.0f;
+                old_pid_gains = hfoc->flash_data.controller.PID_gains_position; //change the PID gains temporarily
+                hfoc->flash_data.controller.PID_gains_position.Kp = 10.0f;
+                hfoc->flash_data.controller.PID_gains_position.Kd = 0.2f;
+                hfoc->flash_data.controller.PID_gains_position.Ki = 20.0f;
 
 
                 step++;
@@ -63,10 +63,10 @@ FOC_LoopStatusTypeDef FOC_AntiCoggingMeasurement(FOC_HandleTypeDef *hfoc){
                         if(hold_counter > 10){
                             if(direction == 0){
                                 hfoc->angle_setpoint = substep * ANTICOG_ANGLE_STEP;
-                                hfoc->flash_data.anticogging_measurements[direction][substep] = current;
+                                hfoc->flash_data.controller.anticogging_array[direction][substep] = current;
                             }else{
                                 hfoc->angle_setpoint = (NUMBER_OF_ANTICOG_MEASUREMENTS-substep-1) * ANTICOG_ANGLE_STEP;
-                                hfoc->flash_data.anticogging_measurements[direction][NUMBER_OF_ANTICOG_MEASUREMENTS-substep-1] = current;
+                                hfoc->flash_data.controller.anticogging_array[direction][NUMBER_OF_ANTICOG_MEASUREMENTS-substep-1] = current;
                             }
 
                             Log_printf("Measurement %d: Target:%dmRad, Actual:%dmRad, Current:%dmA, Delta:%d\n", 
@@ -100,7 +100,7 @@ FOC_LoopStatusTypeDef FOC_AntiCoggingMeasurement(FOC_HandleTypeDef *hfoc){
                         substep++;
                         next_step_time = HAL_GetTick() + 10;
                     }else if(substep <= NUMBER_OF_ANTICOG_MEASUREMENTS){
-                        Log_printf("%d,", (int)(hfoc->flash_data.anticogging_measurements[dir][substep-1] * 1000));
+                        Log_printf("%d,", (int)(hfoc->flash_data.controller.anticogging_array[dir][substep-1] * 1000));
                         substep++;
                         next_step_time = HAL_GetTick() + 2;
                     }else{
@@ -120,8 +120,8 @@ FOC_LoopStatusTypeDef FOC_AntiCoggingMeasurement(FOC_HandleTypeDef *hfoc){
             default:
                 if(HAL_GetTick() >= next_step_time){
                     step = 0;
-                    hfoc->flash_data.PID_gains_position = old_pid_gains; //restore the PID gains
-                    hfoc->flash_data.position_PID_enabled_flag = 0;
+                    hfoc->flash_data.controller.PID_gains_position = old_pid_gains; //restore the PID gains
+                    hfoc->flash_data.controller.position_PID_enabled = 0;
                     return FOC_LOOP_COMPLETED;
                 }
                 break;

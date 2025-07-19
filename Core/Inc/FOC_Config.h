@@ -10,11 +10,11 @@
 #define MOTOR_POLE_PAIRS 11 //Motor pole pairs
 #define MOTOR_STATOR_RESISTANCE 0.2f // [Ohm]
 #define MOTOR_STATOR_INDUCTANCE 2.5e-05f // [H]
-#define MOTOR_TORQUE_CONSTANT (8.23 / 380) // [Nm/A]
+#define MOTOR_TORQUE_CONSTANT (8.27 / 380) // [Nm/A]
 
 /*Voltages*/
 #define INPUT_VOLTAGE 24.0f //[V]
-#define VOLTAGE_LIMIT 4.0f //[V], max voltage output by the inverter, limits max speed
+#define VOLTAGE_LIMIT 5.0f //[V], max bus voltage
 
 
 /*PID limits*/

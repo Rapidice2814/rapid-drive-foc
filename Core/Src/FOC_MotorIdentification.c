@@ -54,7 +54,7 @@ float percentDifferenceMaxMin(float* data, int size) {
 #define MEASUREMENT_STEPS 25
 
 /**
-  * @brief 
+  * @brief Identifies the motor resistance and inductance by applying a voltage and measuring the current response.
   * @note 
   * @param hfoc Handle to the FOC structure
   * @retval FOC_LoopStatusTypeDef
@@ -262,12 +262,14 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                         sumL += LArray[i];
                     }
 
-                    hfoc->flash_data.motor_stator_resistance = sumR * (2.0f / (3.0f * 3.0f));
-                    hfoc->flash_data.motor_stator_inductance = sumL * (2.0f / (3.0f * 3.0f));
-                    hfoc->flash_data.motor_identified_flag = 1;
+                    hfoc->flash_data.motor.phase_resistance = sumR * (2.0f / (3.0f * 3.0f));
+                    hfoc->flash_data.motor.phase_inductance = sumL * (2.0f / (3.0f * 3.0f));
+                    hfoc->flash_data.motor.phase_resistance_valid = 1;
+                    hfoc->flash_data.motor.phase_inductance_valid = 1;
+
                     Log_printf("Motor Identified! Resistance: %dmOhm, Inductance: %duH\n", 
-                        (int)(hfoc->flash_data.motor_stator_resistance * 1000), 
-                        (int)(hfoc->flash_data.motor_stator_inductance * 1000000));
+                        (int)(hfoc->flash_data.motor.phase_resistance * 1000), 
+                        (int)(hfoc->flash_data.motor.phase_inductance * 1000000));
 
                     step++;
                     next_step_time = HAL_GetTick() + 10;
@@ -278,11 +280,8 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                     if(attempt > 3){
                         Log_printf("Motor identification failed after 3 attempts\n");
 
-                        hfoc->flash_data.motor_stator_resistance = MOTOR_STATOR_RESISTANCE;
-                        hfoc->flash_data.motor_stator_inductance = MOTOR_STATOR_INDUCTANCE;
-                        Log_printf("Using Default values. Resistance: %dmOhm, Inductance: %duH\n", 
-                            (int)(hfoc->flash_data.motor_stator_resistance * 1000), 
-                            (int)(hfoc->flash_data.motor_stator_inductance * 1000000));
+                        hfoc->flash_data.motor.phase_resistance_valid = 0;
+                        hfoc->flash_data.motor.phase_inductance_valid = 0;
 
                         attempt = 0;
                         return FOC_LOOP_ERROR; // error
