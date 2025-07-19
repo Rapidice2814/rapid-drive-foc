@@ -55,11 +55,9 @@ volatile uint8_t foc_outer_loop_flag = 0;
 volatile uint8_t debug_loop_flag = 0;
 
 
-/* ADC */
-#define ADC_LOOP_ALPHA (2.0f/(CURRENT_LOOP_CLOCK_DIVIDER+1))
-#define TEMP_LOOP_ALPHA (2.0f/(1000))
-#define CURRENT_SENSE_CONVERSION_FACTOR (3.3f/4096.0f)/(0.02f * 10.0f) //10 V/V gain, 20 mOhm shunt
-#define VOLTAGE_SENSE_CONVERSION_FACTOR (11.0f/1.0f * 3.3f / 4096.0f) // 100:10 voltage divider
+/* ADC gains*/
+#define CURRENT_SENSE_CONVERSION_FACTOR ((3.3f/4096.0f) / (CURRENT_SENSE_RESISTANCE * CSA_GAIN_VALUE))
+#define VOLTAGE_SENSE_CONVERSION_FACTOR ((3.3f/4096.0f) / VBUS_VOLTAGE_DIVIDER_RATIO)
 
 static volatile uint16_t adc1_buffer[ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2] = {0};
 static volatile uint16_t adc2_buffer[ADC2_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2] = {0};
@@ -73,7 +71,7 @@ void FOC_Setup(){
 
     FLASH_DataTypeDef flash_data = {0}; //temporary
     FOC_FLASH_ReadData(&flash_data);
-    if(flash_data.contains_data_flag == 1 && flash_data.data_valid_flag == 1){
+    if(flash_data.contains_data == 1 && flash_data.struct_terminator == FLASH_STRUCT_TERMINATOR){
         memcpy(&hfoc.flash_data, &flash_data, sizeof(FLASH_DataTypeDef)); //only copy the data if it is valid
     }else{
         // hfoc.flash_data.contains_data_flag = 1;
@@ -285,7 +283,7 @@ static void FOC_StateLoop(){
     switch(Current_FOC_State){
     
         case FOC_STATE_INIT:
-            if(hfoc.flash_data.contains_data_flag == 1){
+            if(hfoc.flash_data.contains_data == 1){
                 Log_printf("Flash data loaded!: Offset: %d\n", (int)(hfoc.flash_data.encoder.mechanical_offset * 1000));
             }else{
                 Log_printf("Flash data is missing!\n");
@@ -409,8 +407,6 @@ static void FOC_StateLoop(){
             break;
         case FOC_STATE_FLASH_SAVE:
 
-            hfoc.flash_data.contains_data_flag = 1;
-            hfoc.flash_data.data_valid_flag = 1; //mark the data as valid
             if(FOC_FLASH_WriteData(&hfoc.flash_data) != FLASH_OK){
                 Current_FOC_State = FOC_STATE_ERROR;
             }

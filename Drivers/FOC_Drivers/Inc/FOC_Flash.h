@@ -36,6 +36,7 @@ struct FLASH_ControllerParameters {
     PIDValuesTypeDef PID_gains_d; // d-axis current PID gains
     PIDValuesTypeDef PID_gains_q; // q-axis current PID gains
     uint8_t current_PID_gains_valid; // boolean
+
     uint8_t current_PID_FF_enabled; // boolean
 
     float current_control_bandwidth; // [rad/s]
@@ -67,11 +68,11 @@ struct FLASH_Limits {
 
 
 
-
+#define FLASH_STRUCT_TERMINATOR 0xDEADBEEF // this is used to detect if the structure is correctly read from flash
 
 typedef struct {
     /* Flash settings*/
-    uint8_t contains_data_flag; // boolean, first byte of the flash data. 1 if the data is present, 0 if not
+    uint8_t contains_data; // boolean, first byte of the flash data. This is used to detect whether the flash has data.
 
     struct FLASH_MotorParameters motor; // motor parameters
 
@@ -79,8 +80,9 @@ typedef struct {
 
     struct FLASH_ControllerParameters controller; // controller parameters
 
-    uint8_t data_valid_flag; // boolean, last byte of the flash data. 1 if the data is valid, 0 if not. This is there to detect if the data is correctly read from flash
+    struct FLASH_Limits limits; // limits
 
+    uint32_t struct_terminator; // this is used to detect if the structure is correctly read from flash. It should be the last member of the structure, and it should be set to FLASH_STRUCT_TERMINATOR when writing to flash
 } FLASH_DataTypeDef;
 
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata);

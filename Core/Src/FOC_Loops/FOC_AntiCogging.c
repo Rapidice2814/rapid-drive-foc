@@ -24,8 +24,6 @@ FOC_LoopStatusTypeDef FOC_AntiCoggingMeasurement(FOC_HandleTypeDef *hfoc){
         static uint8_t direction = 0;
         
         static uint32_t start_time = 0;
-
-
         
         switch(step){
             case 0:

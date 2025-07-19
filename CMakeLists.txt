@@ -45,15 +45,15 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Flash.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC.c
     
-    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_MotorIdentification.c
-    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_OpenLoop.c
-    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Alignment.c
-    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_BootupSound.c
-    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_PIDAutotune.c
-    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_CurrentSensorCalibration.c
-    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_AlignmentTest.c
-    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_AntiCogging.c
-    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_ControlLoops.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Loops/FOC_MotorIdentification.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Loops/FOC_OpenLoop.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Loops/FOC_Alignment.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Loops/FOC_BootupSound.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Loops/FOC_PIDAutotune.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Loops/FOC_CurrentSensorCalibration.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Loops/FOC_AlignmentTest.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Loops/FOC_AntiCogging.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Loops/FOC_ControlLoops.c
 
 
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Driver.c

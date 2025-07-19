@@ -2,7 +2,7 @@
  * DRV8323_Driver_Settigns.h
  *
  *  Created on: Nov 2, 2024
- *      Author: csigo
+ *      Author: Csongor
  */
 
 #ifndef INC_DRV8323_DRIVER_SETTIGNS_H_

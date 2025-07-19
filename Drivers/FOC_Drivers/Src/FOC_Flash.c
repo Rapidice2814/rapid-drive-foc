@@ -9,10 +9,16 @@ _Static_assert(sizeof(FLASH_DataTypeDef) <= FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PA
 static FLASH_EraseInitTypeDef EraseInitStruct;
 
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
+    if(pdata == NULL){
+        return FLASH_ERROR;
+    }
 
     if(sizeof(FLASH_DataTypeDef) > FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAGES){
         return FLASH_ERROR;
     }
+
+    pdata->contains_data = 1;
+    pdata->struct_terminator = FLASH_STRUCT_TERMINATOR;
 
     FLASH_DataTypeDef current_data;
     FOC_FLASH_ReadData(&current_data);
@@ -31,8 +37,6 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
         return FLASH_ERROR;
     }
 
-    
-
     for(uint32_t i = 0; i < sizeof(FLASH_DataTypeDef); i += sizeof(uint64_t)){
         uint64_t data_to_write = 0;
         memcpy(&data_to_write, ((uint8_t*)pdata) + i, sizeof(uint64_t));
@@ -47,9 +51,14 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
 
 
 FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
+    if(pdata == NULL){
+        return FLASH_ERROR;
+    }
+
     if(sizeof(FLASH_DataTypeDef) > FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAGES){
         return FLASH_ERROR;
     }
+    
     for(uint32_t i = 0; i < sizeof(FLASH_DataTypeDef); i += sizeof(uint64_t)){
         uint64_t data64 = *(uint64_t*)(STORAGE_FLASH_BASE + i);
 
