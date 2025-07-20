@@ -14,16 +14,12 @@ typedef struct {
 
 	PIDValuesTypeDef *K;
 
+	/* Output limits */
+	float *max_out;
+
 	/* Derivative low-pass filter time constant */
 	float tau;
 
-	/* Output limits */
-	float limMin;
-	float limMax;
-	
-	/* Integrator limits */
-	float limMinInt;
-	float limMaxInt;
 
 	/* Sample time (in seconds) */
 	float T;
@@ -38,12 +34,12 @@ typedef struct {
 	float out;
 
 	/* Angle normalization flag */
-	uint8_t useAngleNormalization;
+	uint8_t useAngleNormalization; //when set to 1, the controller will normalize the angle error and difference to [-pi, pi]
 
 } PIDControllerTypeDef;
 
 
-void PID_Init(PIDControllerTypeDef *pid, float T, float tau, float limMin, float limMax, float limMinInt, float limMaxInt, PIDValuesTypeDef *K, uint8_t useAngleNormalization);
+void PID_Init(PIDControllerTypeDef *pid, float T, float tau, float *max_out, PIDValuesTypeDef *K, uint8_t useAngleNormalization);
 float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement);
 
 

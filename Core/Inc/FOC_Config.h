@@ -20,6 +20,9 @@
 #define ADC_LOOP_ALPHA (2.0f/(CURRENT_LOOP_CLOCK_DIVIDER+1))
 #define TEMP_LOOP_ALPHA (2.0f/(1000))
 
+/*Temperature*/
+#define MOTOR_MAX_TEMP 60.0f // [Celsius], maximum motor temperature
+
 
 
 
@@ -30,17 +33,10 @@
 #define MOTOR_STATOR_INDUCTANCE 2.5e-05f // [H]
 #define MOTOR_TORQUE_CONSTANT (8.27 / 380) // [Nm/A]
 
-/*Voltages*/
-#define INPUT_VOLTAGE 24.0f //[V]
+/*limits*/
 #define VOLTAGE_LIMIT 5.0f //[V], max bus voltage
-
-
-/*PID limits*/
-#define CURRENT_PID_LIMIT (VOLTAGE_LIMIT * M_1_SQRT3F)//[V]
-#define CURRENT_PID_INT_LIMIT (CURRENT_PID_LIMIT * 0.8f)//[V]
-
-#define SPEED_PID_LIMIT 15.0f //[A]
-#define SPEED_PID_INT_LIMIT (SPEED_PID_LIMIT * 0.8f) //[A]
+#define MAX_DQ_VOLTAGE (VOLTAGE_LIMIT * M_1_SQRT3F)//[V]
+#define MAX_DQ_CURRENT 15.0f //[A]
 
 
 

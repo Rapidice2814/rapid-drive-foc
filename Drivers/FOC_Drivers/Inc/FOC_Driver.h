@@ -59,8 +59,8 @@ typedef struct {
     /* ADC buffers */
     PhaseCurrentsTypeDef phase_current;            //measured phase currents [A]
     PhaseCurrentsTypeDef phase_current_offset;     //offset for the phase currents [A]
-    float vbus;                             //input voltage [V]
-    float vbus_offset;                      //offset for the input voltage [V]
+    float vbus; //bus voltage [V]
+    float ibus; //bus current [A]
 
     /* Encoder */
     AS5047P_HandleTypeDef has5047p;         //encoder handle
@@ -111,8 +111,6 @@ typedef struct {
 
 /* General */
 FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc);
-FOC_StatusTypeDef FOC_SetInputVoltage(FOC_HandleTypeDef *hfoc, float vin);
-FOC_StatusTypeDef FOC_SetVoltageLimit(FOC_HandleTypeDef *hfoc, float voltage_limit);
 
 
 /* Calculations */
@@ -130,6 +128,6 @@ FOC_StatusTypeDef FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc);
 FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha);
 /* PWM */
 FOC_StatusTypeDef FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, volatile uint32_t *pCCRb, volatile uint32_t *pCCRc, uint32_t max_ccr);
-
+FOC_StatusTypeDef FOC_CalculateBusCurrent(FOC_HandleTypeDef *hfoc);
 
 #endif // FOC_DRIVER_H

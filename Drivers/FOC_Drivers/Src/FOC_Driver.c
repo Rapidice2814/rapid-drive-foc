@@ -13,7 +13,10 @@
 //Sets default values for the FOC structure
 FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
 
-    hfoc->flash_data.motor.pole_pairs = MOTOR_POLE_PAIRS; //TODO: remove this
+    /*temp*/
+    hfoc->flash_data.motor.torque_constant = MOTOR_TORQUE_CONSTANT; //TODO: remove this
+    hfoc->flash_data.motor.torque_constant_valid = 1;
+    hfoc->flash_data.motor.pole_pairs = MOTOR_POLE_PAIRS;
     hfoc->flash_data.motor.pole_pairs_valid = 1;
 
     hfoc->flash_data.controller.PID_gains_speed.Kp = 0.1f; //TODO: remove this
@@ -26,6 +29,13 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
 
     hfoc->flash_data.controller.current_control_bandwidth = 3000.0f; // 3000 rad/s
     hfoc->flash_data.controller.current_PID_FF_enabled = 0;
+
+    hfoc->flash_data.limits.vbus_overvoltage = 27.0f;
+    hfoc->flash_data.limits.vbus_undervoltage = 20.0f;
+    hfoc->flash_data.limits.max_bus_current = 0.0f;
+    hfoc->flash_data.limits.max_dq_voltage = MAX_DQ_VOLTAGE;
+    hfoc->flash_data.limits.max_dq_current = MAX_DQ_CURRENT;
+
 
 
     hfoc->speed_setpoint = 0.0f;
@@ -42,10 +52,6 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
 /* General */
 FOC_StatusTypeDef FOC_SetInputVoltage(FOC_HandleTypeDef *hfoc, float vbus){
 	hfoc->vbus = vbus;
-    return FOC_OK;
-}
-FOC_StatusTypeDef FOC_SetVoltageLimit(FOC_HandleTypeDef *hfoc, float voltage_limit){
-    hfoc->voltage_limit = voltage_limit;
     return FOC_OK;
 }
 
@@ -92,14 +98,27 @@ PhaseVoltagesTypeDef FOC_InvClarke_transform(ABVoltagesTypeDef ab_voltage){
     return result;
 }
 
+/**
+  * @brief Sets the phase voltages to the inverter.
+  * @param hfoc Handle to the FOC structure
+  * @param phase_voltages Phase voltages to set
+  * @retval FOC_StatusTypeDef
+  * @note The maximum phase voltages should not exceed the vmax*sqrt(3)
+  */
 FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTypeDef phase_voltages){
+
+    float max_phase_voltage = hfoc->vbus * M_1_SQRT3F;
+    if(fabsf(phase_voltages.a) > max_phase_voltage || fabsf(phase_voltages.b) > max_phase_voltage || fabsf(phase_voltages.c) > max_phase_voltage){
+        return FOC_ERROR; //voltage limit exceeded
+    }
 
     hfoc->phase_voltage = phase_voltages;
     
 	float Umin = fminf(phase_voltages.a, fminf(phase_voltages.b, phase_voltages.c));
     float Umax = fmaxf(phase_voltages.a, fmaxf(phase_voltages.b, phase_voltages.c));
 
-    float center = hfoc->voltage_limit / 2.0f;
+    float center = hfoc->vbus / 2.0f;
+    // float center = hfoc->voltage_limit / 2.0f;
     center -= (Umax+Umin) / 2;
 
     float PWMa = (((phase_voltages.a + center) / hfoc->vbus) * hfoc->max_ccr);
@@ -215,12 +234,12 @@ FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, floa
   * @param Handle to the FOC structure
   * @retval bus current in Amperes
   */
-float FOC_CalculateBusCurrent(FOC_HandleTypeDef *hfoc){
+FOC_StatusTypeDef FOC_CalculateBusCurrent(FOC_HandleTypeDef *hfoc){
     float Pelec = hfoc->phase_current.a * hfoc->phase_voltage.a + 
                   hfoc->phase_current.b * hfoc->phase_voltage.b + 
                   hfoc->phase_current.c * hfoc->phase_voltage.c;
-    float bus_current = Pelec / hfoc->vbus;
-    return bus_current;
+    hfoc->ibus = Pelec / hfoc->vbus;
+    return FOC_OK;
 }
 
 

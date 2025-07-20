@@ -105,13 +105,12 @@ void FOC_Setup(){
 
     FOC_SetEncoderPointer(&hfoc, &htim3.Instance->CNT);
     HAL_TIM_Base_Start(&htim3); //start encoder timer
-
+    
+    hfoc.voltage_limit = VOLTAGE_LIMIT;
 
     FOC_SetPWMCCRPointers(&hfoc, &htim1.Instance->CCR3, &htim1.Instance->CCR2, &htim1.Instance->CCR1, PWM_CLOCK_DIVIDER); //set the pwm ccr register pointers
-    FOC_SetInputVoltage(&hfoc, INPUT_VOLTAGE); //set the input voltage, as default
-    FOC_SetVoltageLimit(&hfoc, VOLTAGE_LIMIT); //set the voltage limit, as default
 
-    FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
+    FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
 
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
@@ -130,11 +129,11 @@ void FOC_Setup(){
 
 
     /* PID controllers */
-    PID_Init(&hfoc.pid_current_d, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -CURRENT_PID_LIMIT, CURRENT_PID_LIMIT, -CURRENT_PID_INT_LIMIT, CURRENT_PID_INT_LIMIT, &hfoc.flash_data.controller.PID_gains_d, 0);
-    PID_Init(&hfoc.pid_current_q, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, -CURRENT_PID_LIMIT, CURRENT_PID_LIMIT, -CURRENT_PID_INT_LIMIT, CURRENT_PID_INT_LIMIT, &hfoc.flash_data.controller.PID_gains_q, 0);
+    PID_Init(&hfoc.pid_current_d, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, &hfoc.flash_data.limits.max_dq_voltage, &hfoc.flash_data.controller.PID_gains_d, 0);
+    PID_Init(&hfoc.pid_current_q, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, &hfoc.flash_data.limits.max_dq_voltage, &hfoc.flash_data.controller.PID_gains_q, 0);
 
-    PID_Init(&hfoc.pid_speed, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, -SPEED_PID_LIMIT, SPEED_PID_LIMIT, -SPEED_PID_INT_LIMIT, SPEED_PID_INT_LIMIT, &hfoc.flash_data.controller.PID_gains_speed, 0);
-    PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, -SPEED_PID_LIMIT, SPEED_PID_LIMIT, -SPEED_PID_INT_LIMIT, SPEED_PID_INT_LIMIT, &hfoc.flash_data.controller.PID_gains_position, 1);
+    PID_Init(&hfoc.pid_speed, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_speed, 0);
+    PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_position, 1);
 
     // hfoc.flash_data.controller.PID_gains_speed.Kp = 0.0f;
     // hfoc.flash_data.controller.PID_gains_speed.Ki = 0.0f;
@@ -190,13 +189,14 @@ void FOC_Loop(){
                 hfoc.phase_current.a = hfoc.phase_current.a * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 0] - 2048) - hfoc.phase_current_offset.a;
                 hfoc.phase_current.b = hfoc.phase_current.b * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 1] - 2048) - hfoc.phase_current_offset.b;
                 hfoc.phase_current.c = hfoc.phase_current.c * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 2] - 2048) - hfoc.phase_current_offset.c;
-                hfoc.vbus            = hfoc.vbus            * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * VOLTAGE_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 3] ) - hfoc.vbus_offset;
+                hfoc.vbus            = hfoc.vbus            * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * VOLTAGE_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 3]);
                 
                 //TODO: saturated
                 if(adc1_buffer[i + 0] > 4000 || adc1_buffer[i + 1] > 4000 || adc1_buffer[i + 2] > 4000 || adc1_buffer[i + 3] > 4000){
                     __NOP();
                 }
             }
+            FOC_CalculateBusCurrent(&hfoc); //calculate the bus current based on the phase currents and voltages
 
             foc_adc1_measurement_flag = 1; //triggered after the adc conversion is complete (either first or second half of the buffer)
             adc1_half_complete_flag = 0;
@@ -245,14 +245,14 @@ void FOC_Loop(){
         if(DRV8323_CheckFault(&hfoc.hdrv8323)){ //check for motor driver fault
             DRV8323_Disable(&hfoc.hdrv8323); //disable the driver
             HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //disable the inverter
-            FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
+            FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
             Current_FOC_State = FOC_STATE_ERROR;
         }
 
-        if(hfoc.NTC_temp > 60.0f || hfoc.NTC_temp < 0.0f){ //check for over temperature
+        if(hfoc.NTC_temp > MOTOR_MAX_TEMP || hfoc.NTC_temp < 0.0f){ //check for over temperature or disconnected NTC
             DRV8323_Disable(&hfoc.hdrv8323); //disable the driver
             HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //disable the inverter
-            FOC_SetPhaseVoltages(&hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
+            FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
             Current_FOC_State = FOC_STATE_ERROR;
         }
 

@@ -36,6 +36,7 @@ struct FLASH_ControllerParameters {
     PIDValuesTypeDef PID_gains_d; // d-axis current PID gains
     PIDValuesTypeDef PID_gains_q; // q-axis current PID gains
     uint8_t current_PID_gains_valid; // boolean
+    
 
     uint8_t current_PID_FF_enabled; // boolean
 
@@ -63,7 +64,12 @@ struct FLASH_EncoderParameters {
 struct FLASH_Limits {
     float vbus_overvoltage; // [V]
     float vbus_undervoltage; // [V]
-    float max_phase_current; // [A]
+    float max_bus_current; // [A]
+
+    float max_bus_voltage; // [V], the maximum voltage that can be applied to the motor. This should be smaller than vbus
+
+    float max_dq_voltage; // [V], should be smaller than vbus / (sqrt(3) * sqrt(2)) = 0.408 * vbus  
+    float max_dq_current; // [A]
 };
 
 
