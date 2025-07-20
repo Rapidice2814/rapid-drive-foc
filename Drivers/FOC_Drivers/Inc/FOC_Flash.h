@@ -62,31 +62,33 @@ struct FLASH_EncoderParameters {
 };
 
 struct FLASH_Limits {
-    float vbus_overvoltage; // [V]
-    float vbus_undervoltage; // [V]
+    float vbus_overvoltage_trip_level; // [V]
+    float vbus_undervoltage_trip_level; // [V]
     float max_bus_current; // [A]
 
-    float max_bus_voltage; // [V], the maximum voltage that can be applied to the motor. This should be smaller than vbus
+    float voltage_limit; // [V], the maximum voltage that can be applied to the motor. This should be smaller than vbus
 
-    float max_dq_voltage; // [V], should be smaller than vbus / (sqrt(3) * sqrt(2)) = 0.408 * vbus  
-    float max_dq_current; // [A]
+    float max_dq_voltage; // [V], used to limit the output of the PID. should be smaller than voltage_limit/sqrt(3) = 0.577 * voltage_limit
+    float max_dq_current; // [A], used to limit the output of the PID.
+};
+
+struct FLASH_DriverParameters {
+    uint8_t id; // ID of the driver, 4-bit, 1-15, with 0 reserved for unassigned
 };
 
 
 
-#define FLASH_STRUCT_TERMINATOR 0xDEADBEEF // this is used to detect if the structure is correctly read from flash
+#define FLASH_STRUCT_TERMINATOR 0xDEADBEEF // this is used to detect if the struct is correctly read from flash
 
 typedef struct {
     /* Flash settings*/
     uint8_t contains_data; // boolean, first byte of the flash data. This is used to detect whether the flash has data.
 
     struct FLASH_MotorParameters motor; // motor parameters
-
     struct FLASH_EncoderParameters encoder; // encoder parameters
-
     struct FLASH_ControllerParameters controller; // controller parameters
-
     struct FLASH_Limits limits; // limits
+    struct FLASH_DriverParameters driver; // driver parameters
 
     uint32_t struct_terminator; // this is used to detect if the structure is correctly read from flash. It should be the last member of the structure, and it should be set to FLASH_STRUCT_TERMINATOR when writing to flash
 } FLASH_DataTypeDef;

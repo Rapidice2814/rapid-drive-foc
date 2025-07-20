@@ -13,7 +13,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Set the project name
-set(CMAKE_PROJECT_NAME OHboteam_FOC)
+set(CMAKE_PROJECT_NAME rapid_drive_foc)
 
 # Include toolchain file
 include("cmake/gcc-arm-none-eabi.cmake")

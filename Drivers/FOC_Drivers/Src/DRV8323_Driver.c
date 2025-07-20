@@ -6,7 +6,6 @@
  */
 
 #include "DRV8323_Driver.h"
-#include "DRV8323_Driver_Settigns.h"
 
 static uint16_t DRV8323_TransmitCommand(DRV8323_HandleTypeDef *hdrv8323, uint8_t rwBit, uint8_t address4Bits, uint16_t data11Bits);
 

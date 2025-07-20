@@ -30,11 +30,13 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
     hfoc->flash_data.controller.current_control_bandwidth = 3000.0f; // 3000 rad/s
     hfoc->flash_data.controller.current_PID_FF_enabled = 0;
 
-    hfoc->flash_data.limits.vbus_overvoltage = 27.0f;
-    hfoc->flash_data.limits.vbus_undervoltage = 20.0f;
+    hfoc->flash_data.limits.vbus_overvoltage_trip_level = 27.0f;
+    hfoc->flash_data.limits.vbus_undervoltage_trip_level = 20.0f;
     hfoc->flash_data.limits.max_bus_current = 0.0f;
     hfoc->flash_data.limits.max_dq_voltage = MAX_DQ_VOLTAGE;
     hfoc->flash_data.limits.max_dq_current = MAX_DQ_CURRENT;
+
+    hfoc->flash_data.driver.id = 0; // Set a default driver ID to unassigned
 
 
 
@@ -49,13 +51,12 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
     return FOC_OK;
 }
 
-/* General */
-FOC_StatusTypeDef FOC_SetInputVoltage(FOC_HandleTypeDef *hfoc, float vbus){
-	hfoc->vbus = vbus;
-    return FOC_OK;
-}
 
-/* Calculations */
+/**
+ * @brief Clarke transform
+ * @param current Phase currents
+ * @retval ABCurrentsTypeDef Alpha and Beta currents
+ */
 ABCurrentsTypeDef FOC_Clarke_transform(PhaseCurrentsTypeDef current){
     ABCurrentsTypeDef result;
     
@@ -67,6 +68,12 @@ ABCurrentsTypeDef FOC_Clarke_transform(PhaseCurrentsTypeDef current){
     return result;
 }
 
+/**
+ * @brief Park transform
+ * @param ab_current Alpha and Beta currents
+ * @param theta Electrical angle in radians
+ * @retval DQCurrentsTypeDef D and Q currents
+ */
 DQCurrentsTypeDef FOC_Park_transform(ABCurrentsTypeDef ab_current, float theta){
     DQCurrentsTypeDef result;
 
@@ -78,6 +85,12 @@ DQCurrentsTypeDef FOC_Park_transform(ABCurrentsTypeDef ab_current, float theta){
     return result;
 }
 
+/**
+ * @brief Inverse Park transform
+ * @param dq_voltage D and Q voltages
+ * @param theta Electrical angle in radians
+ * @retval ABVoltagesTypeDef Alpha and Beta voltages
+ */
 ABVoltagesTypeDef FOC_InvPark_transform(DQVoltagesTypeDef dq_voltage, float theta){
     ABVoltagesTypeDef result;
 
@@ -89,6 +102,11 @@ ABVoltagesTypeDef FOC_InvPark_transform(DQVoltagesTypeDef dq_voltage, float thet
     return result;
 }
 
+/**
+ * @brief Inverse Clarke transform
+ * @param ab_voltage Alpha-beta voltages
+ * @retval PhaseVoltagesTypeDef Phase voltages
+ */
 PhaseVoltagesTypeDef FOC_InvClarke_transform(ABVoltagesTypeDef ab_voltage){
     PhaseVoltagesTypeDef result;
     result.a = ab_voltage.alpha;
@@ -103,14 +121,9 @@ PhaseVoltagesTypeDef FOC_InvClarke_transform(ABVoltagesTypeDef ab_voltage){
   * @param hfoc Handle to the FOC structure
   * @param phase_voltages Phase voltages to set
   * @retval FOC_StatusTypeDef
-  * @note The maximum phase voltages should not exceed the vmax*sqrt(3)
+  * @note The maximum phase voltages should not exceed the vbus*sqrt(3), otherwise the output will be clipped.
   */
 FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTypeDef phase_voltages){
-
-    float max_phase_voltage = hfoc->vbus * M_1_SQRT3F;
-    if(fabsf(phase_voltages.a) > max_phase_voltage || fabsf(phase_voltages.b) > max_phase_voltage || fabsf(phase_voltages.c) > max_phase_voltage){
-        return FOC_ERROR; //voltage limit exceeded
-    }
 
     hfoc->phase_voltage = phase_voltages;
     
@@ -118,21 +131,28 @@ FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTyp
     float Umax = fmaxf(phase_voltages.a, fmaxf(phase_voltages.b, phase_voltages.c));
 
     float center = hfoc->vbus / 2.0f;
-    // float center = hfoc->voltage_limit / 2.0f;
-    center -= (Umax+Umin) / 2;
+    center -= (Umax+Umin) / 2.0f;
 
-    float PWMa = (((phase_voltages.a + center) / hfoc->vbus) * hfoc->max_ccr);
-    float PWMb = (((phase_voltages.b + center) / hfoc->vbus) * hfoc->max_ccr);
-    float PWMc = (((phase_voltages.c + center) / hfoc->vbus) * hfoc->max_ccr);
+    float duty_a = constrainf((phase_voltages.a + center) / hfoc->vbus, 0.0f, 1.0f);
+    float duty_b = constrainf((phase_voltages.b + center) / hfoc->vbus, 0.0f, 1.0f);
+    float duty_c = constrainf((phase_voltages.c + center) / hfoc->vbus, 0.0f, 1.0f);
 
-    *(hfoc->pCCRa) = (uint32_t)PWMa;
-    *(hfoc->pCCRb) = (uint32_t)PWMb;
-    *(hfoc->pCCRc) = (uint32_t)PWMc;
+    *(hfoc->pCCRa) = (uint32_t)(duty_a * (float)hfoc->max_ccr);
+    *(hfoc->pCCRb) = (uint32_t)(duty_b * (float)hfoc->max_ccr);
+    *(hfoc->pCCRc) = (uint32_t)(duty_c * (float)hfoc->max_ccr);
 
     return FOC_OK;
 }
 
-
+/**
+  * @brief Sets the PWM CCR pointers and max CCR value
+  * @param hfoc Handle to the FOC structure
+  * @param pCCRa Pointer to the CCR register for phase A
+  * @param pCCRb Pointer to the CCR register for phase B
+  * @param pCCRc Pointer to the CCR register for phase C
+  * @param max_ccr Maximum CCR value
+  * @retval FOC_StatusTypeDef
+  */
 FOC_StatusTypeDef FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, volatile uint32_t *pCCRb, volatile uint32_t *pCCRc, uint32_t max_ccr){
 	hfoc->max_ccr = max_ccr;
 	hfoc->pCCRa = pCCRa;
@@ -149,7 +169,13 @@ FOC_StatusTypeDef FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32
 
 
 
-/* Encoder */
+/**
+ * @brief Sets the encoder pointer to the FOC structure.
+ * @param hfoc Handle to the FOC structure
+ * @param pencoder_count Pointer to the encoder counter
+ * @retval FOC_StatusTypeDef
+ * @note This function also initializes the encoder angle based on the current encoder position.
+ */
 FOC_StatusTypeDef FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32_t *pencoder_count){
     hfoc->pencoder_count = pencoder_count;
 
@@ -164,7 +190,7 @@ FOC_StatusTypeDef FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32
 
 
 /**
-  * @brief Sets the encoder zero position to the current position.
+  * @brief Sets the mechanical encoder zero position to the current position.
   * @param Handle to the FOC structure
   * @retval FOC_StatusTypeDef
   */
@@ -213,10 +239,10 @@ FOC_StatusTypeDef FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
 
 
 /**
-  * @brief Updates the encoder angle
+  * @brief Updates the encoder speed
   * @param Handle to the FOC structure, delta time, filter alpha
-  * @note filter alpha is used by the exponential filter to smooth the speed
   * @retval FOC_StatusTypeDef
+  * @note filter alpha is used by the exponential filter to smooth the speed. Before this function is called, the encoder angle must be updated.
   */
 FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha){
     float delta_angle = hfoc->encoder_angle_mechanical - hfoc->previous_encoder_angle_mechanical;

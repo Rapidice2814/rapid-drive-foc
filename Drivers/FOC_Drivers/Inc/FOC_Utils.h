@@ -38,6 +38,7 @@ float _atan2(float y, float x);
 
 void normalize_angle(float *angle);
 void normalize_angle2(float *angle);
+float constrainf(float value, float min, float max);
 
 void GenerateNtcLut();
 float GetNtcTemperature(float ntc_resistance);
