@@ -12,6 +12,7 @@
 #include "FOC_Loops.h"
 #include "Logging.h"
 #include "FOC_Config.h"
+#include "FOC_CAN.h"
 
 extern ADC_HandleTypeDef hadc1;
 extern ADC_HandleTypeDef hadc2;
@@ -152,6 +153,10 @@ void FOC_Setup(){
         rand8 = (uint8_t)(rand32 & 0xFF);
     }
 
+    hfoc.phfdcan = &hfdcan1; //set the CAN handle pointer
+    FOC_SetNodeId(&hfoc, 1);
+
+
     Log_printf("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
 
 }
@@ -176,8 +181,15 @@ static uint32_t max_log_time = 0;
 uint8_t timeout_flag = 0;
 static void FOC_StateLoop();
 
+
+uint32_t can_msg_counter = 0;
+uint32_t can_no_msg_counter = 0;
+
 void FOC_Loop(){
     start_time = __HAL_TIM_GET_COUNTER(&htim2);
+
+
+    FOC_ProcessCANMessage(&hfoc);
 
     if(adc1_half_complete_flag || adc1_complete_flag){ //This loop runs at (PWM frequency / CURRENT_LOOP_CLOCK_SCALER)
         adc1_start_time = __HAL_TIM_GET_COUNTER(&htim2);
@@ -243,23 +255,28 @@ void FOC_Loop(){
         }
 
         if(DRV8323_CheckFault(&hfoc.hdrv8323)){ //check for motor driver fault
-            DRV8323_Disable(&hfoc.hdrv8323); //disable the driver
-            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //disable the inverter
+            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //set inverter to high impedance
             FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
+            Log_printf("DRV8323 fault detected! Disabling the driver.\n");
             Current_FOC_State = FOC_STATE_ERROR;
         }
 
         if(hfoc.NTC_temp > MOTOR_MAX_TEMP || hfoc.NTC_temp < 0.0f){ //check for over temperature or disconnected NTC
-            DRV8323_Disable(&hfoc.hdrv8323); //disable the driver
-            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //disable the inverter
+            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //set inverter to high impedance
             FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
+            Log_printf("Over temperature! Temp: %d\n", (int)(hfoc.NTC_temp * 10));
+            Current_FOC_State = FOC_STATE_ERROR;
+        }
+
+        if(hfoc.vbus < hfoc.flash_data.limits.vbus_undervoltage_trip_level || hfoc.vbus > hfoc.flash_data.limits.vbus_overvoltage_trip_level){ //check for undervoltage or overvoltage
+            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //set inverter to high impedance
+            FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
+            Log_printf("Vbus undervoltage or overvoltage! Vbus: %d\n", (int)(hfoc.vbus*10));
             Current_FOC_State = FOC_STATE_ERROR;
         }
 
 
         FOC_StateLoop();
-
-
 
         foc_adc1_measurement_flag = 0;
     }
@@ -288,6 +305,22 @@ static void FOC_StateLoop(){
             }else{
                 Log_printf("Flash data is missing!\n");
             }
+            Current_FOC_State = FOC_STATE_RESET;
+            break;
+        case FOC_STATE_RESET:
+            Log_printf("Resetting FOC ...\n");
+            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 1); //re-enable inverter
+
+            HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 0);
+                for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
+                    WS2812b_SetColor(i, 15, 10, 0);
+                }
+                WS2812b_Send();
+            hfoc.dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
+            hfoc.speed_setpoint = 0.0f;
+            hfoc.angle_setpoint = 0.0f;
+
+
             Current_FOC_State = FOC_STATE_BOOTUP_SOUND;
             break;
         case FOC_STATE_BOOTUP_SOUND:
@@ -312,6 +345,10 @@ static void FOC_StateLoop(){
             }else if(hfoc.flash_data.controller.anticogging_data_valid != 1){
                 Current_FOC_State = FOC_STATE_ANTICOGGING;
             }else{
+                for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
+                    WS2812b_SetColor(i, 0, 25, 0);
+                }
+                WS2812b_Send();
                 Current_FOC_State = FOC_STATE_RUN;
             }
             break;
@@ -339,7 +376,7 @@ static void FOC_StateLoop(){
             if(ret == FOC_LOOP_COMPLETED){
                 hfoc.flash_data.controller.anticogging_data_valid = 0;
                 hfoc.flash_data.controller.current_PID_gains_valid = 1;
-                hfoc.flash_data.controller.current_PID_FF_enabled = 1;
+                hfoc.flash_data.controller.current_PID_FF_enabled = 0;
                 Current_FOC_State = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
                 Current_FOC_State = FOC_STATE_ERROR;
@@ -374,18 +411,19 @@ static void FOC_StateLoop(){
         case FOC_STATE_RUN:
             Current_Loop(&hfoc);
             static uint8_t current_loop_counter = 0;
-            if(++current_loop_counter >= SPEED_LOOP_CLOCK_DIVIDER){
+            if(++current_loop_counter >= SPEED_LOOP_CLOCK_DIVIDER){//runs at CURRENT_LOOP_FREQUENCY / CURRENT_LOOP_CLOCK_DIVIDER
                 current_loop_counter = 0;
-                Speed_Loop(&hfoc); //runs at CURRENT_LOOP_FREQUENCY / CURRENT_LOOP_CLOCK_DIVIDER
+                Speed_Loop(&hfoc); 
+                FOC_TransmitCANMessage(&hfoc, CMD_GET_STATUS);
             }
 
-
             if(debug_loop_flag){
-                Log_printf("Vq:%d, Iq:%d, Iq_set:%d, Mspeed:%d, Vbus:%d, Temp:%d, Eang%d, Mang:%d\n",
+                Log_printf("Cnt:%d, Vq:%d, Iq:%d, Iq_set:%d, Mspeed:%d, Vbus:%d, Temp:%d, Mang:%d\n",
+                (int)(can_msg_counter),
                 (int)(hfoc.dq_voltage.q * 1000), (int)(hfoc.dq_current.q * 1000), 
                 (int)(hfoc.dq_current_setpoint.q * 1000), (int)(hfoc.encoder_speed_mechanical * 1000),
                 (int)(hfoc.vbus * 10), (int)(hfoc.NTC_temp * 10),
-                (int)(hfoc.encoder_angle_electrical * 1000), (int)(hfoc.encoder_angle_mechanical * 1000));
+                (int)(hfoc.encoder_angle_mechanical * 1000));
 
                 // Log_printf("Vq:%d,Vd:%d,Id:%d,Iq:%d,Id_set:%d,Iq_set:%d,EAngle:%d,Espeed:%d,Vbus:%d,Temp:%d\n",
                 // (int)(hfoc.dq_voltage.q * 1000), (int)(hfoc.dq_voltage.d * 1000),
@@ -494,7 +532,7 @@ static uint8_t Error_LED_Loop(){
                 
                 HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 1);
                 for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
-                    WS2812b_SetColor(i, 25, 0, 0); //green
+                    WS2812b_SetColor(i, 25, 0, 0); //red
                 }
                 WS2812b_Send();
 
@@ -586,7 +624,7 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
             // Current_FOC_State = FOC_STATE_ALIGNMENT;
         }
         if(packet[i] == 'R'){
-            Current_FOC_State = FOC_STATE_RUN;
+            Current_FOC_State = FOC_STATE_RESET;
         }
         if(packet[i] == 'E'){
             // Current_FOC_State = FOC_STATE_IDENTIFY;
@@ -677,6 +715,17 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
         hfoc.angle_setpoint = (float)Sp / 1000.0f;
         normalize_angle2(&hfoc.angle_setpoint); //normalize the angle to [-pi, pi]
     }
+
+    if(packet[0] == 'L' && packet[1] == 'i'){
+        int Li = 0;
+        sscanf(packet, "Li%d", &Li);
+        hfoc.flash_data.limits.max_dq_current = (float)Li / 1000.0f;
+    }
+    if(packet[0] == 'L' && packet[1] == 'v'){
+        int Lv = 0;
+        sscanf(packet, "Lv%d", &Lv);
+        hfoc.flash_data.limits.max_dq_voltage = (float)Lv / 1000.0f;
+    }
 }
 
 
@@ -736,4 +785,8 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim){
     if(htim == &htim4){
         WS2812b_PulseFinishedCallback();
     }
+}
+
+void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs){
+    CAN_RxFifo0Callback(hfdcan, RxFifo0ITs);
 }

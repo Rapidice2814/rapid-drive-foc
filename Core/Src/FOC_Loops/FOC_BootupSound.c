@@ -159,6 +159,7 @@ FOC_LoopStatusTypeDef FOC_BootupSound(FOC_HandleTypeDef *hfoc, float loop_freque
         next_step_time = HAL_GetTick() + melody[0].duration;
     } else if(step >= note_count+1){
         play_sound(hfoc, 0.0f, 0.0f, loop_frequency);
+        step = 0; //reset the step
         return FOC_LOOP_COMPLETED;
     } else{
         play_sound(hfoc, melody[step-1].frequency, 1.0f, loop_frequency);

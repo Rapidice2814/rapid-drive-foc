@@ -37,9 +37,11 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
             hfoc->flash_data.motor.pole_pairs_valid == 1 && 
             hfoc->flash_data.motor.phase_inductance_valid == 1 &&
             hfoc->flash_data.motor.phase_resistance_valid == 1){
+
                 float lambda = (2.0f/3.0f) * hfoc->flash_data.motor.torque_constant / (float)hfoc->flash_data.motor.pole_pairs;
                 hfoc->dq_voltage.d += -hfoc->encoder_speed_electrical * hfoc->flash_data.motor.phase_inductance * hfoc->dq_current.q;
                 hfoc->dq_voltage.q +=  hfoc->encoder_speed_electrical * (hfoc->flash_data.motor.phase_inductance * hfoc->dq_current.d + lambda);
+                
             } 
     }
 

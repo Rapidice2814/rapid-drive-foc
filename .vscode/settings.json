@@ -21,7 +21,9 @@
         "limits": "c",
         "foc_currentsensorcalibration": "c",
         "foc.h": "c",
-        "foc_config.h": "c"
+        "foc_config.h": "c",
+        "can_driver.h": "c",
+        "foc_can.h": "c"
     },
     "search.useGlobalIgnoreFiles": false,
     "search.useIgnoreFiles": false,

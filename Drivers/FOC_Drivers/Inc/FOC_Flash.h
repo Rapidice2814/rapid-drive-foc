@@ -88,7 +88,7 @@ typedef struct {
     struct FLASH_EncoderParameters encoder; // encoder parameters
     struct FLASH_ControllerParameters controller; // controller parameters
     struct FLASH_Limits limits; // limits
-    struct FLASH_DriverParameters driver; // driver parameters
+    struct FLASH_DriverParameters node; // driver parameters
 
     uint32_t struct_terminator; // this is used to detect if the structure is correctly read from flash. It should be the last member of the structure, and it should be set to FLASH_STRUCT_TERMINATOR when writing to flash
 } FLASH_DataTypeDef;

@@ -36,7 +36,7 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
     hfoc->flash_data.limits.max_dq_voltage = MAX_DQ_VOLTAGE;
     hfoc->flash_data.limits.max_dq_current = MAX_DQ_CURRENT;
 
-    hfoc->flash_data.driver.id = 0; // Set a default driver ID to unassigned
+    hfoc->flash_data.node.id = 0; // Set a default node ID to unassigned
 
 
 

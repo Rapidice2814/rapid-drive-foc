@@ -34,9 +34,9 @@
 #define MOTOR_TORQUE_CONSTANT (8.27 / 380) // [Nm/A]
 
 /*limits*/
-#define VOLTAGE_LIMIT 5.0f //[V], max bus voltage
+#define VOLTAGE_LIMIT 6.0f //[V], max bus voltage
 #define MAX_DQ_VOLTAGE (VOLTAGE_LIMIT * M_1_SQRT3F)//[V]
-#define MAX_DQ_CURRENT 15.0f //[A]
+#define MAX_DQ_CURRENT 17.2f //[A]
 
 
 

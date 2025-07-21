@@ -44,6 +44,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Flash.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/FOC_CAN.c
     
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Loops/FOC_MotorIdentification.c
     ${CMAKE_SOURCE_DIR}/Core/Src/FOC_Loops/FOC_OpenLoop.c
@@ -63,7 +64,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/FOC_Utils.c
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/WS2812b_Driver.c
     ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/Logging.c
-    ${CMAKE_SOURCE_DIR}/Drivers/FOC_drivers/Src/CAN_Driver.c
 )
 
 # Add include paths

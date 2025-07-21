@@ -107,6 +107,9 @@ typedef struct {
     /* DRV8323 */
     DRV8323_HandleTypeDef hdrv8323;
 
+    /* CAN */
+    FDCAN_HandleTypeDef *phfdcan;
+
 } FOC_HandleTypeDef;
 
 /* General */
