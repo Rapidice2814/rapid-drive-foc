@@ -375,7 +375,7 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Instance = FDCAN1;
   hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
-  hfdcan1.Init.Mode = FDCAN_MODE_EXTERNAL_LOOPBACK;
+  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
   hfdcan1.Init.AutoRetransmission = ENABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
@@ -1012,6 +1012,8 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
+    HAL_GPIO_TogglePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin);
+    for (volatile uint32_t i = 0; i < 1000000; i++);
   }
   /* USER CODE END Error_Handler_Debug */
 }

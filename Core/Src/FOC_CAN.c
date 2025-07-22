@@ -1,7 +1,13 @@
 #include "FOC_CAN.h"
+#include <math.h>
+#include <string.h>
 
+union {
+    uint32_t u;
+    float f;
+} conv; //used to convert between float and uint32_t
 
-void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id) {
+void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id){
     if (hfoc->phfdcan == NULL) return;
     
     hfoc->flash_data.node.id = node_id;
@@ -39,9 +45,7 @@ void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id) {
     
 }
 
-static uint8_t can_data[8] = {0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 
-static uint32_t GetFDCanDLC(uint8_t len);
 void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CommandTypeDef command){
     FDCAN_TxHeaderTypeDef TxHeader;
     TxHeader.IdType = FDCAN_STANDARD_ID;
@@ -52,16 +56,44 @@ void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CommandTypeDef command){
     TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
     TxHeader.MessageMarker = 0;
 
-    TxHeader.Identifier = (hfoc->flash_data.node.id & ID_MASK) | ((command << 4) & COMMAND_MASK);
+    TxHeader.Identifier = GET_CAN_ID(hfoc->flash_data.node.id, 1, command);
 
-    TxHeader.DataLength = GetFDCanDLC(sizeof(can_data));
-    if (HAL_FDCAN_AddMessageToTxFifoQ(hfoc->phfdcan, &TxHeader, can_data) != HAL_OK) {
-        Error_Handler();
+    uint8_t TxData[64];
+
+    switch (command) { //sent commands
+        case CMD_ESTOP:
+            break;
+        case CMD_VERSION:
+            break;
+        case CMD_ADDRESS:
+            break;
+        case CMD_STATE:
+            break;
+        case CMD_LIMITS:
+            break;
+        case CMD_REQUEST:
+            break;
+        case CMD_PING:
+            break;
+        case CMD_HEARTBEAT:
+            TxData[0] = 0xFF & hfoc->state; // current state of the FOC driver
+            TxData[1] = (uint8_t)fminf(fmaxf(hfoc->NTC_temp, 0.0f), 255.0f); // Send the temperature as the second byte, in C
+            uint16_t timestamp = (uint16_t)(HAL_GetTick() & 0xFFFF); // Get the current timestamp, wraps around every 65536 ms
+            memcpy(&TxData[2], &timestamp, sizeof(uint16_t)); //byte 2-3
+            TxHeader.DataLength = FDCAN_DLC_BYTES_4;
+            break;
+        case CMD_ERROR:
+            break;
+        case CMD_STATUS:
+        default:
+            return; // Invalid command
     }
-
-    can_data[0]++;
+    
+    if (HAL_FDCAN_AddMessageToTxFifoQ(hfoc->phfdcan, &TxHeader, TxData) != HAL_OK) {
+        // Error_Handler();
+        hfoc->state = FOC_STATE_ERROR;
+    }
 }
-
 
 
 
@@ -72,15 +104,78 @@ void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
     FDCAN_RxHeaderTypeDef RxHeader;
     uint8_t RxData[64];
     if(can_rx_counter > 0){
+        // HAL_GPIO_TogglePin(PB2_GPIO_Port, PB2_Pin);
+        HAL_GPIO_WritePin(PB2_GPIO_Port, PB2_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(PB2_GPIO_Port, PB2_Pin, GPIO_PIN_RESET);
         can_rx_counter--;
         if (HAL_FDCAN_GetRxMessage(hfoc->phfdcan, FDCAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK){
             Error_Handler();
         }
+        if (RxHeader.IdType != FDCAN_STANDARD_ID) return; // Only process standard ID messages
+
+        uint8_t command = GET_COMMAND_FROM_CAN_ID(RxHeader.Identifier);
+        // uint8_t node_id = GET_ID_FROM_CAN_ID(RxHeader.Identifier);
+
+        switch (command) { //received commands
+            case CMD_ESTOP:
+                break;
+            case CMD_VERSION:
+                break;
+            case CMD_ADDRESS:
+                break;
+            case CMD_STATE:
+                break;
+            case CMD_SET_TORQUE: //0-3byte float, torque setpoint
+                if (RxHeader.DataLength != FDCAN_DLC_BYTES_4) return;
+                memcpy(&conv.u, RxData, sizeof(uint32_t));
+                hfoc->dq_current_setpoint.q = conv.f;
+                break;
+            case CMD_SET_SPEED: //0-3byte float, speed setpoint
+                if (RxHeader.DataLength != FDCAN_DLC_BYTES_4) return;
+                memcpy(&conv.u, RxData, sizeof(uint32_t));
+                hfoc->speed_setpoint = conv.f;
+                break;
+            case CMD_SET_POSITION: //0-3byte float, position setpoint
+            if (RxHeader.DataLength != FDCAN_DLC_BYTES_4) return;
+                memcpy(&conv.u, RxData, sizeof(uint32_t));
+                hfoc->angle_setpoint = conv.f;
+                break;
+            case CMD_LIMITS:
+                break;
+            case CMD_REQUEST:
+                break;
+            case CMD_PING:
+                break;
+            case CMD_HEARTBEAT:
+                break;
+            case CMD_ERROR:
+                break;
+            case CMD_STATUS:
+            default:
+                return; // Invalid command
+        }
+
+
+
     }
 }
 
 
+static uint32_t last_heartbeat_time_ms = 0;
+
+void FOC_TransmitCyclicCANMessage(FOC_HandleTypeDef *hfoc){
+    if(hfoc->flash_data.node.id == 0) return;
+
+    if ((hfoc->flash_data.node.heartbeat_msg_rate_ms != 0) && (HAL_GetTick() - last_heartbeat_time_ms >= hfoc->flash_data.node.heartbeat_msg_rate_ms)) {
+        last_heartbeat_time_ms = HAL_GetTick();
+        FOC_TransmitCANMessage(hfoc, CMD_HEARTBEAT);
+    }
+}
+
+
+
 void CAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs){
+    (void)hfdcan; //unused
     if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET){
         if(can_rx_counter < 3){
             can_rx_counter++;
@@ -88,25 +183,4 @@ void CAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs){
             Error_Handler();
         }
     }
-}
-
-
-
-static uint32_t GetFDCanDLC(uint8_t len) {
-    if (len <= 8)
-        return len;  // DLC == length directly
-    else if (len <= 12)
-        return FDCAN_DLC_BYTES_12;
-    else if (len <= 16)
-        return FDCAN_DLC_BYTES_16;
-    else if (len <= 20)
-        return FDCAN_DLC_BYTES_20;
-    else if (len <= 24)
-        return FDCAN_DLC_BYTES_24;
-    else if (len <= 32)
-        return FDCAN_DLC_BYTES_32;
-    else if (len <= 48)
-        return FDCAN_DLC_BYTES_48;
-    else
-        return FDCAN_DLC_BYTES_64;
 }

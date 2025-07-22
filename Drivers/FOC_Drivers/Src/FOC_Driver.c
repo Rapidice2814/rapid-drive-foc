@@ -3,7 +3,6 @@
 
 #include "FOC_Driver.h"
 #include "FOC_Utils.h"
-#include "FOC.h"
 #include "FOC_Config.h"
 
 /* uncomment these to use the cos and sin optimizations */
@@ -12,6 +11,8 @@
 
 //Sets default values for the FOC structure
 FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
+
+    hfoc->state = FOC_STATE_INIT;
 
     /*temp*/
     hfoc->flash_data.motor.torque_constant = MOTOR_TORQUE_CONSTANT; //TODO: remove this
@@ -37,6 +38,7 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
     hfoc->flash_data.limits.max_dq_current = MAX_DQ_CURRENT;
 
     hfoc->flash_data.node.id = 0; // Set a default node ID to unassigned
+    hfoc->flash_data.node.heartbeat_msg_rate_ms = 100;
 
 
 

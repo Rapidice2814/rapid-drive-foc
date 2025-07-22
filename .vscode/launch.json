@@ -15,7 +15,7 @@
             "servertype": "stlink",
             "device": "STM32G431CBUx", //MCU used
             "interface": "swd",
-            "serialNumber": "",        //Set ST-Link ID if you use multiple at the same time
+            "serialNumber": "0032003C3133510F37363734",        //Set ST-Link ID if you use multiple at the same time
             "runToEntryPoint": "main",
             "svdFile": "${config:STM32VSCodeExtension.cubeCLT.path}/STMicroelectronics_CMSIS_SVD/STM32G431.svd",
             "v1": false,               //Change it depending on ST Link version

@@ -25,6 +25,10 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
         uint8_t anticog_dir = (hfoc->encoder_speed_mechanical >= 0) ? 0 : 1;
         setpoint_q += hfoc->flash_data.controller.anticogging_array[anticog_dir][anticog_index];
     }
+    
+    setpoint_d = constrainf(setpoint_d, -hfoc->flash_data.limits.max_dq_current, hfoc->flash_data.limits.max_dq_current);
+    setpoint_q = constrainf(setpoint_q, -hfoc->flash_data.limits.max_dq_current, hfoc->flash_data.limits.max_dq_current);
+
 
     hfoc->ab_current = FOC_Clarke_transform(hfoc->phase_current);
     hfoc->dq_current = FOC_Park_transform(hfoc->ab_current, encoder_angle_electrical);

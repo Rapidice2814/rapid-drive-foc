@@ -1,5 +1,4 @@
 #include "FOC_Loops.h"
-#include "FOC.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>

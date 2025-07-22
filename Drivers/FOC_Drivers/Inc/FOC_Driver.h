@@ -44,7 +44,30 @@ typedef struct {
     float q;
 } DQVoltagesTypeDef;
 
+typedef enum {
+    FOC_STATE_INIT,
+    FOC_STATE_RESET,
+    FOC_STATE_BOOTUP_SOUND,
+    FOC_STATE_CURRENT_SENSOR_CALIBRATION,
+    FOC_STATE_IDENTIFY,
+    FOC_STATE_ANTICOGGING,
+    FOC_STATE_CHECKLIST,
+    FOC_STATE_PID_AUTOTUNE,
+    FOC_STATE_GENERAL_TEST,
+    FOC_STATE_ERROR,
+    FOC_STATE_CALIBRATION,
+    FOC_STATE_ALIGNMENT,
+    FOC_STATE_ALIGNMENT_TEST,
+    FOC_STATE_RUN,
+    FOC_STATE_FLASH_SAVE,
+    FOC_STATE_OPENLOOP
+} FOC_StateTypeDef;
+
+
 typedef struct {
+    /* FOC State */
+    FOC_StateTypeDef state; // Current state of the FOC driver
+
     /* Flags */
     uint8_t adc_calibrated;
     uint8_t encoder_aligned;

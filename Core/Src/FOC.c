@@ -37,8 +37,6 @@ extern PCD_HandleTypeDef hpcd_USB_FS;
 
 
 FOC_HandleTypeDef hfoc = {0};
-FOC_State Current_FOC_State = FOC_STATE_INIT;
-
 
 
 static uint8_t General_LED_Loop();
@@ -155,6 +153,7 @@ void FOC_Setup(){
 
     hfoc.phfdcan = &hfdcan1; //set the CAN handle pointer
     FOC_SetNodeId(&hfoc, 1);
+    // FOC_TransmitCANMessage(&hfoc, CMD_HEARTBEAT);
 
 
     Log_printf("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
@@ -188,7 +187,7 @@ uint32_t can_no_msg_counter = 0;
 void FOC_Loop(){
     start_time = __HAL_TIM_GET_COUNTER(&htim2);
 
-
+    FOC_TransmitCyclicCANMessage(&hfoc);
     FOC_ProcessCANMessage(&hfoc);
 
     if(adc1_half_complete_flag || adc1_complete_flag){ //This loop runs at (PWM frequency / CURRENT_LOOP_CLOCK_SCALER)
@@ -258,21 +257,21 @@ void FOC_Loop(){
             HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //set inverter to high impedance
             FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
             Log_printf("DRV8323 fault detected! Disabling the driver.\n");
-            Current_FOC_State = FOC_STATE_ERROR;
+            hfoc.state = FOC_STATE_ERROR;
         }
 
         if(hfoc.NTC_temp > MOTOR_MAX_TEMP || hfoc.NTC_temp < 0.0f){ //check for over temperature or disconnected NTC
             HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //set inverter to high impedance
             FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
             Log_printf("Over temperature! Temp: %d\n", (int)(hfoc.NTC_temp * 10));
-            Current_FOC_State = FOC_STATE_ERROR;
+            hfoc.state = FOC_STATE_ERROR;
         }
 
         if(hfoc.vbus < hfoc.flash_data.limits.vbus_undervoltage_trip_level || hfoc.vbus > hfoc.flash_data.limits.vbus_overvoltage_trip_level){ //check for undervoltage or overvoltage
             HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //set inverter to high impedance
             FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
             Log_printf("Vbus undervoltage or overvoltage! Vbus: %d\n", (int)(hfoc.vbus*10));
-            Current_FOC_State = FOC_STATE_ERROR;
+            hfoc.state = FOC_STATE_ERROR;
         }
 
 
@@ -297,7 +296,7 @@ static void FOC_StateLoop(){
     FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY, 0.3f);
 
     FOC_LoopStatusTypeDef ret;
-    switch(Current_FOC_State){
+    switch(hfoc.state){
     
         case FOC_STATE_INIT:
             if(hfoc.flash_data.contains_data == 1){
@@ -305,7 +304,7 @@ static void FOC_StateLoop(){
             }else{
                 Log_printf("Flash data is missing!\n");
             }
-            Current_FOC_State = FOC_STATE_RESET;
+            hfoc.state = FOC_STATE_RESET;
             break;
         case FOC_STATE_RESET:
             Log_printf("Resetting FOC ...\n");
@@ -321,40 +320,40 @@ static void FOC_StateLoop(){
             hfoc.angle_setpoint = 0.0f;
 
 
-            Current_FOC_State = FOC_STATE_BOOTUP_SOUND;
+            hfoc.state = FOC_STATE_BOOTUP_SOUND;
             break;
         case FOC_STATE_BOOTUP_SOUND:
             if(FOC_BootupSound(&hfoc, CURRENT_LOOP_FREQUENCY)){
-                Current_FOC_State = FOC_STATE_CURRENT_SENSOR_CALIBRATION;
+                hfoc.state = FOC_STATE_CURRENT_SENSOR_CALIBRATION;
                 __NOP();
             }
             break;
         case FOC_STATE_CURRENT_SENSOR_CALIBRATION:
             if(FOC_CurrentSensorCalibration(&hfoc) == FOC_LOOP_COMPLETED){
                 hfoc.adc_calibrated = 1;
-                Current_FOC_State = FOC_STATE_CHECKLIST;
+                hfoc.state = FOC_STATE_CHECKLIST;
             }
             break;
         case FOC_STATE_CHECKLIST:
             if(hfoc.flash_data.encoder.offset_valid != 1){
-                Current_FOC_State = FOC_STATE_ALIGNMENT;
+                hfoc.state = FOC_STATE_ALIGNMENT;
             }else if(hfoc.flash_data.motor.phase_resistance_valid != 1 || hfoc.flash_data.motor.phase_inductance_valid != 1){
-                Current_FOC_State = FOC_STATE_IDENTIFY;
+                hfoc.state = FOC_STATE_IDENTIFY;
             }else if(hfoc.flash_data.controller.current_PID_gains_valid != 1){
-                Current_FOC_State = FOC_STATE_PID_AUTOTUNE;
-            }else if(hfoc.flash_data.controller.anticogging_data_valid != 1){
-                Current_FOC_State = FOC_STATE_ANTICOGGING;
+                hfoc.state = FOC_STATE_PID_AUTOTUNE;
+            // }else if(hfoc.flash_data.controller.anticogging_data_valid != 1){
+            //     hfoc.state = FOC_STATE_ANTICOGGING;
             }else{
                 for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
                     WS2812b_SetColor(i, 0, 25, 0);
                 }
                 WS2812b_Send();
-                Current_FOC_State = FOC_STATE_RUN;
+                hfoc.state = FOC_STATE_RUN;
             }
             break;
         case FOC_STATE_GENERAL_TEST:
             if(General_LED_Loop()){
-                Current_FOC_State = FOC_STATE_RUN;
+                hfoc.state = FOC_STATE_RUN;
                 __NOP();
             }
             break;
@@ -365,9 +364,9 @@ static void FOC_StateLoop(){
             ret = FOC_MotorIdentification(&hfoc);
             if(ret == FOC_LOOP_COMPLETED){
                 hfoc.flash_data.controller.current_PID_gains_valid = 0;
-                Current_FOC_State = FOC_STATE_CHECKLIST;
+                hfoc.state = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
-                Current_FOC_State = FOC_STATE_ERROR;
+                hfoc.state = FOC_STATE_ERROR;
             } 
             break;
 
@@ -377,9 +376,9 @@ static void FOC_StateLoop(){
                 hfoc.flash_data.controller.anticogging_data_valid = 0;
                 hfoc.flash_data.controller.current_PID_gains_valid = 1;
                 hfoc.flash_data.controller.current_PID_FF_enabled = 0;
-                Current_FOC_State = FOC_STATE_CHECKLIST;
+                hfoc.state = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
-                Current_FOC_State = FOC_STATE_ERROR;
+                hfoc.state = FOC_STATE_ERROR;
             }
             break;
 
@@ -388,24 +387,24 @@ static void FOC_StateLoop(){
             ret = FOC_Alignment(&hfoc, 1.0f);
             if(ret == FOC_LOOP_COMPLETED){
                 hfoc.flash_data.controller.anticogging_data_valid = 0;
-                Current_FOC_State = FOC_STATE_ALIGNMENT_TEST;
+                hfoc.state = FOC_STATE_ALIGNMENT_TEST;
             } else if(ret == FOC_LOOP_ERROR){
-                Current_FOC_State = FOC_STATE_ERROR;
+                hfoc.state = FOC_STATE_ERROR;
             }
             break;
 
         case FOC_STATE_ALIGNMENT_TEST:
             if(Alignment_Test_Loop(&hfoc, 1.0f) == FOC_LOOP_COMPLETED){
-                Current_FOC_State = FOC_STATE_CHECKLIST;
+                hfoc.state = FOC_STATE_CHECKLIST;
             }
             break;
         case FOC_STATE_ANTICOGGING:
             ret = FOC_AntiCoggingMeasurement(&hfoc);
             if(ret == FOC_LOOP_COMPLETED){
                 hfoc.flash_data.controller.anticogging_data_valid = 1;
-                Current_FOC_State = FOC_STATE_CHECKLIST;
+                hfoc.state = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
-                Current_FOC_State = FOC_STATE_ERROR;
+                hfoc.state = FOC_STATE_ERROR;
             }
             break;
         case FOC_STATE_RUN:
@@ -414,7 +413,6 @@ static void FOC_StateLoop(){
             if(++current_loop_counter >= SPEED_LOOP_CLOCK_DIVIDER){//runs at CURRENT_LOOP_FREQUENCY / CURRENT_LOOP_CLOCK_DIVIDER
                 current_loop_counter = 0;
                 Speed_Loop(&hfoc); 
-                FOC_TransmitCANMessage(&hfoc, CMD_GET_STATUS);
             }
 
             if(debug_loop_flag){
@@ -439,17 +437,18 @@ static void FOC_StateLoop(){
             }
             break;
         case FOC_STATE_ERROR:
+            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //set inverter to high impedance
             if(Error_LED_Loop()){
-                // Current_FOC_State = FOC_GENERAL_TEST;
+                // hfoc.state = FOC_GENERAL_TEST;
             }
             break;
         case FOC_STATE_FLASH_SAVE:
 
             if(FOC_FLASH_WriteData(&hfoc.flash_data) != FLASH_OK){
-                Current_FOC_State = FOC_STATE_ERROR;
+                hfoc.state = FOC_STATE_ERROR;
             }
             
-            Current_FOC_State = FOC_STATE_RUN;
+            hfoc.state = FOC_STATE_RUN;
 
             break;
         case FOC_STATE_OPENLOOP:
@@ -613,7 +612,7 @@ return 0;
 void Log_ProcessRxPacket(const char* packet, uint16_t Length){
     for(int i = 0; i < Length; i++){
         if(packet[i] == 'D'){
-            // Current_FOC_State = FOC_STATE_ANTICOGGING;
+            // hfoc.state = FOC_STATE_ANTICOGGING;
             if(packet[i+1] == 'a'){
                 hfoc.flash_data.controller.anticogging_FF_enabled = !hfoc.flash_data.controller.anticogging_FF_enabled;
             } else if(packet[i+1] == 'f'){
@@ -621,16 +620,16 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
             } 
         }
         if(packet[i] == 'A'){
-            // Current_FOC_State = FOC_STATE_ALIGNMENT;
+            // hfoc.state = FOC_STATE_ALIGNMENT;
         }
         if(packet[i] == 'R'){
-            Current_FOC_State = FOC_STATE_RESET;
+            hfoc.state = FOC_STATE_RESET;
         }
         if(packet[i] == 'E'){
-            // Current_FOC_State = FOC_STATE_IDENTIFY;
+            // hfoc.state = FOC_STATE_IDENTIFY;
         }
         if(packet[i] == 'F'){
-            Current_FOC_State = FOC_STATE_FLASH_SAVE;
+            hfoc.state = FOC_STATE_FLASH_SAVE;
         }
         if(packet[i] == 'M'){
             if(packet[i+1] == 's'){
@@ -645,7 +644,7 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
             }
         }
         if(packet[i] == 'O'){
-            Current_FOC_State = FOC_STATE_OPENLOOP;
+            hfoc.state = FOC_STATE_OPENLOOP;
         }
         if(packet[i] == 'K'){
             hfoc.motor_disable_flag = 1;
@@ -658,7 +657,7 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
             hfoc.flash_data.motor.phase_resistance_valid = 0;
             hfoc.flash_data.motor.phase_inductance_valid = 0;
             hfoc.flash_data.controller.current_PID_gains_valid = 0;
-            Current_FOC_State = FOC_STATE_CHECKLIST;
+            hfoc.state = FOC_STATE_CHECKLIST;
         }
     }
 
