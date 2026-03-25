@@ -6,7 +6,7 @@
   * @param hfoc Handle to the FOC structure
   * @retval FOC_StatusTypeDef
   */
-uint8_t FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
+FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
 
     static uint8_t step = 0;
     static uint32_t next_step_time = 0;

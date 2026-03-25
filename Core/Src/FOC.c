@@ -19,7 +19,7 @@ extern ADC_HandleTypeDef hadc2;
 
 extern FDCAN_HandleTypeDef hfdcan1;
 
-extern  I2C_HandleTypeDef hi2c1;
+extern I2C_HandleTypeDef hi2c1;
 
 extern RNG_HandleTypeDef hrng;
 
@@ -68,17 +68,11 @@ void FOC_Setup(){
     // HAL_GetUIDw1();
     // HAL_GetUIDw2();
 
-    FLASH_DataTypeDef flash_data = {0}; //temporary
-    FOC_FLASH_ReadData(&flash_data);
-    if(flash_data.contains_data == 1 && flash_data.struct_terminator == FLASH_STRUCT_TERMINATOR){
-        memcpy(&hfoc.flash_data, &flash_data, sizeof(FLASH_DataTypeDef)); //only copy the data if it is valid
-    }else{
-        // hfoc.flash_data.contains_data_flag = 1;
-        // FOC_FLASH_WriteData(&hfoc.flash_data);
+    if(FOC_FLASH_ReadData(&hfoc.flash_data) != FLASH_OK){
+        FOC_FLASH_SetDefault(&hfoc.flash_data);
     }
 
     WS2812b_Setup(&htim4, TIM_CHANNEL_1);
-
 
     if(DRV8323_SetPins(&hfoc.hdrv8323, &hspi2, DRV_NCS_GPIO_Port, DRV_NCS_Pin, DRV_ENABLE_GPIO_Port, DRV_ENABLE_Pin, DRV_NFAULT_GPIO_Port, DRV_NFAULT_Pin) != DRV8323_OK){
         while(1){};
@@ -187,8 +181,8 @@ uint32_t can_no_msg_counter = 0;
 void FOC_Loop(){
     start_time = __HAL_TIM_GET_COUNTER(&htim2);
 
-    FOC_TransmitCyclicCANMessage(&hfoc);
-    FOC_ProcessCANMessage(&hfoc);
+    // FOC_TransmitCyclicCANMessage(&hfoc);
+    // FOC_ProcessCANMessage(&hfoc);
 
     if(adc1_half_complete_flag || adc1_complete_flag){ //This loop runs at (PWM frequency / CURRENT_LOOP_CLOCK_SCALER)
         adc1_start_time = __HAL_TIM_GET_COUNTER(&htim2);
@@ -366,6 +360,7 @@ static void FOC_StateLoop(){
                 hfoc.flash_data.controller.current_PID_gains_valid = 0;
                 hfoc.state = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
+                Log_printf("Motor identification failed!\n");
                 hfoc.state = FOC_STATE_ERROR;
             } 
             break;
@@ -378,6 +373,7 @@ static void FOC_StateLoop(){
                 hfoc.flash_data.controller.current_PID_FF_enabled = 0;
                 hfoc.state = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
+                Log_printf("PID autotune failed!\n");
                 hfoc.state = FOC_STATE_ERROR;
             }
             break;
@@ -389,6 +385,7 @@ static void FOC_StateLoop(){
                 hfoc.flash_data.controller.anticogging_data_valid = 0;
                 hfoc.state = FOC_STATE_ALIGNMENT_TEST;
             } else if(ret == FOC_LOOP_ERROR){
+                Log_printf("Alignment failed!\n");
                 hfoc.state = FOC_STATE_ERROR;
             }
             break;
@@ -404,6 +401,7 @@ static void FOC_StateLoop(){
                 hfoc.flash_data.controller.anticogging_data_valid = 1;
                 hfoc.state = FOC_STATE_CHECKLIST;
             } else if(ret == FOC_LOOP_ERROR){
+                Log_printf("Anti-cogging measurement failed!\n");
                 hfoc.state = FOC_STATE_ERROR;
             }
             break;

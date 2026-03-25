@@ -61,12 +61,10 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 /* Specify the memory areas */
 MEMORY
 {
-RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 32K
+RAM (xrw)       : ORIGIN = 0x20000000, LENGTH = 32K
 FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 112K
-STORAGE_FLASH  (rx) : ORIGIN = ORIGIN(FLASH) + LENGTH(FLASH), LENGTH = 16K
+STORAGE_FLASH  (r) : ORIGIN = ORIGIN(FLASH) + LENGTH(FLASH), LENGTH = 16K
 }
-
-_flashStorageBegin = ORIGIN(STORAGE_FLASH);
 
 /* Define output sections */
 SECTIONS
@@ -97,7 +95,7 @@ SECTIONS
   } >FLASH
 
 /* .permanent section is used to store data that should not be erased during a firmware update */
-  .permanent :
+  .permanent (NOLOAD) :
   {
     . = ALIGN(4);
     KEEP(*(.permanent))

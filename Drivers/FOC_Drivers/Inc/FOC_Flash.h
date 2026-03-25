@@ -6,14 +6,10 @@
 #include "PID.h"
 #include "FOC_Config.h"
 
-
-#define DATA_FLASH_PAGE 56 //the last 8 pages are reserved, pages 56-63
-#define NUMBER_OF_FLASH_PAGES 8
-#define STORAGE_FLASH_BASE (0x08000000 + FLASH_PAGE_SIZE * DATA_FLASH_PAGE) // 0x0801C000 for page 56, 
-
 typedef enum {
     FLASH_OK = 0,
-    FLASH_ERROR = 1
+    FLASH_ERROR = 1,
+    FLASH_EMPTY = 2
 } FLASH_StatusTypeDef;
 
 struct FLASH_MotorParameters {
@@ -78,8 +74,7 @@ struct FLASH_DriverParameters {
 };
 
 
-
-#define FLASH_STRUCT_TERMINATOR 0xDEADBEEF // this is used to detect if the struct is correctly read from flash
+#define FLASH_DATA_STRUCT_TERMINATOR 0xDEADBEEF // this is used to detect if the struct is correctly read from flash
 
 typedef struct {
     /* Flash settings*/
@@ -91,11 +86,12 @@ typedef struct {
     struct FLASH_Limits limits; // limits
     struct FLASH_DriverParameters node; // driver parameters
 
-    uint32_t struct_terminator; // this is used to detect if the structure is correctly read from flash. It should be the last member of the structure, and it should be set to FLASH_STRUCT_TERMINATOR when writing to flash
+    uint32_t struct_terminator; // Last part of the struct, should be set to FLASH_DATA_STRUCT_TERMINATOR. This is used to detect whether the struct is correctly read from flash.
 } FLASH_DataTypeDef;
 
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata);
 FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata);
+FLASH_StatusTypeDef FOC_FLASH_SetDefault(FLASH_DataTypeDef *pdata);
 
 
 

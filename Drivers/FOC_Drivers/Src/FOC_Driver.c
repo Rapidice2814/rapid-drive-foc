@@ -14,40 +14,14 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
 
     hfoc->state = FOC_STATE_INIT;
 
-    /*temp*/
-    hfoc->flash_data.motor.torque_constant = MOTOR_TORQUE_CONSTANT; //TODO: remove this
-    hfoc->flash_data.motor.torque_constant_valid = 1;
-    hfoc->flash_data.motor.pole_pairs = MOTOR_POLE_PAIRS;
-    hfoc->flash_data.motor.pole_pairs_valid = 1;
-
-    hfoc->flash_data.controller.PID_gains_speed.Kp = 0.1f; //TODO: remove this
-    hfoc->flash_data.controller.PID_gains_speed.Ki = 10.0f;
-    hfoc->flash_data.controller.PID_gains_speed.Kd = 0.0f;
-
-    hfoc->flash_data.controller.PID_gains_position.Kp = 5.0f; //TODO: remove this
-    hfoc->flash_data.controller.PID_gains_position.Ki = 10.0f;
-    hfoc->flash_data.controller.PID_gains_position.Kd = 0.1f;
-
-    hfoc->flash_data.controller.current_control_bandwidth = 3000.0f; // 3000 rad/s
-    hfoc->flash_data.controller.current_PID_FF_enabled = 0;
-
-    hfoc->flash_data.limits.vbus_overvoltage_trip_level = 27.0f;
-    hfoc->flash_data.limits.vbus_undervoltage_trip_level = 20.0f;
-    hfoc->flash_data.limits.max_bus_current = 0.0f;
-    hfoc->flash_data.limits.max_dq_voltage = MAX_DQ_VOLTAGE;
-    hfoc->flash_data.limits.max_dq_current = MAX_DQ_CURRENT;
-
-    hfoc->flash_data.node.id = 0; // Set a default node ID to unassigned
-    hfoc->flash_data.node.heartbeat_msg_rate_ms = 100;
-
-
-
     hfoc->speed_setpoint = 0.0f;
     hfoc->angle_setpoint = 0.0f;
     hfoc->dq_current_setpoint.q = 0.0f;
     hfoc->dq_current_setpoint.d = 0.0f;
 
     hfoc->NTC_resistance = 100e3f; // initial resistance
+
+    hfoc->vbus = 24.0f;
 
 
     return FOC_OK;
