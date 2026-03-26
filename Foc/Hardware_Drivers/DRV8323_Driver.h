@@ -125,6 +125,9 @@ typedef struct {
 	GPIO_TypeDef *enable_port;
 	uint16_t enable_pin;
 
+	GPIO_TypeDef *inl_port;
+	uint16_t inl_pin;
+
 	/* GPIO input */
 	GPIO_TypeDef *nfault_port;
 	uint16_t nfault_pin;
@@ -136,7 +139,7 @@ typedef struct {
 
 }DRV8323_HandleTypeDef;
 
-DRV8323_StatusTypeDef DRV8323_SetPins(DRV8323_HandleTypeDef *hdrv8323, SPI_HandleTypeDef *hspi, GPIO_TypeDef *slave_select_port, uint16_t slave_select_pin, GPIO_TypeDef *enable_port, uint16_t enable_pin, GPIO_TypeDef *nfault_port, uint16_t nfault_pin);
+DRV8323_StatusTypeDef DRV8323_SetPins(DRV8323_HandleTypeDef *hdrv8323, SPI_HandleTypeDef *hspi, GPIO_TypeDef *slave_select_port, uint16_t slave_select_pin, GPIO_TypeDef *enable_port, uint16_t enable_pin, GPIO_TypeDef *inl_port, uint16_t inl_pin, GPIO_TypeDef *nfault_port, uint16_t nfault_pin);
 DRV8323_StatusTypeDef DRV8323_Init(DRV8323_HandleTypeDef *hdrv8323);
 
 uint8_t DRV8323_CheckFault(DRV8323_HandleTypeDef *hdrv8323);
@@ -149,4 +152,7 @@ DRV8323_StatusTypeDef DRV8323_CSACALStop(DRV8323_HandleTypeDef *hdrv8323);
 
 DRV8323_StatusTypeDef DRV8323_Enable(DRV8323_HandleTypeDef *hdrv8323);
 DRV8323_StatusTypeDef DRV8323_Disable(DRV8323_HandleTypeDef *hdrv8323);
+
+DRV8323_StatusTypeDef DRV8323_SetHighImpedance(DRV8323_HandleTypeDef *hdrv8323);
+DRV8323_StatusTypeDef DRV8323_ExitHighImpedance(DRV8323_HandleTypeDef *hdrv8323);
 #endif /* INC_DRV8323_DRIVER_H_ */

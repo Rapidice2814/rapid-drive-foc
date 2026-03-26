@@ -60,15 +60,14 @@ __attribute__((weak)) float _atan2(float y, float x) {
   return r;
 }
 
-
 //Normalize angle to [0, 2*PI]
-void normalize_angle(float *angle){
+void normalize_angle_0_2pi(float *angle){
   while (*angle > M_2PIF) *angle -= M_2PIF;
   while (*angle <= 0) *angle += M_2PIF;
 }
 
 //Normalize angle to [-PI, PI]
-void normalize_angle2(float *angle){
+void normalize_angle_pm_pi(float *angle){
   while (*angle > M_PI) *angle -= M_2PIF;
   while (*angle <= -M_PI) *angle += M_2PIF;
 }

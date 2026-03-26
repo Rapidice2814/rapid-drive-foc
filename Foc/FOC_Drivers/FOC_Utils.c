@@ -1,8 +1,8 @@
 #include <math.h>
 #include <stdio.h>
 
-#include "FOC_Driver.h"
 #include "FOC_Utils.h"
+#include "Utils.h"
 #include "FOC_Config.h"
 
 /* uncomment these to use the cos and sin optimizations */
@@ -26,7 +26,6 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
 
     return FOC_OK;
 }
-
 
 /**
  * @brief Clarke transform
@@ -143,8 +142,6 @@ FOC_StatusTypeDef FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32
     return FOC_OK;
 }
 
-
-
 /**
  * @brief Sets the encoder pointer to the FOC structure.
  * @param hfoc Handle to the FOC structure
@@ -163,7 +160,6 @@ FOC_StatusTypeDef FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32
 
     return FOC_OK;
 }
-
 
 /**
   * @brief Sets the mechanical encoder zero position to the current position.
@@ -193,7 +189,6 @@ FOC_StatusTypeDef FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
     return FOC_OK;
 }
 
-
 /**
   * @brief Updates the encoder angle
   * @param Handle to the FOC structure
@@ -206,24 +201,24 @@ FOC_StatusTypeDef FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
     // AS5047P_GetAngle(&hfoc->has5047p, &as5047p_angle);
     // hfoc->encoder_angle_mechanical = (((float)as5047p_angle / 16384.0f) * 2.0f * M_PIF) - hfoc->flash_data.encoder.mechanical_offset;
 
-    normalize_angle(&hfoc->encoder_angle_mechanical);
+    normalize_angle_0_2pi(&hfoc->encoder_angle_mechanical);
     hfoc->encoder_angle_electrical = hfoc->encoder_angle_mechanical * (float)(hfoc->flash_data.motor.pole_pairs);
-    normalize_angle(&hfoc->encoder_angle_electrical);
+    normalize_angle_0_2pi(&hfoc->encoder_angle_electrical);
 
     return FOC_OK;
 }
 
-
 /**
   * @brief Updates the encoder speed
   * @param Handle to the FOC structure, delta time, filter alpha
+  * @param frequency: frequency at which this function is called, used to calculate the speed from the change in angle. Should be in Hz.
   * @retval FOC_StatusTypeDef
-  * @note filter alpha is used by the exponential filter to smooth the speed. Before this function is called, the encoder angle must be updated.
+  * @note Before this function is called, the encoder angle must be updated.
   */
-FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha){
+FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float frequency){
     float delta_angle = hfoc->encoder_angle_mechanical - hfoc->previous_encoder_angle_mechanical;
-    normalize_angle2(&delta_angle);
-    hfoc->encoder_speed_mechanical = hfoc->encoder_speed_mechanical * (1 - filter_alpha) + filter_alpha * delta_angle * dt;
+    normalize_angle_pm_pi(&delta_angle);
+    hfoc->encoder_speed_mechanical = hfoc->encoder_speed_mechanical * (1 - SPEED_MEASUREMENT_ALPHA) + SPEED_MEASUREMENT_ALPHA * delta_angle * frequency;
     hfoc->previous_encoder_angle_mechanical = hfoc->encoder_angle_mechanical;
 
     hfoc->encoder_speed_electrical = hfoc->encoder_speed_mechanical * (float)(hfoc->flash_data.motor.pole_pairs);
@@ -243,6 +238,7 @@ FOC_StatusTypeDef FOC_CalculateBusCurrent(FOC_HandleTypeDef *hfoc){
     hfoc->ibus = Pelec / hfoc->vbus;
     return FOC_OK;
 }
+
 
 
 

@@ -27,7 +27,7 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
                 DRV8323_CSACALStart(&hfoc->hdrv8323);
 
                 step++;
-                next_step_time = HAL_GetTick() + 1; //waoit 1ms before the next step
+                next_step_time = HAL_GetTick() + 1; //wait 1ms before the next step
             }
             break;
         case 2:
@@ -42,6 +42,10 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
 
                     DRV8323_CSACALStop(&hfoc->hdrv8323);
                     measurement_step_counter = 0; //reset the counter
+
+                    hfoc->phase_current_offset.a /= 100.0f;
+                    hfoc->phase_current_offset.b /= 100.0f;
+                    hfoc->phase_current_offset.c /= 100.0f;
 
                     step++;
                     next_step_time = HAL_GetTick() + 1;

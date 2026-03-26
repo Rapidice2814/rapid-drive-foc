@@ -3,9 +3,9 @@
 #include <string.h>
 
 #include "FOC.h"
-#include "FOC_Driver.h"
-#include "DRV8323_Driver.h"
 #include "FOC_Utils.h"
+#include "DRV8323_Driver.h"
+#include "Utils.h"
 #include "PID.h"
 #include "FOC_Flash.h"
 #include "WS2812b_Driver.h"
@@ -13,6 +13,7 @@
 #include "Logging.h"
 #include "FOC_Config.h"
 #include "FOC_CAN.h"
+#include "FOC_Sounds.h"
 
 extern ADC_HandleTypeDef hadc1;
 extern ADC_HandleTypeDef hadc2;
@@ -74,8 +75,8 @@ void FOC_Setup(){
 
     WS2812b_Setup(&htim4, TIM_CHANNEL_1);
 
-    if(DRV8323_SetPins(&hfoc.hdrv8323, &hspi2, DRV_NCS_GPIO_Port, DRV_NCS_Pin, DRV_ENABLE_GPIO_Port, DRV_ENABLE_Pin, DRV_NFAULT_GPIO_Port, DRV_NFAULT_Pin) != DRV8323_OK){
-        while(1){};
+    if(DRV8323_SetPins(&hfoc.hdrv8323, &hspi2, DRV_NCS_GPIO_Port, DRV_NCS_Pin, DRV_ENABLE_GPIO_Port, DRV_ENABLE_Pin, INL_ALL_GPIO_Port, INL_ALL_Pin, DRV_NFAULT_GPIO_Port, DRV_NFAULT_Pin) != DRV8323_OK){
+        Error_Handler();
     }
 
     if(DRV8323_Init(&hfoc.hdrv8323) != DRV8323_OK){
@@ -86,7 +87,7 @@ void FOC_Setup(){
     }
 
     if(AS5047P_SetPins(&hfoc.has5047p, &hspi2, AS_NCS_GPIO_Port, AS_NCS_Pin) != AS5047P_OK){
-        while(1){};
+        Error_Handler();
     }
 
     if(AS5047P_Init(&hfoc.has5047p) != AS5047P_OK){
@@ -110,16 +111,14 @@ void FOC_Setup(){
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
     HAL_TIM_OC_Start(&htim1, TIM_CHANNEL_4); //this triggers the adc
 
-    HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, GPIO_PIN_SET);
+    DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
 
     HAL_TIM_Base_Start(&htim1); //pwm timer and also adc trigger
     HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc1_buffer, ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2); //start adc in dma mode for the current and vbus
     HAL_ADC_Start_DMA(&hadc2, (uint32_t*)adc2_buffer, ADC2_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2); //adc for temp sensor
 
-    
     HAL_TIM_Base_Start(&htim2); //timer for the counter
     HAL_TIM_Base_Start_IT(&htim7); //timer for the debug
-
 
     /* PID controllers */
     PID_Init(&hfoc.pid_current_d, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, &hfoc.flash_data.limits.max_dq_voltage, &hfoc.flash_data.controller.PID_gains_d, 0);
@@ -127,10 +126,6 @@ void FOC_Setup(){
 
     PID_Init(&hfoc.pid_speed, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_speed, 0);
     PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_position, 1);
-
-    // hfoc.flash_data.controller.PID_gains_speed.Kp = 0.0f;
-    // hfoc.flash_data.controller.PID_gains_speed.Ki = 0.0f;
-    // hfoc.speed_setpoint = 300.0f;
 
     /* UART */
     Log_Setup(&huart3);
@@ -191,10 +186,10 @@ void FOC_Loop(){
             int end_index = start_index + CURRENT_LOOP_CLOCK_DIVIDER * ADC1_CHANNELS;
 
             for (int i = start_index; i < end_index; i += ADC1_CHANNELS) {
-                hfoc.phase_current.a = hfoc.phase_current.a * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 0] - 2048) - hfoc.phase_current_offset.a;
-                hfoc.phase_current.b = hfoc.phase_current.b * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 1] - 2048) - hfoc.phase_current_offset.b;
-                hfoc.phase_current.c = hfoc.phase_current.c * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 2] - 2048) - hfoc.phase_current_offset.c;
-                hfoc.vbus            = hfoc.vbus            * (1 - ADC_LOOP_ALPHA) + ADC_LOOP_ALPHA * VOLTAGE_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 3]);
+                hfoc.phase_current.a = hfoc.phase_current.a * (1 - ADC_MOTOR_CURRENT_ALPHA) + ADC_MOTOR_CURRENT_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 0] - 2048) - hfoc.phase_current_offset.a;
+                hfoc.phase_current.b = hfoc.phase_current.b * (1 - ADC_MOTOR_CURRENT_ALPHA) + ADC_MOTOR_CURRENT_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 1] - 2048) - hfoc.phase_current_offset.b;
+                hfoc.phase_current.c = hfoc.phase_current.c * (1 - ADC_MOTOR_CURRENT_ALPHA) + ADC_MOTOR_CURRENT_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 2] - 2048) - hfoc.phase_current_offset.c;
+                hfoc.vbus            = hfoc.vbus            * (1 - ADC_MOTOR_CURRENT_ALPHA) + ADC_MOTOR_CURRENT_ALPHA * VOLTAGE_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 3]);
                 
                 //TODO: saturated
                 if(adc1_buffer[i + 0] > 4000 || adc1_buffer[i + 1] > 4000 || adc1_buffer[i + 2] > 4000 || adc1_buffer[i + 3] > 4000){
@@ -221,7 +216,7 @@ void FOC_Loop(){
 
             for (int i = start_index; i < end_index; i += ADC2_CHANNELS) {
                 if(adc2_buffer[i] > 0){
-                    hfoc.NTC_resistance = hfoc.NTC_resistance * (1 - TEMP_LOOP_ALPHA) + TEMP_LOOP_ALPHA * 100e3f * ((4095.0f / (float)adc2_buffer[i]) - 1);
+                    hfoc.NTC_resistance = hfoc.NTC_resistance * (1 - ADC_TEMP_ALPHA) + ADC_TEMP_ALPHA * 100e3f * ((4095.0f / (float)adc2_buffer[i]) - 1);
                 } else{
                     hfoc.NTC_resistance = 0.0f;
                 }
@@ -248,21 +243,21 @@ void FOC_Loop(){
         }
 
         if(DRV8323_CheckFault(&hfoc.hdrv8323)){ //check for motor driver fault
-            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //set inverter to high impedance
+            DRV8323_SetHighImpedance(&hfoc.hdrv8323);
             FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
             Log_printf("DRV8323 fault detected! Disabling the driver.\n");
             hfoc.state = FOC_STATE_ERROR;
         }
 
         if(hfoc.NTC_temp > MOTOR_MAX_TEMP || hfoc.NTC_temp < 0.0f){ //check for over temperature or disconnected NTC
-            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //set inverter to high impedance
+            DRV8323_SetHighImpedance(&hfoc.hdrv8323);
             FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
             Log_printf("Over temperature! Temp: %d\n", (int)(hfoc.NTC_temp * 10));
             hfoc.state = FOC_STATE_ERROR;
         }
 
         if(hfoc.vbus < hfoc.flash_data.limits.vbus_undervoltage_trip_level || hfoc.vbus > hfoc.flash_data.limits.vbus_overvoltage_trip_level){ //check for undervoltage or overvoltage
-            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //set inverter to high impedance
+            DRV8323_SetHighImpedance(&hfoc.hdrv8323);
             FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
             Log_printf("Vbus undervoltage or overvoltage! Vbus: %d\n", (int)(hfoc.vbus*10));
             hfoc.state = FOC_STATE_ERROR;
@@ -279,6 +274,7 @@ void FOC_Loop(){
     if (execution_time > max_execution_time) {
         max_execution_time = execution_time;
     }
+
     if(execution_time > 100){ //max 125us for 8kHz loop
         Log_printf("Execution time: %dus\n", (int)execution_time);
     }
@@ -287,7 +283,7 @@ void FOC_Loop(){
 
 static void FOC_StateLoop(){
     FOC_UpdateEncoderAngle(&hfoc);
-    FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY, 0.3f);
+    FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY);
 
     FOC_LoopStatusTypeDef ret;
     switch(hfoc.state){
@@ -302,7 +298,7 @@ static void FOC_StateLoop(){
             break;
         case FOC_STATE_RESET:
             Log_printf("Resetting FOC ...\n");
-            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 1); //re-enable inverter
+            DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
 
             HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 0);
                 for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
@@ -317,7 +313,7 @@ static void FOC_StateLoop(){
             hfoc.state = FOC_STATE_BOOTUP_SOUND;
             break;
         case FOC_STATE_BOOTUP_SOUND:
-            if(FOC_BootupSound(&hfoc, CURRENT_LOOP_FREQUENCY)){
+            if(FOC_PlayMelody(&hfoc, bootup_sound_array, sizeof(bootup_sound_array)/sizeof(bootup_sound_array[0]), 0.8f, CURRENT_LOOP_FREQUENCY) != FOC_LOOP_IN_PROGRESS){
                 hfoc.state = FOC_STATE_CURRENT_SENSOR_CALIBRATION;
                 __NOP();
             }
@@ -435,7 +431,7 @@ static void FOC_StateLoop(){
             }
             break;
         case FOC_STATE_ERROR:
-            HAL_GPIO_WritePin(INL_ALL_GPIO_Port, INL_ALL_Pin, 0); //set inverter to high impedance
+            DRV8323_SetHighImpedance(&hfoc.hdrv8323); //set inverter to high impedance
             if(Error_LED_Loop()){
                 // hfoc.state = FOC_GENERAL_TEST;
             }
@@ -710,7 +706,7 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
         int Sp = 0;
         sscanf(packet, "Sp%d", &Sp);
         hfoc.angle_setpoint = (float)Sp / 1000.0f;
-        normalize_angle2(&hfoc.angle_setpoint); //normalize the angle to [-pi, pi]
+        normalize_angle_pm_pi(&hfoc.angle_setpoint); //normalize the angle to [-pi, pi]
     }
 
     if(packet[0] == 'L' && packet[1] == 'i'){

@@ -5,8 +5,9 @@
 /**
   * @brief Spins the motor and checks the encoder values. Used to check the encoder and the motor direction, and the accuracy of the encoder. 
   * @note 
-  * @param None
-  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
+  * @param hfoc: pointer to the FOC handle
+  * @param magnitude: voltage magnitude to apply to the motor during the test.
+  * @retval FOC_LoopStatusTypeDef
   */
 FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitude){
 
@@ -43,7 +44,7 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
                 } else{
                     diff = reference_electrical_angle - hfoc->encoder_angle_electrical;
                 }
-                normalize_angle2(&diff);
+                normalize_angle_pm_pi(&diff);
 
                 if(!direction){//cw
                     reference_angle += 2*M_PIF / 200.0f;
@@ -52,9 +53,9 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
                     reference_angle -= 2*M_PIF / 200.0f;
                     abs_diff_ccw += fabsf(diff) / 200.0f;
                 }
-                normalize_angle(&reference_angle);
+                normalize_angle_0_2pi(&reference_angle);
                 reference_electrical_angle = reference_angle * (float)(hfoc->flash_data.motor.pole_pairs);
-                normalize_angle(&reference_electrical_angle);
+                normalize_angle_0_2pi(&reference_electrical_angle);
 
                 ABVoltagesTypeDef Vab;
                 Vab.alpha = magnitude * cosf(reference_electrical_angle);

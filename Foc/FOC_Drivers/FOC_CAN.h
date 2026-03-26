@@ -2,7 +2,7 @@
 #define FOC_CAN_H
 
 #include "main.h"
-#include "FOC_Driver.h"
+#include "FOC_Utils.h"
 #include <stdint.h>
 
 #define ID_MASK 0x0F                // 4-bit ID mask

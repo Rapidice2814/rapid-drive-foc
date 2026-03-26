@@ -10,16 +10,19 @@
 static uint16_t DRV8323_TransmitCommand(DRV8323_HandleTypeDef *hdrv8323, uint8_t rwBit, uint8_t address4Bits, uint16_t data11Bits);
 
 
-DRV8323_StatusTypeDef DRV8323_SetPins(DRV8323_HandleTypeDef *hdrv8323, SPI_HandleTypeDef *hspi, GPIO_TypeDef *slave_select_port, uint16_t slave_select_pin, GPIO_TypeDef *enable_port, uint16_t enable_pin, GPIO_TypeDef *nfault_port, uint16_t nfault_pin){
+DRV8323_StatusTypeDef DRV8323_SetPins(DRV8323_HandleTypeDef *hdrv8323, SPI_HandleTypeDef *hspi, GPIO_TypeDef *slave_select_port, uint16_t slave_select_pin, GPIO_TypeDef *enable_port, uint16_t enable_pin, GPIO_TypeDef *inl_port, uint16_t inl_pin, GPIO_TypeDef *nfault_port, uint16_t nfault_pin){
 	hdrv8323->hspi = hspi;
 	hdrv8323->slave_select_port = slave_select_port;
 	hdrv8323->slave_select_pin = slave_select_pin;
 	hdrv8323->enable_port = enable_port;
 	hdrv8323->enable_pin = enable_pin;
+	hdrv8323->inl_port = inl_port;
+	hdrv8323->inl_pin = inl_pin;
+
 	hdrv8323->nfault_port = nfault_port;
 	hdrv8323->nfault_pin = nfault_pin;
 
-	if(!(hdrv8323->hspi && hdrv8323->slave_select_port && hdrv8323->enable_port && hdrv8323->nfault_port)) return DRV8323_ERROR; //if any of the pointers are NULL, return error
+	if(!(hdrv8323->hspi && hdrv8323->slave_select_port && hdrv8323->enable_port && hdrv8323->inl_port && hdrv8323->nfault_port)) return DRV8323_ERROR; //if any of the pointers are NULL, return error
 
 	hdrv8323->pins_set = 1;
 	return DRV8323_OK;
@@ -123,6 +126,29 @@ DRV8323_StatusTypeDef DRV8323_Disable(DRV8323_HandleTypeDef *hdrv8323){
 	return DRV8323_OK;
 }
 
+/**
+ * @brief  Sets the inverter to high impedance
+ * @param  hdrv8323 pointer to the DRV8323 handle
+ * @retval DRV8323_StatusTypeDef
+ */
+DRV8323_StatusTypeDef DRV8323_SetHighImpedance(DRV8323_HandleTypeDef *hdrv8323){
+	if(hdrv8323->pins_set == 0) return DRV8323_ERROR; //if the pins are not set, return error
+
+	HAL_GPIO_WritePin(hdrv8323->inl_port, hdrv8323->inl_pin, 0);
+	return DRV8323_OK;
+}
+
+/**
+ * @brief  Exits high impedance mode
+ * @param  hdrv8323 pointer to the DRV8323 handle
+ * @retval DRV8323_StatusTypeDef
+ */
+DRV8323_StatusTypeDef DRV8323_ExitHighImpedance(DRV8323_HandleTypeDef *hdrv8323){
+	if(hdrv8323->pins_set == 0) return DRV8323_ERROR; //if the pins are not set, return error
+
+	HAL_GPIO_WritePin(hdrv8323->inl_port, hdrv8323->inl_pin, 1);
+	return DRV8323_OK;
+}
 
 
 

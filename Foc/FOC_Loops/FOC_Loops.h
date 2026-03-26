@@ -2,8 +2,13 @@
 #define FOC_LOOPS_H
 
 #include "main.h"
-#include "FOC_Driver.h"
+#include "FOC_Utils.h"
 #include "logging.h"
+
+typedef struct {
+    float frequency;     // Hz (0.0 = rest)
+    uint16_t duration;   // ms
+} NoteTypeDef;
 
 typedef enum{
 	FOC_LOOP_IN_PROGRESS,
@@ -11,7 +16,7 @@ typedef enum{
     FOC_LOOP_ERROR
 }FOC_LoopStatusTypeDef;
 
-FOC_LoopStatusTypeDef FOC_BootupSound(FOC_HandleTypeDef *hfoc, float loop_frequency);
+FOC_LoopStatusTypeDef FOC_PlayMelody(FOC_HandleTypeDef *hfoc, const NoteTypeDef *melody_array, uint16_t melody_length, float magnitude, float loop_frequency);
 FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc);
 uint8_t FOC_OpenLoop(FOC_HandleTypeDef *hfoc, float espeed, float magnitude, float loop_frequency);
 FOC_LoopStatusTypeDef FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude);

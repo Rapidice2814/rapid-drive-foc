@@ -1,5 +1,5 @@
-#ifndef FOC_UTILS_H
-#define FOC_UTILS_H
+#ifndef UTILS_H
+#define UTILS_H
 
 
 #define M_2PIF 6.28318530717958647692f
@@ -36,11 +36,11 @@ float _cosf(float a);
  */
 float _atan2(float y, float x);
 
-void normalize_angle(float *angle);
-void normalize_angle2(float *angle);
+void normalize_angle_0_2pi(float *angle);
+void normalize_angle_pm_pi(float *angle);
 float constrainf(float value, float min, float max);
 
 void GenerateNtcLut();
 float GetNtcTemperature(float ntc_resistance);
 
-#endif // FOC_UTILS_H
+#endif // UTILS_H

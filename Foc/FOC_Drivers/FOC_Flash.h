@@ -2,7 +2,7 @@
 #define FOC_FLASH_H
 
 #include "stm32g4xx_hal.h"
-#include "FOC_Utils.h"
+#include "Utils.h"
 #include "PID.h"
 #include "FOC_Config.h"
 

@@ -1,5 +1,5 @@
-#ifndef FOC_DRIVER_H
-#define FOC_DRIVER_H
+#ifndef FOC_UTILS_H
+#define FOC_UTILS_H
 
 #include "main.h"
 #include "PID.h"
@@ -43,6 +43,7 @@ typedef struct {
     float d;
     float q;
 } DQVoltagesTypeDef;
+
 
 typedef enum {
     FOC_STATE_INIT,
@@ -138,7 +139,6 @@ typedef struct {
 /* General */
 FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc);
 
-
 /* Calculations */
 ABCurrentsTypeDef FOC_Clarke_transform(PhaseCurrentsTypeDef current);
 DQCurrentsTypeDef FOC_Park_transform(ABCurrentsTypeDef ab_current, float theta);
@@ -151,9 +151,9 @@ FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTyp
 FOC_StatusTypeDef FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32_t *encoder_count);
 FOC_StatusTypeDef FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc);
 FOC_StatusTypeDef FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc);
-FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float dt, float filter_alpha);
+FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float frequency);
 /* PWM */
 FOC_StatusTypeDef FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, volatile uint32_t *pCCRb, volatile uint32_t *pCCRc, uint32_t max_ccr);
 FOC_StatusTypeDef FOC_CalculateBusCurrent(FOC_HandleTypeDef *hfoc);
 
-#endif // FOC_DRIVER_H
+#endif // FOC_UTILS_H

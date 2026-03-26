@@ -16,9 +16,11 @@
 #define CURRENT_SENSE_RESISTANCE 0.02f // [Ohm], current sense resistor value to measure the phase currents
 #define VBUS_VOLTAGE_DIVIDER_RATIO (1.0f/(1.0f + 10.0f)) // R2/(R1+R2) voltage divider ratio for the bus voltage measurement, R1 = 100k, R2 = 10k
 
-/*ADC measurement filters*/
-#define ADC_LOOP_ALPHA (2.0f/(CURRENT_LOOP_CLOCK_DIVIDER+1))
-#define TEMP_LOOP_ALPHA (2.0f/(1000))
+/*Filters*/
+#define ADC_MOTOR_CURRENT_ALPHA (2.0f/(CURRENT_LOOP_CLOCK_DIVIDER+1))
+#define ADC_TEMP_ALPHA (2.0f/(1000))
+#define SPEED_MEASUREMENT_ALPHA 0.3f
+
 
 /*Temperature*/
 #define MOTOR_MAX_TEMP 60.0f // [Celsius], maximum motor temperature
@@ -34,7 +36,7 @@
 #define MOTOR_TORQUE_CONSTANT (8.27 / 380) // [Nm/A]
 
 /*limits*/
-#define VOLTAGE_LIMIT 6.0f //[V], max bus voltage
+#define VOLTAGE_LIMIT 6.0f //[V], max motor voltage
 #define MAX_DQ_VOLTAGE (VOLTAGE_LIMIT * M_1_SQRT3F)//[V]
 #define MAX_DQ_CURRENT 17.2f //[A]
 

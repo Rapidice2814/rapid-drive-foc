@@ -5,7 +5,7 @@ uint8_t FOC_OpenLoop(FOC_HandleTypeDef *hfoc, float espeed, float magnitude, flo
     static float reference_electrical_angle = 0.0f;
     float step_size = espeed / loop_frequency;
     reference_electrical_angle += step_size;
-    normalize_angle(&reference_electrical_angle);
+    normalize_angle_0_2pi(&reference_electrical_angle);
 
     ABVoltagesTypeDef Vab;
     Vab.alpha = magnitude * cosf(reference_electrical_angle);

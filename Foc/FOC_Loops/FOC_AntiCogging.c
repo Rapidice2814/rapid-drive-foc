@@ -1,6 +1,6 @@
 #include "FOC_Loops.h"
 #include <math.h>
-#include "FOC_Utils.h"
+#include "Utils.h"
 #include "FOC_Flash.h"
 #include "FOC_Config.h"
 
@@ -51,7 +51,7 @@ FOC_LoopStatusTypeDef FOC_AntiCoggingMeasurement(FOC_HandleTypeDef *hfoc){
                     
                     if(substep < NUMBER_OF_ANTICOG_MEASUREMENTS){
                         float error = hfoc->angle_setpoint - hfoc->encoder_angle_mechanical;
-                        normalize_angle2(&error);
+                        normalize_angle_pm_pi(&error);
 
                         if(fabsf(hfoc->encoder_speed_mechanical) < 0.001f && fabsf(error) < 0.005f){
                             hold_counter++;

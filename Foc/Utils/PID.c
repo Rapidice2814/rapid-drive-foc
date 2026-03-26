@@ -1,5 +1,5 @@
 #include "PID.h"
-#include "FOC_Utils.h"
+#include "Utils.h"
 #include <math.h>
 
 /**
@@ -41,7 +41,7 @@ float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement) {
 
     float error = setpoint - measurement;
     if(pid->useAngleNormalization) {
-        normalize_angle2(&error); // Normalize the angle error to [-pi, pi]
+        normalize_angle_pm_pi(&error); // Normalize the angle error to [-pi, pi]
     }
 
     float proportional = pid->K->Kp * error;
@@ -56,7 +56,7 @@ float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement) {
 
     float difference = measurement - pid->prevMeasurement;
     if (pid->useAngleNormalization) {
-        normalize_angle2(&difference); // Normalize the angle difference to [-pi, pi]
+        normalize_angle_pm_pi(&difference); // Normalize the angle difference to [-pi, pi]
     }
 		
     pid->differentiator = -(2.0f * pid->K->Kd * (difference)	// Note: derivative on measurement, therefore minus sign in front of equation! 
