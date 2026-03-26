@@ -1,0 +1,17 @@
+#ifndef FOC_ADC_H
+#define FOC_ADC_H
+
+#include "FOC_Utils.h"
+
+
+typedef enum{
+    FOC_ADC_MEASUREMENT_COMPLETE,
+	FOC_ADC_MEASUREMENT_PENDING
+}FOC_ADC_StatusTypeDef;
+
+
+void FOC_ADC_Setup();
+FOC_ADC_StatusTypeDef FOC_ADC_Measure(FOC_ADC_ValuesTypeDef *hadc_values);
+void FOC_ADC_SetPhaseCurrentOffsets(PhaseCurrentsTypeDef *offset_values);
+
+#endif /* FOC_ADC_H */

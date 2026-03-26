@@ -36,7 +36,7 @@ static const FLASH_DataTypeDef flash_data_default_values = {
         .PID_gains_position = {
             .Kp = 5.0f,
             .Ki = 10.0f,
-            .Kd = 0.1f
+            .Kd = 0.0f
         },
         .current_control_bandwidth = 3000.0f,
         .current_PID_FF_enabled = 0,

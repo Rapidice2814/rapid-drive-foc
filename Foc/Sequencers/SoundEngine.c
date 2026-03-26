@@ -1,4 +1,4 @@
-#include "FOC_Loops.h"
+#include "SoundEngine.h"
 #include <math.h>
 
 static void play_frequency(FOC_HandleTypeDef *hfoc, float frequency, float magnitude, float loop_frequency);
@@ -6,34 +6,36 @@ static void play_frequency(FOC_HandleTypeDef *hfoc, float frequency, float magni
 /**
  * @brief Plays a sound array outputting voltages to the motor. Function should be called at loop_frequency
  * @param hfoc: pointer to the FOC handle
- * @param melody_array: array of NoteTypeDef structs that define the melody to play
- * @param melody_length: length of the melody array
- * @param magnitude: magnitude of the sound in volts
+ * @param sequence_array: array of NoteTypeDef structs that define the sequence to play
+ * @param sequence_length: length of the sequence array
+ * @param amplitude: amplitude of the sound, normalized to 1.0f. This is multiplied by the note amplitude to allow for global volume control.
  * @param loop_frequency: frequency at which this function is called, used to calculate the phase increment. Should be in Hz.
  * @retval FOC_LoopStatusTypeDef
  */
-FOC_LoopStatusTypeDef FOC_PlayMelody(FOC_HandleTypeDef *hfoc, const NoteTypeDef *melody_array, uint16_t melody_length, float magnitude, float loop_frequency){
+Sound_StatusTypeDef SoundEngine_PlaySequence(FOC_HandleTypeDef *hfoc, const NoteTypeDef *sequence_array, uint16_t sequence_length, float amplitude, float loop_frequency){
 
     static uint16_t step = 0;
     static uint32_t next_step_time = 0;
 
+    float magnitude = sequence_array[step-1].amplitude * amplitude * 1.0f; //the ampliture is normalized to 1.0, so we multiply my max voltage.
+
     if(step == 0){
         play_frequency(hfoc, 0.0f, 0.0f, loop_frequency);
         step++;
-        next_step_time = HAL_GetTick() + melody_array[0].duration;
-    } else if(step <= melody_length){
-        play_frequency(hfoc, melody_array[step-1].frequency, magnitude, loop_frequency);
+        next_step_time = HAL_GetTick() + sequence_array[0].duration_ms;
+    } else if(step <= sequence_length){
+        play_frequency(hfoc, sequence_array[step-1].frequency_hz, magnitude, loop_frequency);
         if(HAL_GetTick() >= next_step_time){
             step++;
-            next_step_time = HAL_GetTick() + melody_array[step-1].duration;
+            next_step_time = HAL_GetTick() + sequence_array[step-1].duration_ms;
         }
     } else{
         play_frequency(hfoc, 0.0f, 0.0f, loop_frequency);
         step = 0;
-        return FOC_LOOP_COMPLETED;
+        return SOUND_COMPLETED;
     }
 
-    return FOC_LOOP_IN_PROGRESS;
+    return SOUND_IN_PROGRESS;
 }
 
 

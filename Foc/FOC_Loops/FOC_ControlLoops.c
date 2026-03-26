@@ -30,7 +30,7 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
     setpoint_q = constrainf(setpoint_q, -hfoc->flash_data.limits.max_dq_current, hfoc->flash_data.limits.max_dq_current);
 
 
-    hfoc->ab_current = FOC_Clarke_transform(hfoc->phase_current);
+    hfoc->ab_current = FOC_Clarke_transform(hfoc->adc_values.phase_current);
     hfoc->dq_current = FOC_Park_transform(hfoc->ab_current, encoder_angle_electrical);
     
     hfoc->dq_voltage.d = PID_Update(&hfoc->pid_current_d, setpoint_d, hfoc->dq_current.d);

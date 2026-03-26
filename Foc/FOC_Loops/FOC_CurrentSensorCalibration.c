@@ -1,4 +1,7 @@
 #include "FOC_Loops.h"
+#include "FOC_ADC.h"
+
+#define CURRENT_SENSOR_CALIBRATION_STEPS 100
 
 /**
   * @brief Calibratess the current sensor offset
@@ -10,7 +13,11 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
 
     static uint8_t step = 0;
     static uint32_t next_step_time = 0;
-    static uint8_t measurement_step_counter = 0;
+    static uint16_t measurement_step_counter = 0;
+
+    static float acc_current_offset_a = 0;
+    static float acc_current_offset_b = 0;
+    static float acc_current_offset_c = 0;
 
     switch(step){
         case 0:
@@ -26,6 +33,10 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
 
                 DRV8323_CSACALStart(&hfoc->hdrv8323);
 
+                acc_current_offset_a = 0;
+                acc_current_offset_b = 0;
+                acc_current_offset_c = 0;
+
                 step++;
                 next_step_time = HAL_GetTick() + 1; //wait 1ms before the next step
             }
@@ -34,18 +45,22 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
             if(HAL_GetTick() >= next_step_time){
                 measurement_step_counter++;
 
-                hfoc->phase_current_offset.a += hfoc->phase_current.a;
-                hfoc->phase_current_offset.b += hfoc->phase_current.b;
-                hfoc->phase_current_offset.c += hfoc->phase_current.c;
+                acc_current_offset_a += hfoc->adc_values.phase_current.a;
+                acc_current_offset_b += hfoc->adc_values.phase_current.b;
+                acc_current_offset_c += hfoc->adc_values.phase_current.c;
 
-                if(measurement_step_counter >= 100){
+                if(measurement_step_counter >= CURRENT_SENSOR_CALIBRATION_STEPS){
 
                     DRV8323_CSACALStop(&hfoc->hdrv8323);
                     measurement_step_counter = 0; //reset the counter
 
-                    hfoc->phase_current_offset.a /= 100.0f;
-                    hfoc->phase_current_offset.b /= 100.0f;
-                    hfoc->phase_current_offset.c /= 100.0f;
+                    PhaseCurrentsTypeDef current_offset_values = {
+                        .a = acc_current_offset_a / (float)CURRENT_SENSOR_CALIBRATION_STEPS,
+                        .b = acc_current_offset_b / (float)CURRENT_SENSOR_CALIBRATION_STEPS,
+                        .c = acc_current_offset_c / (float)CURRENT_SENSOR_CALIBRATION_STEPS
+                    };
+                    
+                    FOC_ADC_SetPhaseCurrentOffsets(&current_offset_values);
 
                     step++;
                     next_step_time = HAL_GetTick() + 1;
@@ -55,11 +70,7 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
         case 3:
             if(HAL_GetTick() >= next_step_time){
                 Log_printf("Current sensor calibration complete!\n");
-                // Log_printf("Phase current offsets: a: %d, b: %d, c: %d\n",
-                //          (int)(hfoc->phase_current_offset.a * 1000),
-                //          (int)(hfoc->phase_current_offset.b * 1000),
-                //          (int)(hfoc->phase_current_offset.c * 1000));
-
+                
                 step++;
                 next_step_time = HAL_GetTick() + 10;
             }

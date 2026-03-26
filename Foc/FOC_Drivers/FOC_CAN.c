@@ -77,7 +77,7 @@ void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CommandTypeDef command){
             break;
         case CMD_HEARTBEAT:
             TxData[0] = 0xFF & hfoc->state; // current state of the FOC driver
-            TxData[1] = (uint8_t)fminf(fmaxf(hfoc->NTC_temp, 0.0f), 255.0f); // Send the temperature as the second byte, in C
+            TxData[1] = (uint8_t)fminf(fmaxf(hfoc->adc_values.motor_temp, 0.0f), 255.0f); // Send the temperature as the second byte, in C
             uint16_t timestamp = (uint16_t)(HAL_GetTick() & 0xFFFF); // Get the current timestamp, wraps around every 65536 ms
             memcpy(&TxData[2], &timestamp, sizeof(uint16_t)); //byte 2-3
             TxHeader.DataLength = FDCAN_DLC_BYTES_4;

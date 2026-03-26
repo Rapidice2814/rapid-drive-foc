@@ -45,6 +45,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
 
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC.c
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC_ADC.c
 
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_CAN.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Flash.c
@@ -58,11 +59,13 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_MotorIdentification.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_OpenLoop.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_PIDAutotune.c
-    ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_SoundEngine.c
 
     ${CMAKE_SOURCE_DIR}/Foc/Hardware_Drivers/AS5047P_Driver.c
     ${CMAKE_SOURCE_DIR}/Foc/Hardware_Drivers/DRV8323_Driver.c
     ${CMAKE_SOURCE_DIR}/Foc/Hardware_Drivers/WS2812b_Driver.c
+
+    ${CMAKE_SOURCE_DIR}/Foc/Sequencers/SoundEngine.c
+    ${CMAKE_SOURCE_DIR}/Foc/Sequencers/LightEngine.c
 
     ${CMAKE_SOURCE_DIR}/Foc/Utils/Logging.c
     ${CMAKE_SOURCE_DIR}/Foc/Utils/PID.c
@@ -78,6 +81,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops
     ${CMAKE_SOURCE_DIR}/Foc/Hardware_Drivers
+    ${CMAKE_SOURCE_DIR}/Foc/Sequencers
     ${CMAKE_SOURCE_DIR}/Foc/Utils
 )
 

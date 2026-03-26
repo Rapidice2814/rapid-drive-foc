@@ -148,11 +148,11 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                     substep++;
                 } else if(substep <= MEASUREMENT_STEPS){
                     if(selector == 0){
-                        measuredCurrentArray[substep-1] = hfoc->phase_current.a;
+                        measuredCurrentArray[substep-1] = hfoc->adc_values.phase_current.a;
                     } else if(selector == 1){
-                        measuredCurrentArray[substep-1] = hfoc->phase_current.b;
+                        measuredCurrentArray[substep-1] = hfoc->adc_values.phase_current.b;
                     } else if(selector == 2){
-                        measuredCurrentArray[substep-1] = hfoc->phase_current.c;
+                        measuredCurrentArray[substep-1] = hfoc->adc_values.phase_current.c;
                     }                 
                     substep++;
                 } else{

@@ -1,0 +1,386 @@
+#ifndef SOUNDS_H
+#define SOUNDS_H
+
+#include "SoundEngine.h"
+
+// Octave 3
+#define NOTE_C3   130.81f
+#define NOTE_CS3  138.59f
+#define NOTE_D3   146.83f
+#define NOTE_DS3  155.56f
+#define NOTE_E3   164.81f
+#define NOTE_F3   174.61f
+#define NOTE_FS3  185.00f
+#define NOTE_G3   196.00f
+#define NOTE_GS3  207.65f
+#define NOTE_A3   220.00f
+#define NOTE_AS3  233.08f
+#define NOTE_B3   246.94f
+
+// Octave 4 (Middle C = C4)
+#define NOTE_C4   261.63f
+#define NOTE_CS4  277.18f
+#define NOTE_D4   293.66f
+#define NOTE_DS4  311.13f
+#define NOTE_E4   329.63f
+#define NOTE_F4   349.23f
+#define NOTE_FS4  369.99f
+#define NOTE_G4   392.00f
+#define NOTE_GS4  415.30f
+#define NOTE_A4   440.00f
+#define NOTE_AS4  466.16f
+#define NOTE_B4   493.88f
+
+// Octave 5
+#define NOTE_C5   523.25f
+#define NOTE_CS5  554.37f
+#define NOTE_D5   587.33f
+#define NOTE_DS5  622.25f
+#define NOTE_E5   659.25f
+#define NOTE_F5   698.46f
+#define NOTE_FS5  739.99f
+#define NOTE_G5   783.99f
+#define NOTE_GS5  830.61f
+#define NOTE_A5   880.00f
+#define NOTE_AS5  932.33f
+#define NOTE_B5   987.77f
+
+// Octave 6
+#define NOTE_C6   1046.50f
+#define NOTE_CS6  1108.73f
+#define NOTE_D6   1174.66f
+#define NOTE_DS6  1244.51f
+#define NOTE_E6   1318.51f
+#define NOTE_F6   1396.91f
+#define NOTE_FS6  1479.98f
+#define NOTE_G6   1567.98f
+#define NOTE_GS6  1661.22f
+#define NOTE_A6   1760.00f
+#define NOTE_AS6  1864.66f
+#define NOTE_B6   1975.53f
+
+// Octave 7
+#define NOTE_C7   2093.00f
+#define NOTE_CS7  2217.46f
+#define NOTE_D7   2349.32f
+#define NOTE_DS7  2489.02f
+#define NOTE_E7   2637.02f
+#define NOTE_F7   2793.83f
+#define NOTE_FS7  2959.96f
+#define NOTE_G7   3135.96f
+#define NOTE_GS7  3322.44f
+#define NOTE_A7   3520.00f
+#define NOTE_AS7  3729.31f
+#define NOTE_B7   3951.07f
+
+#define NOTE_REST 0.0f
+
+#define NOTE_DURATION   150   // ms per note unit
+#define REST_DURATION   15    // ms gap between notes
+
+const NoteTypeDef bootup_sound_array[] = {
+    {NOTE_C5, 200, 1.0f},
+    {NOTE_E5, 200, 1.0f},
+    {NOTE_G5, 200, 1.0f},
+    {NOTE_REST,300, 1.0f},
+    {NOTE_C6, 600, 1.0f},
+};
+
+
+const NoteTypeDef super_mario_sound_array[] = {
+    // Intro pickup: E E _ E _ C E | G _ _ G _
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  3 * NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+
+    // C _ _ G _ E _ | A A# B A | G E G A F G | _ E C D B
+    {NOTE_REST,  2 * NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_A4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_B4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_AS4,   NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_A4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_A5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_F5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_D5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_B4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+
+    // Repeat: C _ _ G _ E _ | A A# B A | G E G A F G | _ E C D B
+    {NOTE_REST,  2 * NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_A4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_B4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_AS4,   NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_A4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_A5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_F5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_D5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_B4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+
+    // Bridge: _ _ _ G F# F D# E | _ G# A C _ A C D | _ _ D# _ D _ _ _ | C _ _ _ _ _ _ _
+    {NOTE_REST,  3 * NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_FS5,   NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_F5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_DS5,   NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_GS4,   NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_A4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_A4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_D5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  2 * NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_DS5,   NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_D5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  3 * NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  7 * NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+
+    // Bridge repeat: _ _ _ G F# F D# E | _ G# A C _ A C D | _ _ D# _ D _ _ _ | C _ _ _ _ _ _ _
+    {NOTE_REST,  3 * NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_FS5,   NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_F5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_DS5,   NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_GS4,   NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_A4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_A4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_D5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  2 * NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_DS5,   NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_D5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  3 * NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  7 * NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+
+    // Final phrase: C C C _ C D D | E C A G | C C C _ C D E | _ _ _ _ | C C C _ C D D | E C A G
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_D5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_D5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_A4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_D5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  4 * NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_D5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_D5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_A4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G4,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+
+    // Intro pickup: E E _ E _ C E | G _ _ G _
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_C5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_E5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_G5,    NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+    {NOTE_REST,  3 * NOTE_DURATION, 1.0f},
+    {NOTE_REST,  REST_DURATION, 1.0f},
+};
+
+
+
+
+
+#endif // SOUNDS_H

@@ -13,10 +13,11 @@
 #include "Logging.h"
 #include "FOC_Config.h"
 #include "FOC_CAN.h"
-#include "FOC_Sounds.h"
+#include "FOC_ADC.h"
 
-extern ADC_HandleTypeDef hadc1;
-extern ADC_HandleTypeDef hadc2;
+#include "Sounds.h"
+#include "Lights.h"
+
 
 extern FDCAN_HandleTypeDef hfdcan1;
 
@@ -40,17 +41,8 @@ extern PCD_HandleTypeDef hpcd_USB_FS;
 FOC_HandleTypeDef hfoc = {0};
 
 
-static uint8_t General_LED_Loop();
-static uint8_t Error_LED_Loop();
-
 /* flags, used for the interrupts*/
-volatile uint8_t adc1_complete_flag = 0;
-volatile uint8_t adc1_half_complete_flag = 0;
 
-volatile uint8_t adc2_complete_flag = 0;
-volatile uint8_t adc2_half_complete_flag = 0;
-
-volatile uint8_t foc_adc1_measurement_flag = 0;
 volatile uint8_t foc_outer_loop_flag = 0;
 volatile uint8_t debug_loop_flag = 0;
 
@@ -58,9 +50,6 @@ volatile uint8_t debug_loop_flag = 0;
 /* ADC gains*/
 #define CURRENT_SENSE_CONVERSION_FACTOR ((3.3f/4096.0f) / (CURRENT_SENSE_RESISTANCE * CSA_GAIN_VALUE))
 #define VOLTAGE_SENSE_CONVERSION_FACTOR ((3.3f/4096.0f) / VBUS_VOLTAGE_DIVIDER_RATIO)
-
-static volatile uint16_t adc1_buffer[ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2] = {0};
-static volatile uint16_t adc2_buffer[ADC2_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2] = {0};
 
 
 void FOC_Setup(){
@@ -114,8 +103,7 @@ void FOC_Setup(){
     DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
 
     HAL_TIM_Base_Start(&htim1); //pwm timer and also adc trigger
-    HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc1_buffer, ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2); //start adc in dma mode for the current and vbus
-    HAL_ADC_Start_DMA(&hadc2, (uint32_t*)adc2_buffer, ADC2_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2); //adc for temp sensor
+    FOC_ADC_Setup(); //setup the adc for current and voltage measurements
 
     HAL_TIM_Base_Start(&htim2); //timer for the counter
     HAL_TIM_Base_Start_IT(&htim7); //timer for the debug
@@ -178,63 +166,15 @@ void FOC_Loop(){
 
     // FOC_TransmitCyclicCANMessage(&hfoc);
     // FOC_ProcessCANMessage(&hfoc);
+    
+    adc1_start_time = __HAL_TIM_GET_COUNTER(&htim2);
 
-    if(adc1_half_complete_flag || adc1_complete_flag){ //This loop runs at (PWM frequency / CURRENT_LOOP_CLOCK_SCALER)
-        adc1_start_time = __HAL_TIM_GET_COUNTER(&htim2);
-
-            int start_index = adc1_half_complete_flag ? 0 : CURRENT_LOOP_CLOCK_DIVIDER * ADC1_CHANNELS;
-            int end_index = start_index + CURRENT_LOOP_CLOCK_DIVIDER * ADC1_CHANNELS;
-
-            for (int i = start_index; i < end_index; i += ADC1_CHANNELS) {
-                hfoc.phase_current.a = hfoc.phase_current.a * (1 - ADC_MOTOR_CURRENT_ALPHA) + ADC_MOTOR_CURRENT_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 0] - 2048) - hfoc.phase_current_offset.a;
-                hfoc.phase_current.b = hfoc.phase_current.b * (1 - ADC_MOTOR_CURRENT_ALPHA) + ADC_MOTOR_CURRENT_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 1] - 2048) - hfoc.phase_current_offset.b;
-                hfoc.phase_current.c = hfoc.phase_current.c * (1 - ADC_MOTOR_CURRENT_ALPHA) + ADC_MOTOR_CURRENT_ALPHA * CURRENT_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 2] - 2048) - hfoc.phase_current_offset.c;
-                hfoc.vbus            = hfoc.vbus            * (1 - ADC_MOTOR_CURRENT_ALPHA) + ADC_MOTOR_CURRENT_ALPHA * VOLTAGE_SENSE_CONVERSION_FACTOR * (float)(adc1_buffer[i + 3]);
-                
-                //TODO: saturated
-                if(adc1_buffer[i + 0] > 4000 || adc1_buffer[i + 1] > 4000 || adc1_buffer[i + 2] > 4000 || adc1_buffer[i + 3] > 4000){
-                    __NOP();
-                }
-            }
-            FOC_CalculateBusCurrent(&hfoc); //calculate the bus current based on the phase currents and voltages
-
-            foc_adc1_measurement_flag = 1; //triggered after the adc conversion is complete (either first or second half of the buffer)
-            adc1_half_complete_flag = 0;
-            adc1_complete_flag = 0;
-
+    if(FOC_ADC_Measure(&hfoc.adc_values) == FOC_ADC_MEASUREMENT_COMPLETE){ //runs at CURRENT_LOOP_FREQUENCY
         adc1_time = __HAL_TIM_GET_COUNTER(&htim2) - adc1_start_time;
         if (adc1_time > max_adc1_time) {
             max_adc1_time = adc1_time;
         }
-    }
 
-    if(adc2_half_complete_flag || adc2_complete_flag){
-        adc2_start_time = __HAL_TIM_GET_COUNTER(&htim2);
-
-            int start_index = adc2_half_complete_flag ? 0 : CURRENT_LOOP_CLOCK_DIVIDER * ADC2_CHANNELS;
-            int end_index = start_index + CURRENT_LOOP_CLOCK_DIVIDER * ADC2_CHANNELS;
-
-            for (int i = start_index; i < end_index; i += ADC2_CHANNELS) {
-                if(adc2_buffer[i] > 0){
-                    hfoc.NTC_resistance = hfoc.NTC_resistance * (1 - ADC_TEMP_ALPHA) + ADC_TEMP_ALPHA * 100e3f * ((4095.0f / (float)adc2_buffer[i]) - 1);
-                } else{
-                    hfoc.NTC_resistance = 0.0f;
-                }
-            }
-
-            hfoc.NTC_temp = GetNtcTemperature(hfoc.NTC_resistance);
-
-            adc2_half_complete_flag = 0;
-            adc2_complete_flag = 0;
-
-        adc2_time = __HAL_TIM_GET_COUNTER(&htim2) - adc2_start_time;
-        if (adc2_time > max_adc2_time) {
-            max_adc2_time = adc2_time;
-        }
-    }
-
-
-    if(foc_adc1_measurement_flag){ //runs at CURRENT_LOOP_FREQUENCY
         log_start_time = __HAL_TIM_GET_COUNTER(&htim2);
         Log_Loop();
         log_time = __HAL_TIM_GET_COUNTER(&htim2) - log_start_time;
@@ -249,24 +189,23 @@ void FOC_Loop(){
             hfoc.state = FOC_STATE_ERROR;
         }
 
-        if(hfoc.NTC_temp > MOTOR_MAX_TEMP || hfoc.NTC_temp < 0.0f){ //check for over temperature or disconnected NTC
+        if(hfoc.adc_values.motor_temp > MOTOR_MAX_TEMP || hfoc.adc_values.motor_temp < 0.0f){ //check for over temperature or disconnected NTC
             DRV8323_SetHighImpedance(&hfoc.hdrv8323);
             FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
-            Log_printf("Over temperature! Temp: %d\n", (int)(hfoc.NTC_temp * 10));
+            Log_printf("Over temperature! Temp: %d\n", (int)(hfoc.adc_values.motor_temp * 10));
             hfoc.state = FOC_STATE_ERROR;
         }
 
-        if(hfoc.vbus < hfoc.flash_data.limits.vbus_undervoltage_trip_level || hfoc.vbus > hfoc.flash_data.limits.vbus_overvoltage_trip_level){ //check for undervoltage or overvoltage
+        if(hfoc.adc_values.vbus < hfoc.flash_data.limits.vbus_undervoltage_trip_level || hfoc.adc_values.vbus > hfoc.flash_data.limits.vbus_overvoltage_trip_level){ //check for undervoltage or overvoltage
             DRV8323_SetHighImpedance(&hfoc.hdrv8323);
             FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
-            Log_printf("Vbus undervoltage or overvoltage! Vbus: %d\n", (int)(hfoc.vbus*10));
+            Log_printf("Vbus undervoltage or overvoltage! Vbus: %d\n", (int)(hfoc.adc_values.vbus*10));
             hfoc.state = FOC_STATE_ERROR;
         }
 
 
         FOC_StateLoop();
 
-        foc_adc1_measurement_flag = 0;
     }
     
 
@@ -300,23 +239,23 @@ static void FOC_StateLoop(){
             Log_printf("Resetting FOC ...\n");
             DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
 
-            HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 0);
-                for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
-                    WS2812b_SetColor(i, 15, 10, 0);
-                }
-                WS2812b_Send();
             hfoc.dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
             hfoc.speed_setpoint = 0.0f;
             hfoc.angle_setpoint = 0.0f;
 
-
             hfoc.state = FOC_STATE_BOOTUP_SOUND;
             break;
         case FOC_STATE_BOOTUP_SOUND:
-            if(FOC_PlayMelody(&hfoc, bootup_sound_array, sizeof(bootup_sound_array)/sizeof(bootup_sound_array[0]), 0.8f, CURRENT_LOOP_FREQUENCY) != FOC_LOOP_IN_PROGRESS){
+            if(SoundEngine_PlaySequence(&hfoc, bootup_sound_array, sizeof(bootup_sound_array)/sizeof(bootup_sound_array[0]), 0.8f, CURRENT_LOOP_FREQUENCY) != SOUND_IN_PROGRESS){
                 hfoc.state = FOC_STATE_CURRENT_SENSOR_CALIBRATION;
-                __NOP();
             }
+            LightEngine_PlaySequence(bootup_light_array, sizeof(bootup_light_array)/sizeof(bootup_light_array[0]));
+
+            // if(SoundEngine_PlaySequence(&hfoc, super_mario_sound_array, sizeof(super_mario_sound_array)/sizeof(super_mario_sound_array[0]), 0.4f, CURRENT_LOOP_FREQUENCY) != SOUND_IN_PROGRESS){
+            //     hfoc.state = FOC_STATE_CURRENT_SENSOR_CALIBRATION;
+            // }
+            // LightEngine_PlaySequence(super_mario_light_array, sizeof(super_mario_light_array)/sizeof(super_mario_light_array[0]));
+
             break;
         case FOC_STATE_CURRENT_SENSOR_CALIBRATION:
             if(FOC_CurrentSensorCalibration(&hfoc) == FOC_LOOP_COMPLETED){
@@ -333,19 +272,12 @@ static void FOC_StateLoop(){
                 hfoc.state = FOC_STATE_PID_AUTOTUNE;
             // }else if(hfoc.flash_data.controller.anticogging_data_valid != 1){
             //     hfoc.state = FOC_STATE_ANTICOGGING;
-            }else{
-                for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
-                    WS2812b_SetColor(i, 0, 25, 0);
-                }
-                WS2812b_Send();
+            } else {
                 hfoc.state = FOC_STATE_RUN;
             }
             break;
         case FOC_STATE_GENERAL_TEST:
-            if(General_LED_Loop()){
-                hfoc.state = FOC_STATE_RUN;
-                __NOP();
-            }
+            hfoc.state = FOC_STATE_RUN;
             break;
         case FOC_STATE_CALIBRATION:
             break;
@@ -414,15 +346,8 @@ static void FOC_StateLoop(){
                 (int)(can_msg_counter),
                 (int)(hfoc.dq_voltage.q * 1000), (int)(hfoc.dq_current.q * 1000), 
                 (int)(hfoc.dq_current_setpoint.q * 1000), (int)(hfoc.encoder_speed_mechanical * 1000),
-                (int)(hfoc.vbus * 10), (int)(hfoc.NTC_temp * 10),
+                (int)(hfoc.adc_values.vbus * 10), (int)(hfoc.adc_values.motor_temp * 10),
                 (int)(hfoc.encoder_angle_mechanical * 1000));
-
-                // Log_printf("Vq:%d,Vd:%d,Id:%d,Iq:%d,Id_set:%d,Iq_set:%d,EAngle:%d,Espeed:%d,Vbus:%d,Temp:%d\n",
-                // (int)(hfoc.dq_voltage.q * 1000), (int)(hfoc.dq_voltage.d * 1000),
-                // (int)(hfoc.dq_current.d * 1000), (int)(hfoc.dq_current.q * 1000),
-                // (int)(hfoc.dq_current_setpoint.d * 1000), (int)(hfoc.dq_current_setpoint.q * 1000),
-                // (int)(hfoc.encoder_angle_electrical * 1000), (int)(hfoc.encoder_speed_electrical * 1000),
-                // (int)(hfoc.vbus * 10), (int)(hfoc.NTC_temp * 10));
 
                 // Log_printf("Time: %d, ADC1 Time: %d, ADC2 Time: %d, Log Time: %d, Count:%d\n",
                 //     (int)max_execution_time, (int)max_adc1_time, (int)max_adc2_time, (int)max_log_time);
@@ -432,8 +357,8 @@ static void FOC_StateLoop(){
             break;
         case FOC_STATE_ERROR:
             DRV8323_SetHighImpedance(&hfoc.hdrv8323); //set inverter to high impedance
-            if(Error_LED_Loop()){
-                // hfoc.state = FOC_GENERAL_TEST;
+            if(LightEngine_PlaySequence(error_light_array, sizeof(error_light_array)/sizeof(error_light_array[0])) != LIGHT_IN_PROGRESS){
+                __NOP();
             }
             break;
         case FOC_STATE_FLASH_SAVE:
@@ -459,154 +384,10 @@ static void FOC_StateLoop(){
 
 
 
-/**
-  * @brief 
-  * @note 
-  * @param None
-  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
-  */
-static uint8_t General_LED_Loop(){
-
-    static uint8_t step = 0;
-    static uint32_t next_step_time = 0;
-
-    switch(step){
-        case 0:
-            if(HAL_GetTick() >= next_step_time){
-
-                HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 1);
-                for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
-                    WS2812b_SetColor(i, 0, 25, 0); //green
-                }
-                WS2812b_Send();
-
-                step++;
-                next_step_time = HAL_GetTick() + 100; //wait 1ms before the next step
-            }
-            break;
-        case 1:
-            if(HAL_GetTick() >= next_step_time){
-
-                HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 0);
-                for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
-                    WS2812b_SetColor(i, 0, 0, 0); 
-                }
-                WS2812b_Send();
-                
-                step++;
-                next_step_time = HAL_GetTick() + 100; //wait 1ms before the next step
-            }
-            break;
-        default:
-            if(HAL_GetTick() >= next_step_time){
-                step = 0;
-                return 1; // complete
-            }
-            break;
-    }
-
-return 0;
-}
-
-/**
-  * @brief 
-  * @note 
-  * @param None
-  * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
-  */
-static uint8_t Error_LED_Loop(){
-
-    static uint8_t step = 0;
-    static uint32_t next_step_time = 0;
-
-    switch(step){
-        case 0:
-            if(HAL_GetTick() >= next_step_time){
-                
-                HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 1);
-                for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
-                    WS2812b_SetColor(i, 25, 0, 0); //red
-                }
-                WS2812b_Send();
-
-                step++;
-                next_step_time = HAL_GetTick() + 100; //wait 1ms before the next step
-            }
-            break;
-        case 1:
-            if(HAL_GetTick() >= next_step_time){
-
-                HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, 0);
-                for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++){
-                    WS2812b_SetColor(i, 0, 0, 0); 
-                }
-                WS2812b_Send();
-                
-                step++;
-                next_step_time = HAL_GetTick() + 100; //wait 1ms before the next step
-            }
-            break;
-        default:
-            if(HAL_GetTick() >= next_step_time){
-                step = 0;
-                return 1; // complete
-            }
-            break;
-    }
-
-return 0;
-}
-
-
-
-
-
-
-// /**
-//   * @brief 
-//   * @note 
-//   * @param None
-//   * @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete
-//   */
-//  static uint8_t General_LED_Loop(){
-
-//     static uint8_t step = 0;
-//     static uint32_t next_step_time = 0;
-
-//     switch(step){
-//         case 0:
-//             if(HAL_GetTick() >= next_step_time){
-                
-//                 step++;
-//                 next_step_time = HAL_GetTick() + 100;
-//             }
-//             break;
-//         case 1:
-//             if(HAL_GetTick() >= next_step_time){
-
-                
-//                 step++;
-//                 next_step_time = HAL_GetTick() + 100;
-//             }
-//             break;
-//         default:
-//             if(HAL_GetTick() >= next_step_time){
-//                 step = 0;
-//                 return 1; // complete
-//             }
-//             break;
-//     }
-
-// return 0;
-// }
-
-
-
 
 void Log_ProcessRxPacket(const char* packet, uint16_t Length){
     for(int i = 0; i < Length; i++){
         if(packet[i] == 'D'){
-            // hfoc.state = FOC_STATE_ANTICOGGING;
             if(packet[i+1] == 'a'){
                 hfoc.flash_data.controller.anticogging_FF_enabled = !hfoc.flash_data.controller.anticogging_FF_enabled;
             } else if(packet[i+1] == 'f'){
@@ -614,13 +395,13 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
             } 
         }
         if(packet[i] == 'A'){
-            // hfoc.state = FOC_STATE_ALIGNMENT;
+            hfoc.state = FOC_STATE_ANTICOGGING;
         }
         if(packet[i] == 'R'){
             hfoc.state = FOC_STATE_RESET;
         }
         if(packet[i] == 'E'){
-            // hfoc.state = FOC_STATE_IDENTIFY;
+            hfoc.state = FOC_STATE_ERROR;
         }
         if(packet[i] == 'F'){
             hfoc.state = FOC_STATE_FLASH_SAVE;
@@ -670,6 +451,13 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
         sscanf(packet, "Ps%d", &Ps);
         hfoc.flash_data.controller.PID_gains_speed.Kp = (float)Ps / 1000.0f;
     }
+    if(packet[0] == 'P' && packet[1] == 'p'){
+        int Pp = 0;
+        sscanf(packet, "Pp%d", &Pp);
+        hfoc.flash_data.controller.PID_gains_position.Kp = (float)Pp / 1000.0f;
+    }
+
+
     
     if(packet[0] == 'I' && packet[1] == 'd'){
         int Id = 0;
@@ -685,6 +473,11 @@ void Log_ProcessRxPacket(const char* packet, uint16_t Length){
         int Is = 0;
         sscanf(packet, "Is%d", &Is);
         hfoc.flash_data.controller.PID_gains_speed.Ki = (float)Is / 1000.0f;
+    }
+    if(packet[0] == 'I' && packet[1] == 'p'){
+        int Ip = 0;
+        sscanf(packet, "Ip%d", &Ip);
+        hfoc.flash_data.controller.PID_gains_position.Ki = (float)Ip / 1000.0f;
     }
 
     if(packet[0] == 'S' && packet[1] == 'q'){
@@ -740,29 +533,6 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
     Log_UARTEx_RxEventCallback(huart, Size);
 }
 
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) { //when the adc conversion is complete
-    if(hadc->Instance == ADC1){ 
-        if(!adc1_complete_flag){
-            adc1_complete_flag = 1;  
-        }
-    } else if(hadc->Instance == ADC2){
-        if(!adc2_complete_flag){
-            adc2_complete_flag = 1;  
-        }
-    }
-}
-
-void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc) { //when the adc conversion is half complete
-    if(hadc->Instance == ADC1){
-        if(!adc1_half_complete_flag){
-            adc1_half_complete_flag = 1;
-        }
-    } else if(hadc->Instance == ADC2){
-        if(!adc2_half_complete_flag){
-            adc2_half_complete_flag = 1;
-        }
-    }
-}
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
     if(htim->Instance == TIM6){ //not used

@@ -44,6 +44,15 @@ typedef struct {
     float q;
 } DQVoltagesTypeDef;
 
+typedef struct {
+    PhaseCurrentsTypeDef phase_current;            //measured phase currents [A]
+    
+    float vbus; //bus voltage [V]
+    float ibus; //bus current [A]
+
+    float motor_temp; //motor temperature [C]
+} FOC_ADC_ValuesTypeDef;
+
 
 typedef enum {
     FOC_STATE_INIT,
@@ -80,12 +89,9 @@ typedef struct {
     float voltage_limit; // max voltage put out by the inverter
     FLASH_DataTypeDef flash_data; // flash data structure
 
-    /* ADC buffers */
-    PhaseCurrentsTypeDef phase_current;            //measured phase currents [A]
-    PhaseCurrentsTypeDef phase_current_offset;     //offset for the phase currents [A]
-    float vbus; //bus voltage [V]
-    float ibus; //bus current [A]
-
+    /* ADC values */
+    FOC_ADC_ValuesTypeDef adc_values; 
+    
     /* Encoder */
     AS5047P_HandleTypeDef has5047p;         //encoder handle
     volatile uint32_t *pencoder_count;      //pointer to the encoder counter
@@ -107,9 +113,6 @@ typedef struct {
 
     PhaseVoltagesTypeDef phase_voltage; //phase voltages [V]
 
-    /* Temperature */
-    float NTC_resistance; //resistance [ohms]
-    float NTC_temp; //temperature [C]
 
 
     /* PID Controllers */
@@ -154,6 +157,5 @@ FOC_StatusTypeDef FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc);
 FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float frequency);
 /* PWM */
 FOC_StatusTypeDef FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, volatile uint32_t *pCCRb, volatile uint32_t *pCCRc, uint32_t max_ccr);
-FOC_StatusTypeDef FOC_CalculateBusCurrent(FOC_HandleTypeDef *hfoc);
 
 #endif // FOC_UTILS_H

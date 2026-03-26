@@ -19,11 +19,6 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
     hfoc->dq_current_setpoint.q = 0.0f;
     hfoc->dq_current_setpoint.d = 0.0f;
 
-    hfoc->NTC_resistance = 100e3f; // initial resistance
-
-    hfoc->vbus = 24.0f;
-
-
     return FOC_OK;
 }
 
@@ -105,12 +100,12 @@ FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTyp
 	float Umin = fminf(phase_voltages.a, fminf(phase_voltages.b, phase_voltages.c));
     float Umax = fmaxf(phase_voltages.a, fmaxf(phase_voltages.b, phase_voltages.c));
 
-    float center = hfoc->vbus / 2.0f;
+    float center = hfoc->adc_values.vbus / 2.0f;
     center -= (Umax+Umin) / 2.0f;
 
-    float duty_a = constrainf((phase_voltages.a + center) / hfoc->vbus, 0.0f, 1.0f);
-    float duty_b = constrainf((phase_voltages.b + center) / hfoc->vbus, 0.0f, 1.0f);
-    float duty_c = constrainf((phase_voltages.c + center) / hfoc->vbus, 0.0f, 1.0f);
+    float duty_a = constrainf((phase_voltages.a + center) / hfoc->adc_values.vbus, 0.0f, 1.0f);
+    float duty_b = constrainf((phase_voltages.b + center) / hfoc->adc_values.vbus, 0.0f, 1.0f);
+    float duty_c = constrainf((phase_voltages.c + center) / hfoc->adc_values.vbus, 0.0f, 1.0f);
 
     *(hfoc->pCCRa) = (uint32_t)(duty_a * (float)hfoc->max_ccr);
     *(hfoc->pCCRb) = (uint32_t)(duty_b * (float)hfoc->max_ccr);
@@ -226,18 +221,6 @@ FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float frequenc
     return FOC_OK;
 }
 
-/**
-  * @brief Calculates the bus current based on the phase currents and voltages
-  * @param Handle to the FOC structure
-  * @retval bus current in Amperes
-  */
-FOC_StatusTypeDef FOC_CalculateBusCurrent(FOC_HandleTypeDef *hfoc){
-    float Pelec = hfoc->phase_current.a * hfoc->phase_voltage.a + 
-                  hfoc->phase_current.b * hfoc->phase_voltage.b + 
-                  hfoc->phase_current.c * hfoc->phase_voltage.c;
-    hfoc->ibus = Pelec / hfoc->vbus;
-    return FOC_OK;
-}
 
 
 
