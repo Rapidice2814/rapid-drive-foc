@@ -89,23 +89,23 @@ PhaseVoltagesTypeDef FOC_InvClarke_transform(ABVoltagesTypeDef ab_voltage){
 /**
   * @brief Sets the phase voltages to the inverter.
   * @param hfoc Handle to the FOC structure
-  * @param phase_voltages Phase voltages to set
+  * @param phase_voltage Phase voltages to set
   * @retval FOC_StatusTypeDef
   * @note The maximum phase voltages should not exceed the vbus*sqrt(3), otherwise the output will be clipped.
   */
-FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTypeDef phase_voltages){
+FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTypeDef phase_voltage){
 
-    hfoc->phase_voltage = phase_voltages;
+    hfoc->phase_voltage = phase_voltage;
     
-	float Umin = fminf(phase_voltages.a, fminf(phase_voltages.b, phase_voltages.c));
-    float Umax = fmaxf(phase_voltages.a, fmaxf(phase_voltages.b, phase_voltages.c));
+	float Umin = fminf(phase_voltage.a, fminf(phase_voltage.b, phase_voltage.c));
+    float Umax = fmaxf(phase_voltage.a, fmaxf(phase_voltage.b, phase_voltage.c));
 
     float center = hfoc->adc_values.vbus / 2.0f;
     center -= (Umax+Umin) / 2.0f;
 
-    float duty_a = constrainf((phase_voltages.a + center) / hfoc->adc_values.vbus, 0.0f, 1.0f);
-    float duty_b = constrainf((phase_voltages.b + center) / hfoc->adc_values.vbus, 0.0f, 1.0f);
-    float duty_c = constrainf((phase_voltages.c + center) / hfoc->adc_values.vbus, 0.0f, 1.0f);
+    float duty_a = constrainf((phase_voltage.a + center) / hfoc->adc_values.vbus, 0.0f, 1.0f);
+    float duty_b = constrainf((phase_voltage.b + center) / hfoc->adc_values.vbus, 0.0f, 1.0f);
+    float duty_c = constrainf((phase_voltage.c + center) / hfoc->adc_values.vbus, 0.0f, 1.0f);
 
     *(hfoc->pCCRa) = (uint32_t)(duty_a * (float)hfoc->max_ccr);
     *(hfoc->pCCRb) = (uint32_t)(duty_b * (float)hfoc->max_ccr);

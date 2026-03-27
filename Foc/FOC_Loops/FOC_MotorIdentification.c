@@ -6,19 +6,24 @@
 
 
 /**
-  * @brief 
-  * @note 
+  * @brief This function models the current in an RL circuit with a step input voltage
   * @param t the time in seconds
   * @param R the resistance in ohms
   * @param L the inductance in henries
   * @param V the voltage in volts
   * @retval the current at time t in amperes
-  * This function models the current in an RL circuit with a step input voltage
   */
 float model_current(float t, float R, float L, float V) {
     return (V / R) * (1.0 - exp(-R * t / L));
 }
 
+/**
+  * @brief Computes the sum of squared errors between predicted and measured arrays
+  * @param predArr pointer to the array of predicted values
+  * @param measArr pointer to the array of measured values
+  * @param n the number of elements in the arrays
+  * @retval the sum of squared errors
+  */
 float compute_error(float *predArr, float *measArr, int n) {
     float error = 0.0;
     for (int i = 0; i < n; ++i) {
@@ -28,6 +33,12 @@ float compute_error(float *predArr, float *measArr, int n) {
     return error;
 }
 
+/**
+  * @brief Computes the percentage difference between the maximum and minimum values in an array
+  * @param data pointer to the array of values
+  * @param size the number of elements in the array
+  * @retval the percentage difference
+  */
 float percentDifferenceMaxMin(float* data, int size) {
     if (size <= 1) return 0.0f;
 

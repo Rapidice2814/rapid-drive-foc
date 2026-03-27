@@ -87,7 +87,7 @@ float constrainf(float value, float min, float max) {
 
 
 
-#define TEMP_MIN 10       // Minimum temperature in °C
+#define TEMP_MIN -10       // Minimum temperature in °C
 #define TEMP_MAX 100      // Maximum temperature in °C
 #define LUT_SIZE (TEMP_MAX - TEMP_MIN + 1)
 

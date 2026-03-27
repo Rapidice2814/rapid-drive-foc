@@ -52,8 +52,8 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
 
 
     hfoc->ab_voltage = FOC_InvPark_transform(hfoc->dq_voltage, encoder_angle_electrical);
-    PhaseVoltagesTypeDef phase_voltages = FOC_InvClarke_transform(hfoc->ab_voltage);
-    FOC_SetPhaseVoltages(hfoc, phase_voltages);
+    PhaseVoltagesTypeDef phase_voltage = FOC_InvClarke_transform(hfoc->ab_voltage);
+    FOC_SetPhaseVoltages(hfoc, phase_voltage);
 
 }
 

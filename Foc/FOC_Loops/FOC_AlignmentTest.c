@@ -60,8 +60,8 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
                 ABVoltagesTypeDef Vab;
                 Vab.alpha = magnitude * cosf(reference_electrical_angle);
                 Vab.beta = magnitude * sinf(reference_electrical_angle);
-                PhaseVoltagesTypeDef phase_voltages = FOC_InvClarke_transform(Vab);
-                FOC_SetPhaseVoltages(hfoc, phase_voltages);
+                PhaseVoltagesTypeDef phase_voltage = FOC_InvClarke_transform(Vab);
+                FOC_SetPhaseVoltages(hfoc, phase_voltage);
 
                 substep_counter++;
                 if(substep_counter > 200){

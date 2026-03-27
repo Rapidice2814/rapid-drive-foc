@@ -13,24 +13,25 @@ static void play_frequency(FOC_HandleTypeDef *hfoc, float frequency, float magni
  * @retval FOC_LoopStatusTypeDef
  */
 Sound_StatusTypeDef SoundEngine_PlaySequence(FOC_HandleTypeDef *hfoc, const NoteTypeDef *sequence_array, uint16_t sequence_length, float amplitude, float loop_frequency){
-
     static uint16_t step = 0;
     static uint32_t next_step_time = 0;
+    static float magnitude = 0.0f;
+    static float frequency = 0.0f;
 
-    float magnitude = sequence_array[step-1].amplitude * amplitude * 1.0f; //the ampliture is normalized to 1.0, so we multiply my max voltage.
+    play_frequency(hfoc, frequency, magnitude, loop_frequency);
 
-    if(step == 0){
-        play_frequency(hfoc, 0.0f, 0.0f, loop_frequency);
+    if(HAL_GetTick() < next_step_time) return SOUND_IN_PROGRESS;
+
+    if(step < sequence_length){
+        magnitude = sequence_array[step].amplitude * amplitude * 1.0f; //the ampliture is normalized to 1.0, so we multiply my max voltage.
+        frequency = sequence_array[step].frequency_hz;
+
+        next_step_time = HAL_GetTick() + sequence_array[step].duration_ms;
         step++;
-        next_step_time = HAL_GetTick() + sequence_array[0].duration_ms;
-    } else if(step <= sequence_length){
-        play_frequency(hfoc, sequence_array[step-1].frequency_hz, magnitude, loop_frequency);
-        if(HAL_GetTick() >= next_step_time){
-            step++;
-            next_step_time = HAL_GetTick() + sequence_array[step-1].duration_ms;
-        }
     } else{
-        play_frequency(hfoc, 0.0f, 0.0f, loop_frequency);
+        magnitude = 0.0f;
+        frequency = 0.0f;
+        
         step = 0;
         return SOUND_COMPLETED;
     }

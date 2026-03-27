@@ -14,6 +14,7 @@
 #include "FOC_Config.h"
 #include "FOC_CAN.h"
 #include "FOC_ADC.h"
+#include "FOC_Diagnostics.h"
 
 #include "Sounds.h"
 #include "Lights.h"
@@ -146,13 +147,12 @@ static uint32_t adc1_start_time = 0;
 static uint32_t adc1_time = 0;
 static uint32_t max_adc1_time = 0;
 
-static uint32_t adc2_start_time = 0;
-static uint32_t adc2_time = 0;
-static uint32_t max_adc2_time = 0;
-
 static uint32_t log_start_time = 0;
 static uint32_t log_time = 0;
 static uint32_t max_log_time = 0;
+
+static uint32_t flash_save_start_time = 0;
+static uint32_t flash_save_time = 0;
 
 uint8_t timeout_flag = 0;
 static void FOC_StateLoop();
@@ -175,6 +175,11 @@ void FOC_Loop(){
             max_adc1_time = adc1_time;
         }
 
+
+        FOC_UpdateEncoderAngle(&hfoc);
+        FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY);
+
+
         log_start_time = __HAL_TIM_GET_COUNTER(&htim2);
         Log_Loop();
         log_time = __HAL_TIM_GET_COUNTER(&htim2) - log_start_time;
@@ -182,27 +187,7 @@ void FOC_Loop(){
             max_log_time = log_time;
         }
 
-        if(DRV8323_CheckFault(&hfoc.hdrv8323)){ //check for motor driver fault
-            DRV8323_SetHighImpedance(&hfoc.hdrv8323);
-            FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
-            Log_printf("DRV8323 fault detected! Disabling the driver.\n");
-            hfoc.state = FOC_STATE_ERROR;
-        }
-
-        if(hfoc.adc_values.motor_temp > MOTOR_MAX_TEMP || hfoc.adc_values.motor_temp < 0.0f){ //check for over temperature or disconnected NTC
-            DRV8323_SetHighImpedance(&hfoc.hdrv8323);
-            FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
-            Log_printf("Over temperature! Temp: %d\n", (int)(hfoc.adc_values.motor_temp * 10));
-            hfoc.state = FOC_STATE_ERROR;
-        }
-
-        if(hfoc.adc_values.vbus < hfoc.flash_data.limits.vbus_undervoltage_trip_level || hfoc.adc_values.vbus > hfoc.flash_data.limits.vbus_overvoltage_trip_level){ //check for undervoltage or overvoltage
-            DRV8323_SetHighImpedance(&hfoc.hdrv8323);
-            FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
-            Log_printf("Vbus undervoltage or overvoltage! Vbus: %d\n", (int)(hfoc.adc_values.vbus*10));
-            hfoc.state = FOC_STATE_ERROR;
-        }
-
+        FOC_CheckErrors(&hfoc);
 
         FOC_StateLoop();
 
@@ -221,12 +206,8 @@ void FOC_Loop(){
 
 
 static void FOC_StateLoop(){
-    FOC_UpdateEncoderAngle(&hfoc);
-    FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY);
-
     FOC_LoopStatusTypeDef ret;
     switch(hfoc.state){
-    
         case FOC_STATE_INIT:
             if(hfoc.flash_data.contains_data == 1){
                 Log_printf("Flash data loaded!: Offset: %d\n", (int)(hfoc.flash_data.encoder.mechanical_offset * 1000));
@@ -270,8 +251,6 @@ static void FOC_StateLoop(){
                 hfoc.state = FOC_STATE_IDENTIFY;
             }else if(hfoc.flash_data.controller.current_PID_gains_valid != 1){
                 hfoc.state = FOC_STATE_PID_AUTOTUNE;
-            // }else if(hfoc.flash_data.controller.anticogging_data_valid != 1){
-            //     hfoc.state = FOC_STATE_ANTICOGGING;
             } else {
                 hfoc.state = FOC_STATE_RUN;
             }
@@ -356,16 +335,21 @@ static void FOC_StateLoop(){
             }
             break;
         case FOC_STATE_ERROR:
-            DRV8323_SetHighImpedance(&hfoc.hdrv8323); //set inverter to high impedance
+            DRV8323_SetHighImpedance(&hfoc.hdrv8323);
+            FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
+
             if(LightEngine_PlaySequence(error_light_array, sizeof(error_light_array)/sizeof(error_light_array[0])) != LIGHT_IN_PROGRESS){
                 __NOP();
             }
             break;
         case FOC_STATE_FLASH_SAVE:
 
+            flash_save_start_time = __HAL_TIM_GET_COUNTER(&htim2);
             if(FOC_FLASH_WriteData(&hfoc.flash_data) != FLASH_OK){
                 hfoc.state = FOC_STATE_ERROR;
             }
+            flash_save_time = __HAL_TIM_GET_COUNTER(&htim2) - flash_save_start_time;
+            Log_printf("Flash save time: %d\n", (int)flash_save_time);
             
             hfoc.state = FOC_STATE_RUN;
 

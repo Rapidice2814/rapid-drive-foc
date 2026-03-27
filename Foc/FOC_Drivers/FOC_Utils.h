@@ -48,7 +48,6 @@ typedef struct {
     PhaseCurrentsTypeDef phase_current;            //measured phase currents [A]
     
     float vbus; //bus voltage [V]
-    float ibus; //bus current [A]
 
     float motor_temp; //motor temperature [C]
 } FOC_ADC_ValuesTypeDef;
@@ -85,6 +84,10 @@ typedef struct {
     /* More flags */
     uint8_t motor_disable_flag;
 
+    /* Error registers */
+    uint32_t current_errors;
+    uint32_t latched_errors;
+
     /* General */
     float voltage_limit; // max voltage put out by the inverter
     FLASH_DataTypeDef flash_data; // flash data structure
@@ -101,11 +104,12 @@ typedef struct {
     float encoder_speed_mechanical;         //mechanical speed in rad/s
     
     float encoder_angle_electrical;           //angle in radians
-    float previous_encoder_angle_electrical;  //previous angle in radians
     float encoder_speed_electrical;           //electrical speed in rad/s
 
 
     /* Currents and Voltages*/
+    float ibus; //bus current [A]
+    
     ABCurrentsTypeDef ab_current;   //alpha and beta currents [A]
     DQCurrentsTypeDef dq_current;          //d and q currents [A]
     DQVoltagesTypeDef dq_voltage;          //d and q voltages [V]
@@ -148,7 +152,7 @@ DQCurrentsTypeDef FOC_Park_transform(ABCurrentsTypeDef ab_current, float theta);
 ABVoltagesTypeDef FOC_InvPark_transform(DQVoltagesTypeDef dq_voltage, float theta);
 PhaseVoltagesTypeDef FOC_InvClarke_transform(ABVoltagesTypeDef ab_voltage);
 
-FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTypeDef phase_voltages);
+FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTypeDef phase_voltage);
 
 /* Encoder */
 FOC_StatusTypeDef FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32_t *encoder_count);
