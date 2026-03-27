@@ -147,10 +147,11 @@ typedef struct {
 FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc);
 
 /* Calculations */
-ABCurrentsTypeDef FOC_Clarke_transform(PhaseCurrentsTypeDef current);
-DQCurrentsTypeDef FOC_Park_transform(ABCurrentsTypeDef ab_current, float theta);
-ABVoltagesTypeDef FOC_InvPark_transform(DQVoltagesTypeDef dq_voltage, float theta);
-PhaseVoltagesTypeDef FOC_InvClarke_transform(ABVoltagesTypeDef ab_voltage);
+ABCurrentsTypeDef Clarke_transform(PhaseCurrentsTypeDef current);
+DQCurrentsTypeDef Park_transform(ABCurrentsTypeDef ab_current, float theta);
+ABVoltagesTypeDef InvPark_transform(DQVoltagesTypeDef dq_voltage, float theta);
+PhaseVoltagesTypeDef InvClarke_transform(ABVoltagesTypeDef ab_voltage);
+float CalculateBusCurrent(PhaseCurrentsTypeDef phase_current, PhaseVoltagesTypeDef phase_voltage, float vbus);
 
 FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTypeDef phase_voltage);
 

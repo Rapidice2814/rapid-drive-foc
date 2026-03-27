@@ -10,7 +10,6 @@ union {
 void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id){
     if (hfoc->phfdcan == NULL) return;
     
-    hfoc->flash_data.node.id = node_id;
     
     if (hfoc->phfdcan->State == HAL_FDCAN_STATE_BUSY){
         HAL_FDCAN_Stop(hfoc->phfdcan); // Stop the FDCAN peripheral if it is busy
@@ -29,7 +28,7 @@ void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id){
     }
     
     sFilterConfig.FilterIndex = 1;
-    sFilterConfig.FilterID1 = hfoc->flash_data.node.id & ID_MASK; // Accept node id
+    sFilterConfig.FilterID1 = node_id & ID_MASK; // Accept node id
     sFilterConfig.FilterID2 = ID_MASK;
     if (HAL_FDCAN_ConfigFilter(hfoc->phfdcan, &sFilterConfig) != HAL_OK){
         Error_Handler();
@@ -42,6 +41,8 @@ void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id){
     if (HAL_FDCAN_ActivateNotification(hfoc->phfdcan, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK){
         Error_Handler();
     }
+
+    hfoc->flash_data.node.node_id = node_id;
     
 }
 
@@ -56,7 +57,7 @@ void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CommandTypeDef command){
     TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
     TxHeader.MessageMarker = 0;
 
-    TxHeader.Identifier = GET_CAN_ID(hfoc->flash_data.node.id, 1, command);
+    TxHeader.Identifier = GET_CAN_ID(hfoc->flash_data.node.node_id, 1, command);
 
     uint8_t TxData[64];
 
@@ -164,7 +165,7 @@ void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
 static uint32_t last_heartbeat_time_ms = 0;
 
 void FOC_TransmitCyclicCANMessage(FOC_HandleTypeDef *hfoc){
-    if(hfoc->flash_data.node.id == 0) return;
+    if(hfoc->flash_data.node.node_id == 0) return;
 
     if ((hfoc->flash_data.node.heartbeat_msg_rate_ms != 0) && (HAL_GetTick() - last_heartbeat_time_ms >= hfoc->flash_data.node.heartbeat_msg_rate_ms)) {
         last_heartbeat_time_ms = HAL_GetTick();

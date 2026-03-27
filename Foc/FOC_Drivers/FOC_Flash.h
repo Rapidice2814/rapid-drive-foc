@@ -69,7 +69,7 @@ struct FLASH_Limits {
 };
 
 struct FLASH_DriverParameters {
-    uint8_t id; // ID of the driver, 4-bit, 1-15, with 0 reserved for unassigned
+    uint8_t node_id; // ID of the driver, 4-bit, 1-15, with 0 reserved for unassigned
     uint16_t heartbeat_msg_rate_ms; // [ms], the rate at which the heartbeat message is sent
 };
 

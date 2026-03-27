@@ -47,6 +47,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC_ADC.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC_Diagnostics.c
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC_Statemachine.c
 
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_CAN.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Flash.c

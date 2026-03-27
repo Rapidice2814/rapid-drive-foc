@@ -17,8 +17,6 @@
 #define VBUS_VOLTAGE_DIVIDER_RATIO (1.0f/(1.0f + 10.0f)) // R2/(R1+R2) voltage divider ratio for the bus voltage measurement, R1 = 100k, R2 = 10k
 
 /*Filters*/
-#define ADC_MOTOR_CURRENT_ALPHA (2.0f/(CURRENT_LOOP_CLOCK_DIVIDER+1))
-#define ADC_TEMP_ALPHA (2.0f/(1000))
 #define SPEED_MEASUREMENT_ALPHA 0.3f
 
 
@@ -36,7 +34,7 @@
 #define MOTOR_TORQUE_CONSTANT (8.27 / 380) // [Nm/A]
 
 /*limits*/
-#define VOLTAGE_LIMIT 6.0f //[V], max motor voltage
+#define VOLTAGE_LIMIT 8.0f //[V], max motor voltage
 #define MAX_DQ_VOLTAGE (VOLTAGE_LIMIT * M_1_SQRT3F)//[V]
 #define MAX_DQ_CURRENT 17.2f //[A]
 

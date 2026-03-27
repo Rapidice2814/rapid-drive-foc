@@ -108,7 +108,6 @@ FOC_ADC_StatusTypeDef FOC_ADC_Measure(FOC_ADC_ValuesTypeDef *hadc_values){
         hadc_values->phase_current.c = adc_values.phase_current.c - adc_offset_values.phase_current.c;
 
         hadc_values->vbus = adc_values.vbus - adc_offset_values.vbus;
-        hadc_values->ibus = adc_values.ibus - adc_offset_values.ibus;
         hadc_values->motor_temp = adc_values.motor_temp - adc_offset_values.motor_temp;
 
         return FOC_ADC_MEASUREMENT_COMPLETE;

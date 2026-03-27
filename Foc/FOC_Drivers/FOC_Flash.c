@@ -1,20 +1,15 @@
 #include "FOC_Flash.h"
 #include <string.h>
 
-extern char _flashBase;
-extern char _flashLength;
-extern char _storageFlashBase;
-extern char _storageFlashLength;
-
-
-
 #define STORAGE_FLASH_PAGE 56
 #define NUMBER_OF_FLASH_PAGES 8
 #define STORAGE_FLASH_BASE (0x08000000 + FLASH_PAGE_SIZE * STORAGE_FLASH_PAGE) // 0x0801C000 for page 56, 
 
 
-// this variable is used to force the linker to include the .permanent section, which is where the flash data is stored. The actual data is read and written directly from flash using the FOC_FLASH_ReadData and FOC_FLASH_WriteData functions, so this variable is not used directly in the code.
+// this variable is used to force the linker to include the .permanent section, which is where the flash data is stored. 
+// The actual data is read and written directly from flash using the FOC_FLASH_ReadData and FOC_FLASH_WriteData functions, so this variable is not used directly in the code.
 __attribute((section(".permanent"))) FLASH_DataTypeDef flash_data_storage; 
+
 
 // static const FLASH_DataTypeDef flash_data_default_values = {0};
 static const FLASH_DataTypeDef flash_data_default_values = {
@@ -51,7 +46,7 @@ static const FLASH_DataTypeDef flash_data_default_values = {
     },
 
     .node = {
-        .id = 0, // Set a default node ID to unassigned
+        .node_id = 0, // Set a default node ID to unassigned
         .heartbeat_msg_rate_ms = 100
     },
     
@@ -62,6 +57,11 @@ static const FLASH_DataTypeDef flash_data_default_values = {
     
 static FLASH_EraseInitTypeDef EraseInitStruct;
 
+/**
+ * @brief  Writes the FOC configuration data to flash memory.
+ * @param  pdata: Pointer to the data to be written to flash.
+ * @retval FLASH_StatusTypeDef: Status of the flash write operation. Returns FLASH_OK if successful, FLASH_ERROR if there was an error, and FLASH_EMPTY if the input data is empty.
+ */
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
     if(pdata == NULL){
         return FLASH_ERROR;
@@ -103,7 +103,11 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
     return FLASH_OK;
 }
 
-
+/**
+ * @brief  Reads the FOC configuration data from flash memory.
+ * @param  pdata: Pointer to the data structure to be filled with the read data.
+ * @retval FLASH_StatusTypeDef: Status of the flash read operation. Returns FLASH_OK if successful, FLASH_ERROR if there was an error, and FLASH_EMPTY if no valid data is found.
+ */
 FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
     if(pdata == NULL){
         return FLASH_ERROR;
@@ -122,7 +126,6 @@ FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
 
     if(temp_flash_data.contains_data == 1 && temp_flash_data.struct_terminator == FLASH_DATA_STRUCT_TERMINATOR){
         memcpy(pdata, &temp_flash_data, sizeof(FLASH_DataTypeDef));
-        return FLASH_OK;
     } else {
         return FLASH_EMPTY;
     }
@@ -130,6 +133,11 @@ FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
     return FLASH_OK;
 }
 
+/**
+ * @brief  Sets the FOC configuration data to default values.
+ * @param  pdata: Pointer to the data structure to be filled with default values.
+ * @retval FLASH_StatusTypeDef: Status of the operation. Returns FLASH_OK if successful and FLASH_ERROR if there was an error (e.g., null pointer).
+ */
 FLASH_StatusTypeDef FOC_FLASH_SetDefault(FLASH_DataTypeDef *pdata){
     if(pdata == NULL){
         return FLASH_ERROR;

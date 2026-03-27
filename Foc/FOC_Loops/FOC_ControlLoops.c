@@ -30,8 +30,8 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
     setpoint_q = constrainf(setpoint_q, -hfoc->flash_data.limits.max_dq_current, hfoc->flash_data.limits.max_dq_current);
 
 
-    hfoc->ab_current = FOC_Clarke_transform(hfoc->adc_values.phase_current);
-    hfoc->dq_current = FOC_Park_transform(hfoc->ab_current, encoder_angle_electrical);
+    hfoc->ab_current = Clarke_transform(hfoc->adc_values.phase_current);
+    hfoc->dq_current = Park_transform(hfoc->ab_current, encoder_angle_electrical);
     
     hfoc->dq_voltage.d = PID_Update(&hfoc->pid_current_d, setpoint_d, hfoc->dq_current.d);
     hfoc->dq_voltage.q = PID_Update(&hfoc->pid_current_q, setpoint_q, hfoc->dq_current.q);
@@ -50,9 +50,8 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
     }
 
 
-
-    hfoc->ab_voltage = FOC_InvPark_transform(hfoc->dq_voltage, encoder_angle_electrical);
-    PhaseVoltagesTypeDef phase_voltage = FOC_InvClarke_transform(hfoc->ab_voltage);
+    hfoc->ab_voltage = InvPark_transform(hfoc->dq_voltage, encoder_angle_electrical);
+    PhaseVoltagesTypeDef phase_voltage = InvClarke_transform(hfoc->ab_voltage);
     FOC_SetPhaseVoltages(hfoc, phase_voltage);
 
 }

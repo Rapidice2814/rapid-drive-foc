@@ -65,7 +65,7 @@ static void play_frequency(FOC_HandleTypeDef *hfoc, float sound_frequency, float
         .beta  = magnitude * sinf(phase)
     };
 
-    FOC_SetPhaseVoltages(hfoc, FOC_InvClarke_transform(Vab));
+    FOC_SetPhaseVoltages(hfoc, InvClarke_transform(Vab));
 
     
 }

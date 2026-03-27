@@ -10,7 +10,7 @@ uint8_t FOC_OpenLoop(FOC_HandleTypeDef *hfoc, float espeed, float magnitude, flo
     ABVoltagesTypeDef Vab;
     Vab.alpha = magnitude * cosf(reference_electrical_angle);
     Vab.beta = magnitude * sinf(reference_electrical_angle);
-    PhaseVoltagesTypeDef phase_voltage = FOC_InvClarke_transform(Vab);
+    PhaseVoltagesTypeDef phase_voltage = InvClarke_transform(Vab);
     if(espeed > 0.0f){
         FOC_SetPhaseVoltages(hfoc, phase_voltage);
     } else{

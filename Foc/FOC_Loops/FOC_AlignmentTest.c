@@ -30,7 +30,7 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
                 abs_diff_cw = 0.0f;
                 abs_diff_ccw = 0.0f;
 
-                FOC_SetPhaseVoltages(hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.3f, 0.0f}));
+                FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){0.3f, 0.0f}));
                 step++;
                 next_step_time = HAL_GetTick() + 10; 
             }
@@ -60,7 +60,7 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
                 ABVoltagesTypeDef Vab;
                 Vab.alpha = magnitude * cosf(reference_electrical_angle);
                 Vab.beta = magnitude * sinf(reference_electrical_angle);
-                PhaseVoltagesTypeDef phase_voltage = FOC_InvClarke_transform(Vab);
+                PhaseVoltagesTypeDef phase_voltage = InvClarke_transform(Vab);
                 FOC_SetPhaseVoltages(hfoc, phase_voltage);
 
                 substep_counter++;
@@ -95,7 +95,7 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
         case 2:
             if(HAL_GetTick() >= next_step_time){
 
-                FOC_SetPhaseVoltages(hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
+                FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
 
                 Log_printf("Alignment test:\nAbs Diff CW:%d, CCW:%d\nDirection:%d\n", (int)(abs_diff_cw * 1000), (int)(abs_diff_ccw * 1000), hfoc->flash_data.motor.direction);
                 if(abs_diff_cw < 0.3f && abs_diff_ccw < 0.3f){
@@ -110,7 +110,7 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
                         next_step_time = HAL_GetTick() + 1;
                     } else{
                         attempt = 0;
-                        Log_printf("Alignment test failed after 3 attempts!\n");
+                        Log_printf("Alignment test failed after %d attempts!\n", attempt);
                         return FOC_LOOP_ERROR;
                     }
                 }

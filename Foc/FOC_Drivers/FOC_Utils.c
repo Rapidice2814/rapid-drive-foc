@@ -27,7 +27,7 @@ FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
  * @param current Phase currents
  * @retval ABCurrentsTypeDef Alpha and Beta currents
  */
-ABCurrentsTypeDef FOC_Clarke_transform(PhaseCurrentsTypeDef current){
+ABCurrentsTypeDef Clarke_transform(PhaseCurrentsTypeDef current){
     ABCurrentsTypeDef result;
     
 	float mid = (1.f/3) * (current.a + current.b + current.c);
@@ -44,7 +44,7 @@ ABCurrentsTypeDef FOC_Clarke_transform(PhaseCurrentsTypeDef current){
  * @param theta Electrical angle in radians
  * @retval DQCurrentsTypeDef D and Q currents
  */
-DQCurrentsTypeDef FOC_Park_transform(ABCurrentsTypeDef ab_current, float theta){
+DQCurrentsTypeDef Park_transform(ABCurrentsTypeDef ab_current, float theta){
     DQCurrentsTypeDef result;
 
 	float cos_theta = cosf(theta);
@@ -61,7 +61,7 @@ DQCurrentsTypeDef FOC_Park_transform(ABCurrentsTypeDef ab_current, float theta){
  * @param theta Electrical angle in radians
  * @retval ABVoltagesTypeDef Alpha and Beta voltages
  */
-ABVoltagesTypeDef FOC_InvPark_transform(DQVoltagesTypeDef dq_voltage, float theta){
+ABVoltagesTypeDef InvPark_transform(DQVoltagesTypeDef dq_voltage, float theta){
     ABVoltagesTypeDef result;
 
 	float cos_theta = cosf(theta);
@@ -77,13 +77,29 @@ ABVoltagesTypeDef FOC_InvPark_transform(DQVoltagesTypeDef dq_voltage, float thet
  * @param ab_voltage Alpha-beta voltages
  * @retval PhaseVoltagesTypeDef Phase voltages
  */
-PhaseVoltagesTypeDef FOC_InvClarke_transform(ABVoltagesTypeDef ab_voltage){
+PhaseVoltagesTypeDef InvClarke_transform(ABVoltagesTypeDef ab_voltage){
     PhaseVoltagesTypeDef result;
     result.a = ab_voltage.alpha;
     result.b = -0.5f * ab_voltage.alpha + M_SQRT3_2F * ab_voltage.beta;
     result.c = -0.5f * ab_voltage.alpha - M_SQRT3_2F * ab_voltage.beta;
 
     return result;
+}
+
+/**
+ * @brief Calculates the bus current based on the phase currents and voltages.
+ * @param phase_current Phase currents
+ * @param phase_voltage Phase voltages
+ * @param vbus Bus voltage
+ * @retval float Bus current
+ */
+float CalculateBusCurrent(PhaseCurrentsTypeDef phase_current, PhaseVoltagesTypeDef phase_voltage, float vbus){
+    float power = phase_voltage.a * phase_current.a +
+                  phase_voltage.b * phase_current.b + 
+                  phase_voltage.c * phase_current.c;
+    
+    float Ibus = power / vbus;
+    return Ibus;
 }
 
 /**

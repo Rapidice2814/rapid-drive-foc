@@ -41,12 +41,12 @@ FOC_LoopStatusTypeDef FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
                     ABVoltagesTypeDef ab_voltage; 
                     ab_voltage.alpha = cosf(angle) * magnitude;
                     ab_voltage.beta = sinf(angle) * magnitude;
-                    FOC_SetPhaseVoltages(hfoc, FOC_InvClarke_transform(ab_voltage));
+                    FOC_SetPhaseVoltages(hfoc, InvClarke_transform(ab_voltage));
                     angle = -angle - (angle > 0 ? -ANGLE_STEP : ANGLE_STEP);
                     substep++;
                     next_step_time = HAL_GetTick() + 100;
                 }else if(substep == ALIGNMENT_STEPS){
-                    FOC_SetPhaseVoltages(hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){magnitude, 0.0f}));
+                    FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){magnitude, 0.0f}));
                     substep++;
                     next_step_time = HAL_GetTick() + 100;
                 }else{
@@ -63,7 +63,7 @@ FOC_LoopStatusTypeDef FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
                 // execution_time = __HAL_TIM_GET_COUNTER(&htim2) - start_time;
 
                 if(retval != FOC_OK){
-                    FOC_SetPhaseVoltages(hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
+                    FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
                     Log_printf("Error setting encoder zero\n");
                     step = 0;
                     return FOC_LOOP_ERROR;
@@ -79,7 +79,7 @@ FOC_LoopStatusTypeDef FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
             break;
         case 3:
             if(HAL_GetTick() >= next_step_time){
-                FOC_SetPhaseVoltages(hfoc, FOC_InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
+                FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
                 
                 step++;
                 next_step_time = HAL_GetTick() + 100; //wait before the next step
