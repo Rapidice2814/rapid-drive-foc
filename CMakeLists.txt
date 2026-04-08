@@ -52,6 +52,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_CAN.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Flash.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Utils.c
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_HFI.c
 
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_Alignment.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_AlignmentTest.c

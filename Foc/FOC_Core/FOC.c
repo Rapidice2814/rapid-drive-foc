@@ -189,7 +189,7 @@ void FOC_Loop(){
         max_execution_time = execution_time;
     }
 
-    if(execution_time > 100){ //max 125us for 8kHz loop
+    if(execution_time > 120){ //max 125us for 8kHz loop
         Log_printf("Execution time: %dus\n", (int)execution_time);
     }
 }

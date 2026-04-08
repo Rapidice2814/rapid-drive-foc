@@ -3,6 +3,8 @@
 #include "Utils.h"
 #include "FOC_Config.h"
 
+#include "FOC_HFI.h"
+
 
 void Current_Loop(FOC_HandleTypeDef *hfoc){
     float encoder_angle_electrical, setpoint_q, setpoint_d;
@@ -35,6 +37,8 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
     
     hfoc->dq_voltage.d = PID_Update(&hfoc->pid_current_d, setpoint_d, hfoc->dq_current.d);
     hfoc->dq_voltage.q = PID_Update(&hfoc->pid_current_q, setpoint_q, hfoc->dq_current.q);
+
+    // hfoc->dq_voltage.d += FOC_HFI_GetInjectedVoltage();
 
     if(hfoc->flash_data.controller.current_PID_FF_enabled == 1){
         if(hfoc->flash_data.motor.torque_constant_valid == 1 && 
