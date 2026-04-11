@@ -16,7 +16,7 @@
 #include "FOC_ADC.h"
 #include "FOC_Diagnostics.h"
 #include "FOC_Statemachine.h"
-
+#include "Cordic.h"
 
 extern FDCAN_HandleTypeDef hfdcan1;
 
@@ -149,8 +149,13 @@ static uint32_t log_start_time = 0;
 static uint32_t log_time = 0;
 static uint32_t max_log_time = 0;
 
+static uint32_t state_start_time = 0;
+static uint32_t state_time = 0;
+static uint32_t max_state_time = 0;
+
 void FOC_Loop(){
     start_time = __HAL_TIM_GET_COUNTER(&htim2);
+
 
     // FOC_TransmitCyclicCANMessage(&hfoc);
     // FOC_ProcessCANMessage(&hfoc);
@@ -179,7 +184,15 @@ void FOC_Loop(){
 
         FOC_CheckErrors(&hfoc);
 
+        state_start_time = __HAL_TIM_GET_COUNTER(&htim2);
+
         FOC_StateLoop(&hfoc);
+
+        state_time = __HAL_TIM_GET_COUNTER(&htim2) - state_start_time;
+        if (state_time > max_state_time) {
+            max_state_time = state_time;
+        }
+
 
     }
     
@@ -189,7 +202,7 @@ void FOC_Loop(){
         max_execution_time = execution_time;
     }
 
-    if(execution_time > 120){ //max 125us for 8kHz loop
+    if(execution_time > 1200){ //max 125us for 8kHz loop
         Log_printf("Execution time: %dus\n", (int)execution_time);
     }
 }
@@ -368,7 +381,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
 
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim){
     if(htim->Instance == TIM1){
-        HAL_GPIO_WritePin(PB2_GPIO_Port, PB2_Pin, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(PB2_GPIO_Port, PB2_Pin, GPIO_PIN_RESET);  
+        // HAL_GPIO_WritePin(PB2_GPIO_Port, PB2_Pin, GPIO_PIN_SET);
+        // HAL_GPIO_WritePin(PB2_GPIO_Port, PB2_Pin, GPIO_PIN_RESET);  
     }
 }

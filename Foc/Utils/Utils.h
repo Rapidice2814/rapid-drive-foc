@@ -12,30 +12,6 @@
 #define M_2_SQRT3F 1.15470053838f
 
 
-
-/* Some optimizations from SimpleFOC */
-
-/**
- *  Function approximating the sine calculation by using fixed size array
- * - execution time ~40us (Arduino UNO)
- *
- * @param a angle in between 0 and 2PI
- */
-float _sinf(float a);
-/**
- * Function approximating cosine calculation by using fixed size array
- * - execution time ~50us (Arduino UNO)
- *
- * @param a angle in between 0 and 2PI
- */
-float _cosf(float a);
-
-/**
- * Function approximating atan2 
- * 
- */
-float _atan2(float y, float x);
-
 void normalize_angle_0_2pi(float *angle);
 void normalize_angle_pm_pi(float *angle);
 float constrainf(float value, float min, float max);

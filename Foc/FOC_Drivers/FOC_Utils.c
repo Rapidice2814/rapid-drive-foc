@@ -4,10 +4,8 @@
 #include "FOC_Utils.h"
 #include "Utils.h"
 #include "FOC_Config.h"
+#include "Cordic.h"
 
-/* uncomment these to use the cos and sin optimizations */
-#define cosf _cosf
-#define sinf _sinf
 
 //Sets default values for the FOC structure
 FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
@@ -47,8 +45,9 @@ ABCurrentsTypeDef Clarke_transform(PhaseCurrentsTypeDef current){
 DQCurrentsTypeDef Park_transform(ABCurrentsTypeDef ab_current, float theta){
     DQCurrentsTypeDef result;
 
-	float cos_theta = cosf(theta);
-	float sin_theta = sinf(theta);
+    float cos_theta, sin_theta;
+    Cordic_CalculateSinCos(theta, &cos_theta, &sin_theta);
+
 	result.d = ab_current.alpha * cos_theta + ab_current.beta * sin_theta;
 	result.q = ab_current.beta * cos_theta - ab_current.alpha * sin_theta;
 
@@ -64,8 +63,9 @@ DQCurrentsTypeDef Park_transform(ABCurrentsTypeDef ab_current, float theta){
 ABVoltagesTypeDef InvPark_transform(DQVoltagesTypeDef dq_voltage, float theta){
     ABVoltagesTypeDef result;
 
-	float cos_theta = cosf(theta);
-	float sin_theta = sinf(theta);
+    float cos_theta, sin_theta;
+    Cordic_CalculateSinCos(theta, &cos_theta, &sin_theta);
+
     result.alpha = dq_voltage.d * cos_theta - dq_voltage.q * sin_theta;
     result.beta = dq_voltage.d * sin_theta + dq_voltage.q * cos_theta;
 

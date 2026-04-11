@@ -1,5 +1,6 @@
 #include "FOC_Loops.h"
 #include <math.h>
+#include "Cordic.h"
 
 uint8_t FOC_OpenLoop(FOC_HandleTypeDef *hfoc, float espeed, float magnitude, float loop_frequency){
     static float reference_electrical_angle = 0.0f;
@@ -8,8 +9,12 @@ uint8_t FOC_OpenLoop(FOC_HandleTypeDef *hfoc, float espeed, float magnitude, flo
     normalize_angle_0_2pi(&reference_electrical_angle);
 
     ABVoltagesTypeDef Vab;
-    Vab.alpha = magnitude * cosf(reference_electrical_angle);
-    Vab.beta = magnitude * sinf(reference_electrical_angle);
+
+    float cos_theta, sin_theta;
+    Cordic_CalculateSinCos(reference_electrical_angle, &cos_theta, &sin_theta);
+
+    Vab.alpha = magnitude * cos_theta;
+    Vab.beta = magnitude * sin_theta;
     PhaseVoltagesTypeDef phase_voltage = InvClarke_transform(Vab);
     if(espeed > 0.0f){
         FOC_SetPhaseVoltages(hfoc, phase_voltage);

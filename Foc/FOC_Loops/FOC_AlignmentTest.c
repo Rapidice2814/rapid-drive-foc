@@ -1,6 +1,7 @@
 
 #include "FOC_Loops.h"
 #include <math.h>
+#include "Cordic.h"
 
 /**
   * @brief Spins the motor and checks the encoder values. Used to check the encoder and the motor direction, and the accuracy of the encoder. 
@@ -58,8 +59,12 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
                 normalize_angle_0_2pi(&reference_electrical_angle);
 
                 ABVoltagesTypeDef Vab;
-                Vab.alpha = magnitude * cosf(reference_electrical_angle);
-                Vab.beta = magnitude * sinf(reference_electrical_angle);
+
+                float cos_theta, sin_theta;
+                Cordic_CalculateSinCos(reference_electrical_angle, &cos_theta, &sin_theta);
+
+                Vab.alpha = magnitude * cos_theta;
+                Vab.beta = magnitude * sin_theta;
                 PhaseVoltagesTypeDef phase_voltage = InvClarke_transform(Vab);
                 FOC_SetPhaseVoltages(hfoc, phase_voltage);
 

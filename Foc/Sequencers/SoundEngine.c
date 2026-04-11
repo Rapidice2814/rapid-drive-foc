@@ -1,5 +1,6 @@
 #include "SoundEngine.h"
 #include <math.h>
+#include "Cordic.h"
 
 static void play_frequency(FOC_HandleTypeDef *hfoc, float frequency, float magnitude, float loop_frequency);
 
@@ -60,9 +61,12 @@ static void play_frequency(FOC_HandleTypeDef *hfoc, float sound_frequency, float
     phase += (sound_frequency * M_TWOPI) / loop_frequency;
     normalize_angle_0_2pi(&phase);
 
+    float cos_theta, sin_theta;
+    Cordic_CalculateSinCos(phase, &cos_theta, &sin_theta);
+    
     ABVoltagesTypeDef Vab = {
-        .alpha = magnitude * cosf(phase),
-        .beta  = magnitude * sinf(phase)
+        .alpha = magnitude * cos_theta,
+        .beta  = magnitude * sin_theta
     };
 
     FOC_SetPhaseVoltages(hfoc, InvClarke_transform(Vab));

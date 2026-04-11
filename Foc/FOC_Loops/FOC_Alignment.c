@@ -1,5 +1,6 @@
 #include "FOC_Loops.h"
 #include <math.h>
+#include "Cordic.h"
 
 // extern TIM_HandleTypeDef htim2;
 // static uint32_t start_time = 0;
@@ -9,8 +10,8 @@
 
 
 #define ALIGNMENT_STEPS 10
-#define STARTING_ANGLE 0.2f //starting angle for the alignment in radians
-#define ANGLE_STEP (STARTING_ANGLE / ALIGNMENT_STEPS)
+#define STARTING_PHASE 0.2f //starting phase for the alignment in radians
+#define PHASE_STEP (STARTING_PHASE / ALIGNMENT_STEPS)
 /**
 * @brief This is alligns the encoder zero to the motor zero (electrical angle).
 * @note 
@@ -21,14 +22,14 @@ FOC_LoopStatusTypeDef FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
 
     static uint8_t step = 0;
     static uint32_t next_step_time = 0;
-    static float angle = 0.0f;
+    static float phase = 0.0f;
 
     switch(step){
         case 0:
             if(HAL_GetTick() >= next_step_time){
                 Log_printf("Starting alignment with %dmV\n", (int)(magnitude * 1000));            
 
-                angle = STARTING_ANGLE;
+                phase = STARTING_PHASE;
                 step++;
                 next_step_time = HAL_GetTick() + 100; //wait before the next step
             }
@@ -39,10 +40,15 @@ FOC_LoopStatusTypeDef FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
 
                 if(substep < ALIGNMENT_STEPS){
                     ABVoltagesTypeDef ab_voltage; 
-                    ab_voltage.alpha = cosf(angle) * magnitude;
-                    ab_voltage.beta = sinf(angle) * magnitude;
+
+                    float cos_phase, sin_phase;
+                    Cordic_CalculateSinCos(phase, &cos_phase, &sin_phase);
+
+                    ab_voltage.alpha = cos_phase * magnitude;
+                    ab_voltage.beta = sin_phase * magnitude;
+
                     FOC_SetPhaseVoltages(hfoc, InvClarke_transform(ab_voltage));
-                    angle = -angle - (angle > 0 ? -ANGLE_STEP : ANGLE_STEP);
+                    phase = -phase - (phase > 0 ? -PHASE_STEP : PHASE_STEP);
                     substep++;
                     next_step_time = HAL_GetTick() + 100;
                 }else if(substep == ALIGNMENT_STEPS){
