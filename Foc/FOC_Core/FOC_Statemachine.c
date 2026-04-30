@@ -123,6 +123,7 @@ static void FOC_StateAntiCogging(FOC_HandleTypeDef* hfoc){
     }
 }
 
+
 static void FOC_StateRun(FOC_HandleTypeDef* hfoc){
     Current_Loop(hfoc);
     static uint8_t current_loop_counter = 0;
@@ -132,14 +133,17 @@ static void FOC_StateRun(FOC_HandleTypeDef* hfoc){
     }
 
     if(debug_loop_flag){
-        Log_printf("Vq:%d, Iq:%d, Iq_set:%d, Mspeed:%d, Ibus:%d, Vbus:%d, Temp:%d, Mang:%d\n",
-        (int)(hfoc->dq_voltage.q * 1000), (int)(hfoc->dq_current.q * 1000), 
-        (int)(hfoc->dq_current_setpoint.q * 1000), (int)(hfoc->encoder_speed_mechanical * 1000),
-        (int)(hfoc->ibus * 1000), (int)(hfoc->adc_values.vbus * 10), (int)(hfoc->adc_values.motor_temp * 10),
-        (int)(hfoc->encoder_angle_mechanical * 1000));
+        // Log_printf("Vq:%d, Iq:%d, Iq_set:%d, Mspeed:%d, Ibus:%d, Vbus:%d, Temp:%d, Mang:%d\n",
+        // (int)(hfoc->dq_voltage.q * 1000), (int)(hfoc->dq_current.q * 1000), 
+        // (int)(hfoc->dq_current_setpoint.q * 1000), (int)(hfoc->encoder_speed_mechanical * 1000),
+        // (int)(hfoc->ibus * 1000), (int)(hfoc->adc_values.vbus * 10), (int)(hfoc->adc_values.motor_temp * 10),
+        // (int)(hfoc->encoder_angle_mechanical * 1000));
 
-        // Log_printf("Time: %d, ADC1 Time: %d, ADC2 Time: %d, Log Time: %d, Count:%d\n",
-        //     (int)max_execution_time, (int)max_adc1_time, (int)max_adc2_time, (int)max_log_time);
+        Log_printf("Execution Time: %d, State Time: %d\n",
+            (int)hfoc->execution_time.loop_max, (int)hfoc->execution_time.state_max);
+
+        hfoc->execution_time.loop_max = 0;
+        hfoc->execution_time.state_max = 0;
 
         debug_loop_flag = 0;
     }

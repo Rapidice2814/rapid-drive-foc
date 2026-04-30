@@ -45,15 +45,14 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
 
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC.c
-    ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC_ADC.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC_Diagnostics.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC_Statemachine.c
 
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_ADC.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_CAN.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Flash.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Utils.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_HFI.c
-    ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/Cordic.c
 
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_Alignment.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_AlignmentTest.c
@@ -74,6 +73,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Foc/Utils/Logging.c
     ${CMAKE_SOURCE_DIR}/Foc/Utils/PID.c
     ${CMAKE_SOURCE_DIR}/Foc/Utils/Utils.c
+    ${CMAKE_SOURCE_DIR}/Foc/Utils/Cordic.c
+    ${CMAKE_SOURCE_DIR}/Foc/Utils/Timing.c
+
 
 )
 

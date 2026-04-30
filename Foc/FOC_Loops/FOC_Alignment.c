@@ -2,13 +2,6 @@
 #include <math.h>
 #include "Cordic.h"
 
-// extern TIM_HandleTypeDef htim2;
-// static uint32_t start_time = 0;
-// static uint32_t execution_time = 0;
-// static uint32_t max_execution_time = 0;
-
-
-
 #define ALIGNMENT_STEPS 10
 #define STARTING_PHASE 0.2f //starting phase for the alignment in radians
 #define PHASE_STEP (STARTING_PHASE / ALIGNMENT_STEPS)
@@ -64,9 +57,7 @@ FOC_LoopStatusTypeDef FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
             break;
         case 2:
             if(HAL_GetTick() >= next_step_time){
-                // start_time = __HAL_TIM_GET_COUNTER(&htim2);
                 FOC_StatusTypeDef retval =  FOC_SetEncoderZero(hfoc);
-                // execution_time = __HAL_TIM_GET_COUNTER(&htim2) - start_time;
 
                 if(retval != FOC_OK){
                     FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));

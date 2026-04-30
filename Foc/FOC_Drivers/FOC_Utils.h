@@ -6,6 +6,7 @@
 #include "DRV8323_Driver.h"	
 #include "AS5047P_Driver.h"
 #include "FOC_Flash.h"
+#include "Timing.h"
 
 typedef enum{
 	FOC_OK,
@@ -117,8 +118,6 @@ typedef struct {
 
     PhaseVoltagesTypeDef phase_voltage; //phase voltages [V]
 
-
-
     /* PID Controllers */
     PIDControllerTypeDef pid_current_d;            //d current controller
     PIDControllerTypeDef pid_current_q;            //q current controller
@@ -140,6 +139,9 @@ typedef struct {
 
     /* CAN */
     FDCAN_HandleTypeDef *phfdcan;
+
+    /* Timing */
+    ExecutionTimeTypeDef execution_time;
 
 } FOC_HandleTypeDef;
 

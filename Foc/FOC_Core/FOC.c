@@ -17,6 +17,7 @@
 #include "FOC_Diagnostics.h"
 #include "FOC_Statemachine.h"
 #include "Cordic.h"
+#include "Timing.h"
 
 extern FDCAN_HandleTypeDef hfdcan1;
 
@@ -27,7 +28,6 @@ extern RNG_HandleTypeDef hrng;
 extern  SPI_HandleTypeDef hspi2;
 
 extern TIM_HandleTypeDef htim1;
-extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
 extern  TIM_HandleTypeDef htim4;
 extern TIM_HandleTypeDef htim7;
@@ -42,7 +42,6 @@ FOC_HandleTypeDef hfoc = {0};
 
 /* flags, used for the interrupts*/
 
-volatile uint8_t foc_outer_loop_flag = 0;
 volatile uint8_t debug_loop_flag = 0;
 
 
@@ -104,7 +103,7 @@ void FOC_Setup(){
     HAL_TIM_Base_Start(&htim1); //pwm timer and also adc trigger
     FOC_ADC_Setup(); //setup the adc for current and voltage measurements
 
-    HAL_TIM_Base_Start(&htim2); //timer for the counter
+    FunctionTimer_Init();
     HAL_TIM_Base_Start_IT(&htim7); //timer for the debug
 
     /* PID controllers */
@@ -120,12 +119,11 @@ void FOC_Setup(){
     GenerateNtcLut(); //generate the NTC lookup table
 
 
-    uint32_t rand32;
-    uint8_t rand8;
-    if (HAL_RNG_GenerateRandomNumber(&hrng, &rand32) == HAL_OK)
-    {
-        rand8 = (uint8_t)(rand32 & 0xFF);
+    uint32_t rand32 = 0;
+    if (HAL_RNG_GenerateRandomNumber(&hrng, &rand32) != HAL_OK)    {
+        Error_Handler();
     }
+    uint8_t rand8 = (uint8_t)(rand32 & 0xFF);
 
     hfoc.phfdcan = &hfdcan1; //set the CAN handle pointer
     FOC_SetNodeId(&hfoc, 1);
@@ -137,36 +135,17 @@ void FOC_Setup(){
 }
 
 
-static uint32_t start_time = 0;
-static uint32_t execution_time = 0;
-static uint32_t max_execution_time = 0;
-
-static uint32_t adc1_start_time = 0;
-static uint32_t adc1_time = 0;
-static uint32_t max_adc1_time = 0;
-
-static uint32_t log_start_time = 0;
-static uint32_t log_time = 0;
-static uint32_t max_log_time = 0;
-
-static uint32_t state_start_time = 0;
-static uint32_t state_time = 0;
-static uint32_t max_state_time = 0;
-
 void FOC_Loop(){
-    start_time = __HAL_TIM_GET_COUNTER(&htim2);
+    uint32_t start_time = get_current_time();
 
 
     // FOC_TransmitCyclicCANMessage(&hfoc);
     // FOC_ProcessCANMessage(&hfoc);
     
-    adc1_start_time = __HAL_TIM_GET_COUNTER(&htim2);
+    uint32_t adc_start_time = get_current_time();
 
     if(FOC_ADC_Measure(&hfoc.adc_values) == FOC_ADC_MEASUREMENT_COMPLETE){ //runs at CURRENT_LOOP_FREQUENCY
-        adc1_time = __HAL_TIM_GET_COUNTER(&htim2) - adc1_start_time;
-        if (adc1_time > max_adc1_time) {
-            max_adc1_time = adc1_time;
-        }
+        calculate_execution_time(&hfoc.execution_time.adc_max, adc_start_time);
 
         float ibus = CalculateBusCurrent(hfoc.adc_values.phase_current, hfoc.phase_voltage, hfoc.adc_values.vbus);
         hfoc.ibus = 0.99f * hfoc.ibus + 0.01f * ibus;
@@ -175,35 +154,23 @@ void FOC_Loop(){
         FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY);
 
 
-        log_start_time = __HAL_TIM_GET_COUNTER(&htim2);
+        uint32_t log_start_time = get_current_time();
         Log_Loop();
-        log_time = __HAL_TIM_GET_COUNTER(&htim2) - log_start_time;
-        if (log_time > max_log_time) {
-            max_log_time = log_time;
-        }
+        calculate_execution_time(&hfoc.execution_time.log_max, log_start_time);
 
         FOC_CheckErrors(&hfoc);
 
-        state_start_time = __HAL_TIM_GET_COUNTER(&htim2);
+        uint32_t state_start_time = get_current_time();
 
         FOC_StateLoop(&hfoc);
 
-        state_time = __HAL_TIM_GET_COUNTER(&htim2) - state_start_time;
-        if (state_time > max_state_time) {
-            max_state_time = state_time;
-        }
-
-
+        calculate_execution_time(&hfoc.execution_time.state_max, state_start_time);
     }
+
+    calculate_execution_time(&hfoc.execution_time.loop_max, start_time);
     
-
-    execution_time = __HAL_TIM_GET_COUNTER(&htim2) - start_time;
-    if (execution_time > max_execution_time) {
-        max_execution_time = execution_time;
-    }
-
-    if(execution_time > 1200){ //max 125us for 8kHz loop
-        Log_printf("Execution time: %dus\n", (int)execution_time);
+    if(hfoc.execution_time.loop_max > 1200){ //max 125us for 8kHz loop
+        Log_printf("Execution time: %dus\n", (int)hfoc.execution_time.loop_max);
     }
 }
 
