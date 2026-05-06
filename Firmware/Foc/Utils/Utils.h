@@ -1,6 +1,8 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include "main.h"
+
 
 #define M_2PIF 6.28318530717958647692f
 #define M_PIF 3.14159265358979323846f
@@ -15,6 +17,7 @@
 void normalize_angle_0_2pi(float *angle);
 void normalize_angle_pm_pi(float *angle);
 float constrainf(float value, float min, float max);
+uint8_t countbits(uint32_t n);
 
 void GenerateNtcLut();
 float GetNtcTemperature(float ntc_resistance);

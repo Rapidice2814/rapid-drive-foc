@@ -141,6 +141,7 @@ typedef struct {
     FDCAN_HandleTypeDef *phfdcan;
 
     /* Timing */
+    uint32_t timestamp; //timestamp increments every FOC loop, used for debugging and logging
     ExecutionTimeTypeDef execution_time;
 
 } FOC_HandleTypeDef;

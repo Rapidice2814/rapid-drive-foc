@@ -11,6 +11,7 @@
 #include "WS2812b_Driver.h"
 #include "FOC_Loops.h"
 #include "Logging.h"
+#include "FOC_USB_Debug.h"
 #include "FOC_Config.h"
 #include "FOC_CAN.h"
 #include "FOC_ADC.h"
@@ -164,10 +165,17 @@ void FOC_Loop(){
 
         FOC_StateLoop(&hfoc);
 
+
+        uint32_t usb_debug_start_time = get_current_time();
+        FOC_USB_Debug_CaptureSamples(&hfoc);
+        calculate_execution_time(&hfoc.execution_time.usb_debug_max, usb_debug_start_time);
+        
+        hfoc.timestamp++;
         calculate_execution_time(&hfoc.execution_time.state_max, state_start_time);
     }
 
     calculate_execution_time(&hfoc.execution_time.loop_max, start_time);
+
     
     if(hfoc.execution_time.loop_max > 1200){ //max 125us for 8kHz loop
         Log_printf("Execution time: %dus\n", (int)hfoc.execution_time.loop_max);

@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <math.h>
 #include "FOC_Utils.h"
-#include "main.h"
 
 
 //Normalize angle to [0, 2*PI]
@@ -29,6 +28,19 @@ float constrainf(float value, float min, float max) {
     return value;
 }
 
+/** 
+ * @brief Counts the number of set bits in a 32-bit integer
+ * @param n The integer to count bits from
+ * @return The number of set bits
+ */
+uint8_t countbits(uint32_t n) {
+    uint8_t count = 0;
+    while (n) {
+        count += n & 1;
+        n >>= 1;
+    }
+    return count;
+}
 
 
 #define TEMP_MIN -10       // Minimum temperature in °C

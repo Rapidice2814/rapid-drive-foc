@@ -7,6 +7,7 @@ typedef struct {
     uint32_t adc_max;
     uint32_t log_max;
     uint32_t state_max;
+    uint32_t usb_debug_max;
     uint32_t loop_max;
 } ExecutionTimeTypeDef;
 
