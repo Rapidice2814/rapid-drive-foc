@@ -41,6 +41,8 @@ typedef struct
 uint16_t Debug_ConstructPacket(uint8_t* usb_buffer, MsgTypeTypeDef msg_type, uint8_t* payload_buffer, uint16_t payload_length);
 void Debug_TransmitPacket();
 Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask);
+void Debug_StartLogging();
+void Debug_StopLogging();
 
 
 
@@ -60,12 +62,16 @@ static DebugHandleTypeDef debug_handle = {0};
     X(8, f,   dq_voltage.q)                                      \
     X(9, u32, execution_time.loop_max)
 
+Debug_StatusTypeDef FOC_USB_Setup(){
+    Debug_StopLogging();
+    Debug_UpdateMask(0);
+    // Debug_StartLogging();
+    return DEBUG_OK;
+}
+
 Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(FOC_HandleTypeDef *hfoc){
 
-    Debug_UpdateMask(3);
-    debug_handle.is_running = 1;
-
-    if(!debug_handle.is_running) return DEBUG_ERROR;
+    if(!debug_handle.is_running) return DEBUG_STOPPED;
     if(debug_handle.payload.sample_count >= MAX_SAMPLE_COUNT) return DEBUG_ERROR;
 
     uint8_t signal_index = 0;
@@ -126,6 +132,43 @@ void FOC_USB_Debug_TransmitCpltCallback(){
     debug_handle.usb_busy_flag = 0;
 }
 
+void Debug_ReceivePacket(uint8_t* buf, uint32_t* len){
+    if(*len < 1) return;
+    if(buf[0] != 0xAA || buf[1] != 0x55) return; //check SOF
+    MsgTypeTypeDef msg_type = (MsgTypeTypeDef)buf[2];
+    uint16_t payload_length = (uint16_t)buf[3] | ((uint16_t)buf[4] << 8);
+
+    switch (msg_type)
+    {
+    case MSG_SET_MASK:
+        if(*len >= 5){
+            uint32_t new_mask = (uint32_t)buf[5] | ((uint32_t)buf[6] << 8) | ((uint32_t)buf[7] << 16) | ((uint32_t)buf[8] << 24);
+            Debug_UpdateMask(new_mask);
+        }
+        break;
+    
+    case MSG_START_LOG:
+        Debug_StartLogging();
+        break;
+
+    case MSG_STOP_LOG:
+        Debug_StopLogging();
+        break;
+
+    default:
+        break;
+    }
+}
+
+
+void Debug_StartLogging() {
+    debug_handle.payload.sample_count = 0;
+    debug_handle.is_running = 1;
+}
+
+void Debug_StopLogging() {
+    debug_handle.is_running = 0;
+}
 
 Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask) {
     if(debug_handle.is_running) return DEBUG_ERROR;

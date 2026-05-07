@@ -117,7 +117,11 @@ void FOC_Setup(){
     /* UART */
     Log_Setup(&huart3);
 
-    GenerateNtcLut(); //generate the NTC lookup table
+    /* USB Debug */
+    FOC_USB_Setup();
+    
+    /* generate the NTC lookup table */
+    GenerateNtcLut(); 
 
 
     uint32_t rand32 = 0;

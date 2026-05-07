@@ -1,3 +1,8 @@
+from enum import IntEnum
+import msvcrt
+import threading
+import threading
+
 import serial
 import struct
 import time
@@ -48,6 +53,12 @@ SIGNAL_TABLE = [
     {"bit": 8, "type": "f",   "name": "dq_voltage.q"},
     {"bit": 9, "type": "u32", "name": "execution_time.loop_max"},
 ]
+
+class MsgType(IntEnum):
+    MSG_LOG_DATA  = 0x01
+    MSG_SET_MASK  = 0x02
+    MSG_START_LOG = 0x03
+    MSG_STOP_LOG  = 0x04
 
 def u32_to_f32(v):
     return struct.unpack('<f', struct.pack('<I', v))[0]
@@ -147,9 +158,6 @@ def append_decoded_batch_to_hdf5(filename, decoded_list):
 
 
 
-ser = serial.Serial(PORT, BAUDRATE, timeout=TIMEOUT)
-rx_buffer = bytearray()
-
 def extract_packets(buffer):
     packets = []
 
@@ -235,6 +243,94 @@ def extract_log_payload(payload, log_mask):
         "signals": signal_buffers,
         "raw_data": raw_data,
     }
+
+def build_packet(msg_type, payload: bytes) -> bytes:
+    msg_type = int(msg_type)
+
+    if not (0 <= msg_type <= 0xFF):
+        raise ValueError("msg_type must fit in one byte")
+
+    payload_length = len(payload)
+    if payload_length > 0xFFFF:
+        raise ValueError("payload too large for 16-bit length")
+
+    return struct.pack('<BBBH', SOF1, SOF2, msg_type, payload_length) + payload
+
+def send_packet(ser, msg_type, payload: bytes):
+    packet = build_packet(msg_type, payload)
+    ser.write(packet)
+    ser.flush()
+
+def execute_terminal_command(ser, command_str):
+    global log_mask
+
+    command_str = command_str.strip()
+    if not command_str:
+        send_packet(ser, MsgType.MSG_START_LOG, b'')
+        print("Sent: MSG_START_LOG")
+        return True
+
+    parts = command_str.split()
+    cmd = parts[0].lower()
+
+    if cmd == "start":
+        send_packet(ser, MsgType.MSG_START_LOG, b'')
+        print("Sent: MSG_START_LOG")
+        return True
+
+    elif cmd == "stop":
+        send_packet(ser, MsgType.MSG_STOP_LOG, b'')
+        print("Sent: MSG_STOP_LOG")
+        return True
+
+    elif cmd == "setmask":
+        if len(parts) != 2:
+            print("Usage: setmask <value>")
+            return False
+
+        try:
+            new_mask = int(parts[1], 0)
+        except ValueError:
+            print("Invalid mask value. Examples: setmask 3, setmask 0x03")
+            return False
+
+        payload = struct.pack('<I', new_mask)
+        send_packet(ser, MsgType.MSG_SET_MASK, payload)
+        log_mask = new_mask
+        print(f"Sent: MSG_SET_MASK = 0x{new_mask:08X}")
+        return True
+
+    else:
+        print(f"Unknown command: {command_str}")
+        print("Commands: start, stop, setmask <value>")
+        return False
+    
+def handle_terminal_input(ser, line):
+    if line is None:
+        return
+    execute_terminal_command(ser, line)
+
+def poll_terminal_line():
+    if not hasattr(poll_terminal_line, "buffer"):
+        poll_terminal_line.buffer = ""
+
+    while msvcrt.kbhit():
+        ch = msvcrt.getwch()
+
+        if ch == '\003':
+            raise KeyboardInterrupt
+
+        if ch in ('\r', '\n'):
+            line = poll_terminal_line.buffer
+            poll_terminal_line.buffer = ""
+            return line
+
+        if ch == '\b':
+            poll_terminal_line.buffer = poll_terminal_line.buffer[:-1]
+        else:
+            poll_terminal_line.buffer += ch
+
+    return None
 
 def init_live_plot(decoded,
                    decimation=LOG_PLOT_DECIMATION,
@@ -398,50 +494,150 @@ plot_state = None
 previous_timestamp = 0
 decoded_batch = []
 
-try:
-    print(f"Listening on {PORT} at {BAUDRATE} baud...")
+def usb_serial_worker(ser, plot_queue, command_queue, stop_event):
+    global hdf5_initialized, previous_timestamp, decoded_batch, log_mask
 
-    while True:
-        data = ser.read(256)
-        if data:
-            rx_buffer.extend(data)
+    rx_buffer = bytearray()
 
-            packets = extract_packets(rx_buffer)
-            for pkt in packets:
-                decoded = extract_log_payload(pkt["payload"], log_mask)
-                if decoded:
-                    start_time = time.perf_counter()
-                    current_timestamp = decoded["timestamp"]
-                    if ((current_timestamp - previous_timestamp) != decoded["sample_count"]):
-                        print(f"Warning: timestamp jump detected! Jump={current_timestamp - previous_timestamp}, expected={decoded['sample_count']}")
-                    previous_timestamp = current_timestamp
+    while not stop_event.is_set():
+        try:
+            try:
+                cmd = command_queue.get_nowait()
+                execute_terminal_command(ser, cmd)
+            except queue.Empty:
+                pass
 
-                    if plot_state is None:
-                        plot_state = init_live_plot(decoded, decimation=LOG_PLOT_DECIMATION, update_period_s=LOG_PLOT_UPDATE_PERIOD_S, timestamp_hz=TIMESTAMP_HZ)
-                        print(f"Initialized live plot with signals: {plot_state['signal_names']}")
+            data = ser.read(256)
+            if data:
+                rx_buffer.extend(data)
 
-                    queue_live_plot_data(plot_state, decoded)
-                    update_live_plot_if_due(plot_state)
-                    plot_state["fig"].canvas.flush_events()
+                packets = extract_packets(rx_buffer)
+                for pkt in packets:
+                    try:
+                        pkt_type = MsgType(pkt["msg_type"])
+                    except ValueError:
+                        print(f"Unknown packet type: {pkt['msg_type']}")
+                        continue
 
-                    if not hdf5_initialized:
-                        init_hdf5_file(LOG_FILE, decoded, log_mask)
-                        hdf5_initialized = True
-                    decoded_batch.append(decoded)
+                    if pkt_type == MsgType.MSG_LOG_DATA:
+                        decoded = extract_log_payload(pkt["payload"], log_mask)
+                        if not decoded:
+                            print("payload decode error (skipped)")
+                            print(f"payload hex = {pkt['payload'].hex(' ')}")
+                            continue
 
-                    if len(decoded_batch) >= LOG_BATCH_PACKETS:
-                        append_decoded_batch_to_hdf5(LOG_FILE, decoded_batch)
-                        decoded_batch.clear()
+                        current_timestamp = decoded["timestamp"]
+                        if previous_timestamp != 0:
+                            if (current_timestamp - previous_timestamp) != decoded["sample_count"]:
+                                print(f"Warning: timestamp jump detected! Jump={current_timestamp - previous_timestamp}, expected={decoded['sample_count']}")
+                        previous_timestamp = current_timestamp
 
-                    execution_time_us = (time.perf_counter() - start_time) * 1e6
+                        if not hdf5_initialized:
+                            init_hdf5_file(LOG_FILE, decoded, log_mask)
+                            hdf5_initialized = True
 
-                else:
-                    print(f"  payload decode error (skipped)")
-                    print(f"  payload hex    = {pkt['payload'].hex(' ')}")
+                        decoded_batch.append(decoded)
+                        if len(decoded_batch) >= LOG_BATCH_PACKETS:
+                            append_decoded_batch_to_hdf5(LOG_FILE, decoded_batch)
+                            decoded_batch.clear()
 
-finally:
+                        try:
+                            plot_queue.put_nowait(decoded)
+                        except queue.Full:
+                            try:
+                                plot_queue.get_nowait()
+                            except queue.Empty:
+                                pass
+                            try:
+                                plot_queue.put_nowait(decoded)
+                            except queue.Full:
+                                pass
+                    else:
+                        print(f"Received packet: {pkt_type.name}")
+
+            else:
+                time.sleep(0.001)
+
+        except Exception as e:
+            print(f"Serial worker error: {e}")
+            time.sleep(0.01)
+
     if decoded_batch:
         append_decoded_batch_to_hdf5(LOG_FILE, decoded_batch)
-    if plot_state is not None:
-        update_live_plot_if_due(plot_state, force=True)
-    ser.close()
+
+def terminal_worker(command_queue, stop_event):
+    while not stop_event.is_set():
+        try:
+            line = input("cmd> ")
+            command_queue.put(line)
+        except EOFError:
+            break
+        except Exception as e:
+            print(f"Terminal worker error: {e}")
+            break
+
+def main_plot_loop(plot_queue, stop_event):
+    plot_state = None
+
+    while not stop_event.is_set():
+        drained = []
+
+        while True:
+            try:
+                drained.append(plot_queue.get_nowait())
+            except queue.Empty:
+                break
+
+        for decoded in drained:
+            if plot_state is None:
+                plot_state = init_live_plot(
+                    decoded,
+                    decimation=LOG_PLOT_DECIMATION,
+                    update_period_s=LOG_PLOT_UPDATE_PERIOD_S,
+                    timestamp_hz=TIMESTAMP_HZ
+                )
+                print(f"Initialized live plot with signals: {plot_state['signal_names']}")
+
+            queue_live_plot_data(plot_state, decoded)
+
+        if plot_state is not None:
+            update_live_plot_if_due(plot_state)
+            plt.pause(0.001)
+        else:
+            plt.pause(0.05)
+
+plot_queue = queue.Queue(maxsize=200)
+command_queue = queue.Queue()
+stop_event = threading.Event()
+ser = serial.Serial(PORT, BAUDRATE, timeout=TIMEOUT)
+
+usb_serial_thread = threading.Thread(
+    target=usb_serial_worker,
+    args=(ser, plot_queue, command_queue, stop_event),
+    daemon=True
+)
+
+terminal_thread = threading.Thread(
+    target=terminal_worker,
+    args=(command_queue, stop_event),
+    daemon=True
+)
+
+try:
+    print(f"Listening on {PORT} at {BAUDRATE} baud...")
+    print("Commands: start, stop, setmask <value>")
+
+    usb_serial_thread.start()
+    terminal_thread.start()
+
+    main_plot_loop(plot_queue, stop_event)
+
+except KeyboardInterrupt:
+    print("Stopping...")
+
+finally:
+    stop_event.set()
+    time.sleep(0.1)
+
+    if ser.is_open:
+        ser.close()
