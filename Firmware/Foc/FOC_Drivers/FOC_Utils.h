@@ -51,6 +51,7 @@ typedef struct {
     float vbus; //bus voltage [V]
 
     float motor_temp; //motor temperature [C]
+    float mosfet_temp; //mosfet temperature [C]
 } FOC_ADC_ValuesTypeDef;
 
 
@@ -125,8 +126,8 @@ typedef struct {
     PIDControllerTypeDef pid_position;             //position controller
 
     DQCurrentsTypeDef dq_current_setpoint; //d and q current setpoints [A]
-    float speed_setpoint; //mechanical speed setpoint [rad/s]
     float angle_setpoint; //mechanical position setpoint [rad]
+    float speed_setpoint; //mechanical speed setpoint [rad/s]
 
     /* PWM */
     uint32_t max_ccr; //max pwm value

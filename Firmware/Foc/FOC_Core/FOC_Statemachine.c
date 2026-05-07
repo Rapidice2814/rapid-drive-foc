@@ -139,11 +139,9 @@ static void FOC_StateRun(FOC_HandleTypeDef* hfoc){
         // (int)(hfoc->ibus * 1000), (int)(hfoc->adc_values.vbus * 10), (int)(hfoc->adc_values.motor_temp * 10),
         // (int)(hfoc->encoder_angle_mechanical * 1000));
 
-        Log_printf("Execution Time: %d, State Time: %d\n",
-            (int)hfoc->execution_time.loop_max, (int)hfoc->execution_time.state_max);
+        // Log_printf("Execution Time: %d, State Time: %d\n",
+        //     (int)hfoc->execution_time.loop_max, (int)hfoc->execution_time.state_max);
 
-        hfoc->execution_time.loop_max = 0;
-        hfoc->execution_time.state_max = 0;
 
         debug_loop_flag = 0;
     }

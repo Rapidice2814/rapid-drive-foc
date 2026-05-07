@@ -166,16 +166,17 @@ void FOC_Loop(){
         FOC_CheckErrors(&hfoc);
 
         uint32_t state_start_time = get_current_time();
-
         FOC_StateLoop(&hfoc);
+        calculate_execution_time(&hfoc.execution_time.state_max, state_start_time);
 
 
         uint32_t usb_debug_start_time = get_current_time();
         FOC_USB_Debug_CaptureSamples(&hfoc);
+        FOC_USB_Debug_TransmitPacket();
+        hfoc.execution_time.loop_max = 0;
         calculate_execution_time(&hfoc.execution_time.usb_debug_max, usb_debug_start_time);
         
         hfoc.timestamp++;
-        calculate_execution_time(&hfoc.execution_time.state_max, state_start_time);
     }
 
     calculate_execution_time(&hfoc.execution_time.loop_max, start_time);
