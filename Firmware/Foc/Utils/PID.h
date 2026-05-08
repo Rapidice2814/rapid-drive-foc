@@ -12,14 +12,13 @@ typedef struct {
 
 typedef struct {
 
-	PIDValuesTypeDef *K;
+	PIDValuesTypeDef *K; /* Pointer to the PID gains structure, can be stored elsewhere */
 
 	/* Output limits */
 	float *max_out;
 
 	/* Derivative low-pass filter time constant */
 	float tau;
-
 
 	/* Sample time (in seconds) */
 	float T;
@@ -38,9 +37,9 @@ typedef struct {
 
 } PIDControllerTypeDef;
 
-
 void PID_Init(PIDControllerTypeDef *pid, float T, float tau, float *max_out, PIDValuesTypeDef *K, uint8_t useAngleNormalization);
 float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement);
-
+void PID_SetGains(PIDControllerTypeDef *pid, PIDValuesTypeDef K);
+PIDValuesTypeDef PID_GetGains(PIDControllerTypeDef *pid);
 
 #endif // PID_H

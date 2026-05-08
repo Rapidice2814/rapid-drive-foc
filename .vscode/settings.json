@@ -9,5 +9,5 @@
     "cmake.configureArgs": [
         "-DCMAKE_COMMAND=cube-cmake"
     ],
-    "cmake.sourceDirectory": "C:/Users/csigo/Documents/Git/OHboteam_FOC/Firmware",
+    "cmake.sourceDirectory": "${workspaceFolder}/Firmware"
 }

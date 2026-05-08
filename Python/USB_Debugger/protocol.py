@@ -6,7 +6,7 @@ from unittest import case
 import config
 from logger_hdf5 import get_log_filename, init_hdf5_file, append_decoded_batch_to_hdf5
 
-SIGNAL_TABLE = [
+FOC_USB_DEBUG_SIGNAL_LIST = [
     {"bit": 0,  "type": "u32",   "name": "timestamp"},
     {"bit": 1,  "type": "f",     "name": "adc_values.motor_temp"},
     {"bit": 2,  "type": "f",     "name": "adc_values.mosfet_temp"},
@@ -40,21 +40,47 @@ SIGNAL_TABLE = [
     {"bit": 27, "type": "u32",   "name": "execution_time.loop_max"},
 ]
 
+FOC_PID_CONTROLLERS_LIST = [
+    {"id": 0, "name": "pid_current_d"},
+    {"id": 1, "name": "pid_current_q"},
+    {"id": 2, "name": "pid_speed"},
+    {"id": 3, "name": "pid_position"},
+]
+
+VAR_ID_LIST = [
+    {"id": 0, "type": "f", "name": "dq_current_setpoint.d"},
+    {"id": 1, "type": "f", "name": "dq_current_setpoint.q"},
+    {"id": 2, "type": "f", "name": "angle_setpoint"},
+    {"id": 3, "type": "f", "name": "speed_setpoint"},
+]
+
+
 class MsgType(IntEnum):
-    MSG_LOG_DATA   = 0x01  # FOC -> PC
-    MSG_SET_MASK   = 0x02  # PC -> FOC
-    MSG_START_LOG  = 0x03  # PC -> FOC
-    MSG_STOP_LOG   = 0x04  # PC -> FOC
-    MSG_SET_PID    = 0x05  # PC -> FOC
-    MSG_GET_PID    = 0x06  # PC -> FOC
-    MSG_PID_REPLY  = 0x07  # FOC -> PC
-    MSG_FLASH_SAVE = 0x08  # PC -> FOC
-    MSG_FLASH_LOAD = 0x09  # PC -> FOC
-    MSG_SET_STATE  = 0x0A  # PC -> FOC
-    MSG_GET_STATE  = 0x0B  # PC -> FOC
-    MSG_STATE_REPLY = 0x0C # FOC -> PC
-    MSG_ACK        = 0x0D  # FOC -> PC
-    MSG_ERROR      = 0x0E  # FOC -> PC
+    MSG_LOG_DATA        = 0x01  # FOC -> PC
+    MSG_SET_MASK        = 0x02  # PC -> FOC
+    MSG_START_LOG       = 0x03  # PC -> FOC
+    MSG_STOP_LOG        = 0x04  # PC -> FOC
+    MSG_SET_PID         = 0x05  # PC -> FOC
+    MSG_GET_PID         = 0x06  # PC -> FOC
+    MSG_PID_REPLY       = 0x07  # FOC -> PC
+    MSG_SET_VAR         = 0x08  # PC -> FOC
+    MSG_GET_VAR         = 0x09  # PC -> FOC
+    MSG_VAR_REPLY       = 0x0A  # FOC -> PC
+    MSG_FLASH_SAVE      = 0x0B  # PC -> FOC
+    MSG_FLASH_LOAD      = 0x0C  # PC -> FOC
+    MSG_SET_STATE       = 0x0D  # PC -> FOC
+    MSG_GET_STATE       = 0x0E  # PC -> FOC
+    MSG_STATE_REPLY     = 0x0F  # FOC -> PC
+
+    MSG_UNKNOWN_TYPE    = 0xFA  # FOC -> PC
+    MSG_INVALID_PAYLOAD = 0xFB  # FOC -> PC
+    MSG_UNKNOWN_ID      = 0xFC  # FOC -> PC
+    MSG_BUFFER_OVERFLOW = 0xFD  # FOC -> PC
+    MSG_ACK             = 0xFE  # FOC -> PC
+    MSG_ERROR           = 0xFF  # FOC -> PC
+
+
+
 
 def u32_to_f32(v):
     return struct.unpack('<f', struct.pack('<I', v))[0]
@@ -76,7 +102,7 @@ def cast_u32_value(v, typ):
     
 def get_enabled_signals(log_mask):
     enabled = []
-    for sig in SIGNAL_TABLE:
+    for sig in FOC_USB_DEBUG_SIGNAL_LIST:
         if log_mask & (1 << sig["bit"]):
             enabled.append(sig)
     return enabled
@@ -212,6 +238,14 @@ def decode_packet(pkt, plot_queue):
                     plot_queue.put_nowait(decoded)
                 except queue.Full:
                     pass
+        case MsgType.MSG_PID_REPLY:
+            if pkt["payload_length"] != 13:
+                print(f"Invalid PID_REPLY payload length: {pkt['payload_length']}")
+                return None
+            controller_id = pkt["payload"][0]
+            gains_data = pkt["payload"][1:13]
+            kp, ki, kd = struct.unpack('<fff', gains_data)
+            print(f"PID Reply - Controller ID: {controller_id}, Kp: {kp}, Ki: {ki}, Kd: {kd}")
         case _:
             print(f"Received packet: {pkt_type.name}")
 

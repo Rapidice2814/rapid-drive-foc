@@ -13,6 +13,7 @@ typedef enum{
 
 Debug_StatusTypeDef FOC_USB_Setup();
 Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(FOC_HandleTypeDef *hfoc);
+void FOC_USB_Debug_ExecuteReceivedCommand(FOC_HandleTypeDef *hfoc);
 Debug_StatusTypeDef FOC_USB_Debug_TransmitPacket();
 void FOC_USB_Debug_TransmitCpltCallback();
 void Debug_ReceivePacket(uint8_t* buf, uint32_t* len);

@@ -2,6 +2,7 @@
 #include "Utils.h"
 #include <math.h>
 
+
 /**
   * @brief Initializes the PID controller
   * @param pid Pointer to the PID controller structure
@@ -74,4 +75,27 @@ float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement) {
     pid->prevMeasurement = measurement;
 
     return pid->out;
+}
+
+/**
+  * @brief Sets the PID gains
+  * @param pid Pointer to the PID controller structure
+  * @param K Pointer to the PID gains structure
+  */
+void PID_SetGains(PIDControllerTypeDef *pid, PIDValuesTypeDef K) {
+    *(pid->K) = K;
+    pid->integrator = 0.0f;
+	pid->prevError  = 0.0f;
+	pid->differentiator  = 0.0f;
+	pid->prevMeasurement = 0.0f;
+	pid->out = 0.0f;
+}
+
+/**
+  * @brief Gets the PID gains
+  * @param pid Pointer to the PID controller structure
+  * @return The PID gains structure
+  */
+PIDValuesTypeDef PID_GetGains(PIDControllerTypeDef *pid) {
+    return *(pid->K);
 }

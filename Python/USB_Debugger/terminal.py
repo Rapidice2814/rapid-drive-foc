@@ -1,8 +1,11 @@
 import msvcrt
 import struct
 
-from protocol import MsgType, build_packet
+from protocol import MsgType, build_packet, FOC_USB_DEBUG_SIGNAL_LIST, FOC_PID_CONTROLLERS_LIST, VAR_ID_LIST
 import config
+
+PID_LOOKUP = {item["id"]: item for item in FOC_PID_CONTROLLERS_LIST}
+
 
 def terminal_worker(command_queue, stop_event):
     while not stop_event.is_set():
@@ -59,10 +62,44 @@ def execute_terminal_command(ser, command_str):
         config.hdf5_initialized = False
         print(f"Sent: MSG_SET_MASK = 0x{new_mask:08X}")
         return True
+    elif cmd == "getpid":
+        if len(parts) != 2:
+            print("Usage: getpid <controller_id>")
+            return False
 
+        try:
+            controller_id = int(parts[1], 0)
+            controller = PID_LOOKUP[controller_id]
+        except ValueError:
+            print("Invalid controller ID. Examples: getpid 1, getpid 0x01")
+            return False
+
+        payload = struct.pack('<B', controller_id)
+        send_packet(ser, MsgType.MSG_GET_PID, payload)
+        print(f"Sent: MSG_GET_PID for Controller ID {controller_id}, Name: {controller['name']}")
+        return True
+    elif cmd == "setpid":
+        if len(parts) != 5:
+            print("Usage: setpid <controller_id> <kp> <ki> <kd>")
+            return False
+
+        try:
+            controller_id = int(parts[1], 0)
+            kp = float(parts[2])
+            ki = float(parts[3])
+            kd = float(parts[4])
+            controller = PID_LOOKUP[controller_id]
+        except ValueError:
+            print("Invalid arguments. Examples: setpid 1 0.1 0.01 0.001")
+            return False
+
+        payload = struct.pack('<Bfff', controller_id, kp, ki, kd)
+        send_packet(ser, MsgType.MSG_SET_PID, payload)
+        print(f"Sent: MSG_SET_PID for Controller ID {controller_id}, Name: {controller['name']} with Kp={kp}, Ki={ki}, Kd={kd}")
+        return True
     else:
         print(f"Unknown command: {command_str}")
-        print("Commands: start, stop, setmask <value>")
+        print("Commands: start, stop, setmask <value>, getpid <controller_id>, setpid <controller_id> <kp> <ki> <kd>")
         return False
     
 def handle_terminal_input(ser, line):
