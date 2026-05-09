@@ -10,7 +10,6 @@
 #include "FOC_Flash.h"
 #include "WS2812b_Driver.h"
 #include "FOC_Loops.h"
-#include "Logging.h"
 #include "FOC_USB_Debug.h"
 #include "FOC_Config.h"
 #include "FOC_CAN.h"
@@ -80,7 +79,7 @@ void FOC_Setup(){
 
     if(AS5047P_Init(&hfoc.has5047p) != AS5047P_OK){
         while(1){
-            HAL_GPIO_TogglePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin);
+            HAL_GPIO_TogglePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin);
             HAL_Delay(100);
         };
     }
@@ -115,7 +114,7 @@ void FOC_Setup(){
     PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_position, 1);
 
     /* UART */
-    Log_Setup(&huart3);
+    // Log_Setup(&huart3);
 
     /* USB Debug */
     FOC_USB_Setup();
@@ -135,7 +134,7 @@ void FOC_Setup(){
     // FOC_TransmitCANMessage(&hfoc, CMD_HEARTBEAT);
 
 
-    Log_printf("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
+    USB_printf("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
 
 }
 
@@ -164,14 +163,14 @@ void FOC_Loop(){
         FOC_StateLoop(&hfoc);
         calculate_execution_time(&hfoc.execution_time.state_max, state_start_time);
         
-        uint32_t log_start_time = get_current_time();
-        Log_Loop();
-        calculate_execution_time(&hfoc.execution_time.log_max, log_start_time);
+        // uint32_t log_start_time = get_current_time();
+        // Log_Loop();
+        // calculate_execution_time(&hfoc.execution_time.log_max, log_start_time);
         
+        FOC_USB_Debug_CaptureSamples();
         uint32_t usb_debug_start_time = get_current_time();
-        FOC_USB_Debug_CaptureSamples(&hfoc);
-        FOC_USB_Debug_TransmitPacket();
-        FOC_USB_Debug_ExecuteReceivedCommand(&hfoc);
+        USB_TransmitPacket();
+        USB_ReceivePacket();
         hfoc.execution_time.loop_max = 0;
         calculate_execution_time(&hfoc.execution_time.usb_debug_max, usb_debug_start_time);
         
@@ -182,159 +181,26 @@ void FOC_Loop(){
 
     
     if(hfoc.execution_time.loop_max > 1200){ //max 125us for 8kHz loop
-        Log_printf("Execution time: %dus\n", (int)hfoc.execution_time.loop_max);
+        HAL_GPIO_WritePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin, GPIO_PIN_SET);
+        hfoc.execution_time.usb_debug_max = 0;
+        // USB_printf("Execution time: %dus\n", (int)hfoc.execution_time.loop_max);
+    } else {
+        HAL_GPIO_WritePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin, GPIO_PIN_RESET);
     }
 }
-
-
-
-
-void Log_ProcessRxPacket(const char* packet, uint16_t Length){
-    for(int i = 0; i < Length; i++){
-        if(packet[i] == 'D'){
-            if(packet[i+1] == 'a'){
-                hfoc.flash_data.controller.anticogging_FF_enabled = !hfoc.flash_data.controller.anticogging_FF_enabled;
-            } else if(packet[i+1] == 'f'){
-                hfoc.flash_data.controller.current_PID_FF_enabled = !hfoc.flash_data.controller.current_PID_FF_enabled;
-            } 
-        }
-        if(packet[i] == 'A'){
-            hfoc.state = FOC_STATE_ANTICOGGING;
-        }
-        if(packet[i] == 'R'){
-            hfoc.state = FOC_STATE_RESET;
-        }
-        if(packet[i] == 'E'){
-            hfoc.state = FOC_STATE_ERROR;
-        }
-        if(packet[i] == 'F'){
-            hfoc.state = FOC_STATE_FLASH_SAVE;
-        }
-        if(packet[i] == 'M'){
-            if(packet[i+1] == 's'){
-                hfoc.flash_data.controller.speed_PID_enabled = 1;
-                hfoc.flash_data.controller.position_PID_enabled = 0;
-            } else if(packet[i+1] == 'p'){
-                hfoc.flash_data.controller.position_PID_enabled = 1;
-                hfoc.flash_data.controller.speed_PID_enabled = 0;
-            } else if(packet[i+1] == 'o'){
-                hfoc.flash_data.controller.speed_PID_enabled = 0;
-                hfoc.flash_data.controller.position_PID_enabled = 0;
-            }
-        }
-        if(packet[i] == 'O'){
-            hfoc.state = FOC_STATE_OPENLOOP;
-        }
-        if(packet[i] == 'K'){
-            hfoc.motor_disable_flag = 1;
-        }
-        if(packet[i] == 'T'){
-
-        }
-        if(packet[i] == 'C'){
-            hfoc.flash_data.encoder.offset_valid = 0;
-            hfoc.flash_data.motor.phase_resistance_valid = 0;
-            hfoc.flash_data.motor.phase_inductance_valid = 0;
-            hfoc.flash_data.controller.current_PID_gains_valid = 0;
-            hfoc.state = FOC_STATE_CHECKLIST;
-        }
-    }
-
-    if(packet[0] == 'P' && packet[1] == 'd'){
-        int Pd = 0;
-        sscanf(packet, "Pd%d", &Pd);
-        hfoc.flash_data.controller.PID_gains_d.Kp = (float)Pd / 1000.0f;
-    }
-    if(packet[0] == 'P' && packet[1] == 'q'){
-        int Pq = 0;
-        sscanf(packet, "Pq%d", &Pq);
-        hfoc.flash_data.controller.PID_gains_q.Kp = (float)Pq / 1000.0f;
-    }
-    if(packet[0] == 'P' && packet[1] == 's'){
-        int Ps = 0;
-        sscanf(packet, "Ps%d", &Ps);
-        hfoc.flash_data.controller.PID_gains_speed.Kp = (float)Ps / 1000.0f;
-    }
-    if(packet[0] == 'P' && packet[1] == 'p'){
-        int Pp = 0;
-        sscanf(packet, "Pp%d", &Pp);
-        hfoc.flash_data.controller.PID_gains_position.Kp = (float)Pp / 1000.0f;
-    }
-
-
-    
-    if(packet[0] == 'I' && packet[1] == 'd'){
-        int Id = 0;
-        sscanf(packet, "Id%d", &Id);
-        hfoc.flash_data.controller.PID_gains_d.Ki = (float)Id / 1000.0f;
-    }
-    if(packet[0] == 'I' && packet[1] == 'q'){
-        int Iq = 0;
-        sscanf(packet, "Iq%d", &Iq);
-        hfoc.flash_data.controller.PID_gains_q.Ki = (float)Iq / 1000.0f;
-    }
-    if(packet[0] == 'I' && packet[1] == 's'){
-        int Is = 0;
-        sscanf(packet, "Is%d", &Is);
-        hfoc.flash_data.controller.PID_gains_speed.Ki = (float)Is / 1000.0f;
-    }
-    if(packet[0] == 'I' && packet[1] == 'p'){
-        int Ip = 0;
-        sscanf(packet, "Ip%d", &Ip);
-        hfoc.flash_data.controller.PID_gains_position.Ki = (float)Ip / 1000.0f;
-    }
-
-    if(packet[0] == 'S' && packet[1] == 'q'){
-        int Sq = 0;
-        sscanf(packet, "Sq%d", &Sq);
-        hfoc.dq_current_setpoint.q = (float)Sq / 1000.0f;
-    }
-    if(packet[0] == 'S' && packet[1] == 'd'){
-        int Sd = 0;
-        sscanf(packet, "Sd%d", &Sd);
-        hfoc.dq_current_setpoint.d = (float)Sd / 1000.0f;
-    }
-    if(packet[0] == 'S' && packet[1] == 's'){
-        int Ss = 0;
-        sscanf(packet, "Ss%d", &Ss);
-        hfoc.speed_setpoint = (float)Ss;
-    }
-    if(packet[0] == 'S' && packet[1] == 'p'){
-        int Sp = 0;
-        sscanf(packet, "Sp%d", &Sp);
-        hfoc.angle_setpoint = (float)Sp / 1000.0f;
-        normalize_angle_pm_pi(&hfoc.angle_setpoint); //normalize the angle to [-pi, pi]
-    }
-
-    if(packet[0] == 'L' && packet[1] == 'i'){
-        int Li = 0;
-        sscanf(packet, "Li%d", &Li);
-        hfoc.flash_data.limits.max_dq_current = (float)Li / 1000.0f;
-    }
-    if(packet[0] == 'L' && packet[1] == 'v'){
-        int Lv = 0;
-        sscanf(packet, "Lv%d", &Lv);
-        hfoc.flash_data.limits.max_dq_voltage = (float)Lv / 1000.0f;
-    }
-}
-
-
-
-
-
-
-
-
 
 
 
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
-    Log_UART_TxCpltCallback(huart);
+    UNUSED(huart);
+    // Log_UART_TxCpltCallback(huart);
 }
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
-    Log_UARTEx_RxEventCallback(huart, Size);
+    UNUSED(huart);
+    UNUSED(Size);
+    // Log_UARTEx_RxEventCallback(huart, Size);
 }
 
 

@@ -1,5 +1,4 @@
 #include "FOC_Diagnostics.h"
-#include "Logging.h"
 
 
 #define FOC_ERROR_INITIALIZING (1u << 0)

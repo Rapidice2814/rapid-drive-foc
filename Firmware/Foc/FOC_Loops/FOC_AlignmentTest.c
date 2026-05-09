@@ -102,20 +102,20 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
 
                 FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
 
-                Log_printf("Alignment test:\nAbs Diff CW:%d, CCW:%d\nDirection:%d\n", (int)(abs_diff_cw * 1000), (int)(abs_diff_ccw * 1000), hfoc->flash_data.motor.direction);
+                USB_printf("Alignment test:\nAbs Diff CW:%d, CCW:%d\nDirection:%d\n", (int)(abs_diff_cw * 1000), (int)(abs_diff_ccw * 1000), hfoc->flash_data.motor.direction);
                 if(abs_diff_cw < 0.3f && abs_diff_ccw < 0.3f){
-                    Log_printf("Alignment test passed!\n");
+                    USB_printf("Alignment test passed!\n");
                     step++;
                     next_step_time = HAL_GetTick() + 100;
                 } else{
-                    Log_printf("Alignment test failed!\n");
+                    USB_printf("Alignment test failed!\n");
                     if(attempt < 3){
                         attempt++;
                         step = 0;
                         next_step_time = HAL_GetTick() + 1;
                     } else{
                         attempt = 0;
-                        Log_printf("Alignment test failed after %d attempts!\n", attempt);
+                        USB_printf("Alignment test failed after %d attempts!\n", attempt);
                         return FOC_LOOP_ERROR;
                     }
                 }

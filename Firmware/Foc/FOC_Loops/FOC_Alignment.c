@@ -20,7 +20,7 @@ FOC_LoopStatusTypeDef FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
     switch(step){
         case 0:
             if(HAL_GetTick() >= next_step_time){
-                Log_printf("Starting alignment with %dmV\n", (int)(magnitude * 1000));            
+                USB_printf("Starting alignment with %dmV\n", (int)(magnitude * 1000));            
 
                 phase = STARTING_PHASE;
                 step++;
@@ -61,16 +61,16 @@ FOC_LoopStatusTypeDef FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
 
                 if(retval != FOC_OK){
                     FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
-                    Log_printf("Error setting encoder zero\n");
+                    USB_printf("Error setting encoder zero\n");
                     step = 0;
                     return FOC_LOOP_ERROR;
                 }else{
-                    Log_printf("Encoder zero set successfully\n");
-                    Log_printf("Encoder angle mechanical offset: %dmRad\n", (int)(hfoc->flash_data.encoder.mechanical_offset * 1000));
+                    USB_printf("Encoder zero set successfully\n");
+                    USB_printf("Encoder angle mechanical offset: %dmRad\n", (int)(hfoc->flash_data.encoder.mechanical_offset * 1000));
                     step++;
                     next_step_time = HAL_GetTick() + 100; //wait before the next step
                 }
-                // Log_printf("Encoder zero set in %d us\n", (int)execution_time);
+                // USB_printf("Encoder zero set in %d us\n", (int)execution_time);
 
             }
             break;

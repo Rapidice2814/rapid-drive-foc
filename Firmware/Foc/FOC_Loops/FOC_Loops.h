@@ -3,7 +3,7 @@
 
 #include "main.h"
 #include "FOC_Utils.h"
-#include "logging.h"
+#include "FOC_USB_Debug.h"
 
 typedef enum{
 	FOC_LOOP_IN_PROGRESS,

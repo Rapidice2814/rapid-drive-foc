@@ -34,7 +34,7 @@ try:
     terminal_thread.start()
 
     command_queue.put("stop")
-    command_queue.put("setmask 1")
+    command_queue.put("setmask 0x08000000")
     command_queue.put("start")
 
     main_plot_loop(plot_queue, stop_event)

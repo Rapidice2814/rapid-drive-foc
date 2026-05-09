@@ -22,7 +22,7 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
     switch(step){
         case 0:
             if(HAL_GetTick() >= next_step_time){
-                Log_printf("Calibrating current sensor\n");
+                USB_printf("Calibrating current sensor\n");
 
                 step++;
                 next_step_time = HAL_GetTick() + 1;
@@ -69,7 +69,7 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
             break;
         case 3:
             if(HAL_GetTick() >= next_step_time){
-                Log_printf("Current sensor calibration complete!\n");
+                USB_printf("Current sensor calibration complete!\n");
                 
                 step++;
                 next_step_time = HAL_GetTick() + 10;

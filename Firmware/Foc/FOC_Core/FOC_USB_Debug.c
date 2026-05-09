@@ -1,7 +1,6 @@
 #include "FOC_USB_Debug.h"
 #include <string.h>
-#include "Utils.h"
-#include "usbd_cdc_if.h"
+#include <stdio.h>
 
 /******Packet Structure******/
 /*
@@ -149,14 +148,8 @@ typedef enum {
     X(3, f, speed_setpoint)                    \
 
 
-
-
 #define MAX_LOGDATA_SAMPLE_COUNT 30
 #define MAX_LOGDATA_SIGNAL_COUNT 8
-
-#define RX_QUEUE_SIZE 2
-#define TX_QUEUE_SIZE 4
-
 
 typedef union{
     float    f;
@@ -177,37 +170,15 @@ typedef struct{
     LogDataPayloadTypeDef payload;
 } LogDataHandleTypeDef;
 
-typedef struct{
-    uint16_t length;
-    uint8_t payload[5 + 32];
-} RxMsg_t;
-
-typedef struct{
-    uint16_t length;
-    uint8_t payload[5 + (MAX_LOGDATA_SAMPLE_COUNT * MAX_LOGDATA_SIGNAL_COUNT) * 4 + 2];
-} TxMsg_t;
-
-
-DECLARE_QUEUE(RxMsg_t, RxQueue, RX_QUEUE_SIZE)
-DECLARE_QUEUE(TxMsg_t, TxQueue, TX_QUEUE_SIZE)
-
-typedef struct{
-    volatile uint8_t tx_busy_flag;
-    uint32_t tx_missed_packets;
-    TxQueue_t tx_queue;    
-    RxQueue_t rx_queue;
-    TxMsg_t tx_usb_buffer;
-} DebugUSBHandleTypeDef;
-
+extern FOC_HandleTypeDef hfoc;
 
 static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t len);
-static uint8_t Debug_SendTextResponse(uint8_t* text, uint16_t len);
+
 
 static Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask);
 static void Debug_StartLogging();
 static void Debug_StopLogging();
 
-static DebugUSBHandleTypeDef hdebugusb = {0};
 static LogDataHandleTypeDef hlogdata = {0};
 
 
@@ -224,7 +195,7 @@ Debug_StatusTypeDef FOC_USB_Setup(){
  * @param hfoc Pointer to the FOC handle containing the current state and signal values.
  * @return Debug_StatusTypeDef indicating the status of the capture operation.
  */
-Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(FOC_HandleTypeDef *hfoc){
+Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(){
 
     if(!hlogdata.is_running) return DEBUG_STOPPED;
 
@@ -239,7 +210,7 @@ Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(FOC_HandleTypeDef *hfoc){
         do {                                                                        \
             if ((hlogdata.signal_mask & (1u << (bit))) != 0u)                       \
             {                                                                       \
-                conv.member = hfoc->field;                                          \
+                conv.member = hfoc.field;                                           \
                 hlogdata.payload.buffer[write_index + signal_index] = conv.u32;     \
                 signal_index++;                                                     \
             }                                                                       \
@@ -250,9 +221,7 @@ Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(FOC_HandleTypeDef *hfoc){
 
     if(++hlogdata.payload.sample_count >= MAX_LOGDATA_SAMPLE_COUNT){
         uint16_t payload_bytes = 8 + hlogdata.payload.sample_count * hlogdata.payload.signal_count * 4;
-        if(!Debug_SendBinaryResponse(MSG_LOG_DATA, (uint8_t*)&hlogdata.payload, payload_bytes)){
-            hdebugusb.tx_missed_packets++;
-        }
+        Debug_SendBinaryResponse(MSG_LOG_DATA, (uint8_t*)&hlogdata.payload, payload_bytes);
         hlogdata.payload.sample_count = 0;
     }
 
@@ -260,32 +229,28 @@ Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(FOC_HandleTypeDef *hfoc){
     return DEBUG_OK;
 }
 
-/**
- * @brief Transmits a USB packet if there is one ready in the buffer and the USB interface is not busy. 
- *        and the USB interface is connected.
- * @return Debug_StatusTypeDef indicating the status of the transmission.
- */
-Debug_StatusTypeDef FOC_USB_Debug_TransmitPacket(){
-    if(!CDC_IsConnected()){
-        hdebugusb.tx_busy_flag = 0;
-        return DEBUG_ERROR;
-    }
-
-    if(hdebugusb.tx_busy_flag) return DEBUG_BUSY;
-
-    if(!TxQueue_pop(&hdebugusb.tx_queue, &hdebugusb.tx_usb_buffer)) return DEBUG_OK;
-
-    hdebugusb.tx_busy_flag = 1;
-    if(CDC_Transmit_FS(hdebugusb.tx_usb_buffer.payload, hdebugusb.tx_usb_buffer.length) == USBD_OK){
-        HAL_GPIO_WritePin(DEBUG_LED2_GPIO_Port, DEBUG_LED2_Pin, GPIO_PIN_SET);
-        return DEBUG_OK;
-    }else{
-        return DEBUG_ERROR;
-    }
-    
+static void Debug_StartLogging(){
+    hlogdata.payload.sample_count = 0;
+    hlogdata.is_running = 1;
 }
 
-static void Debug_ExecuteBinaryCommand(FOC_HandleTypeDef *hfoc,MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t payload_length){
+static void Debug_StopLogging(){
+    hlogdata.is_running = 0;
+}
+
+static Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask){
+    if(hlogdata.is_running) return DEBUG_ERROR;
+
+    uint8_t set_bits = countbits(new_mask);
+    if(set_bits > MAX_LOGDATA_SIGNAL_COUNT) return DEBUG_ERROR;
+    
+    hlogdata.signal_mask = new_mask;
+    hlogdata.payload.signal_count = set_bits;
+
+    return DEBUG_OK;
+}
+
+static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t payload_length){
     uint8_t controller_id;
 
     switch ((MsgTypeTypeDef)(msg_type)){
@@ -324,7 +289,7 @@ static void Debug_ExecuteBinaryCommand(FOC_HandleTypeDef *hfoc,MsgTypeTypeDef ms
         switch (controller_id) {
         #define X(id, name)                                                         \
             case id:                                                                \
-                PID_SetGains(&hfoc->name, new_gains);                               \
+                PID_SetGains(&hfoc.name, new_gains);                               \
                 break;
             FOC_PID_CONTROLLERS_LIST(X)
         #undef X
@@ -344,7 +309,7 @@ static void Debug_ExecuteBinaryCommand(FOC_HandleTypeDef *hfoc,MsgTypeTypeDef ms
         switch (controller_id) {
         #define X(id, name)                                                         \
             case id:                                                                \
-                current_gains = PID_GetGains(&hfoc->name);                          \
+                current_gains = PID_GetGains(&hfoc.name);                          \
                 break;
             FOC_PID_CONTROLLERS_LIST(X)
         #undef X
@@ -375,94 +340,157 @@ static void Debug_ExecuteBinaryCommand(FOC_HandleTypeDef *hfoc,MsgTypeTypeDef ms
     }
 }
 
-static void Debug_ExecuteTextCommand(FOC_HandleTypeDef *hfoc, uint8_t *packet, uint16_t length){
-    Debug_SendTextResponse((uint8_t*)"Received text command:", 22);
-    Debug_SendTextResponse(packet, length);
-}
+static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
+    for(int i = 0; i < length; i++){
+        if(packet[i] == 'D'){
+            if(packet[i+1] == 'a'){
+                hfoc.flash_data.controller.anticogging_FF_enabled = !hfoc.flash_data.controller.anticogging_FF_enabled;
+            } else if(packet[i+1] == 'f'){
+                hfoc.flash_data.controller.current_PID_FF_enabled = !hfoc.flash_data.controller.current_PID_FF_enabled;
+            } 
+        }
+        if(packet[i] == 'A'){
+            hfoc.state = FOC_STATE_ANTICOGGING;
+        }
+        if(packet[i] == 'R'){
+            hfoc.state = FOC_STATE_RESET;
+        }
+        if(packet[i] == 'E'){
+            hfoc.state = FOC_STATE_ERROR;
+        }
+        if(packet[i] == 'F'){
+            hfoc.state = FOC_STATE_FLASH_SAVE;
+        }
+        if(packet[i] == 'M'){
+            if(packet[i+1] == 's'){
+                hfoc.flash_data.controller.speed_PID_enabled = 1;
+                hfoc.flash_data.controller.position_PID_enabled = 0;
+            } else if(packet[i+1] == 'p'){
+                hfoc.flash_data.controller.position_PID_enabled = 1;
+                hfoc.flash_data.controller.speed_PID_enabled = 0;
+            } else if(packet[i+1] == 'o'){
+                hfoc.flash_data.controller.speed_PID_enabled = 0;
+                hfoc.flash_data.controller.position_PID_enabled = 0;
+            }
+        }
+        if(packet[i] == 'O'){
+            hfoc.state = FOC_STATE_OPENLOOP;
+        }
+        if(packet[i] == 'K'){
+            hfoc.motor_disable_flag = 1;
+        }
+        if(packet[i] == 'T'){
 
-void FOC_USB_Debug_ExecuteReceivedCommand(FOC_HandleTypeDef *hfoc){
-    RxMsg_t rxmsg;
-    if(!RxQueue_pop(&hdebugusb.rx_queue, &rxmsg)){
-        return;
+        }
+        if(packet[i] == 'C'){
+            hfoc.flash_data.encoder.offset_valid = 0;
+            hfoc.flash_data.motor.phase_resistance_valid = 0;
+            hfoc.flash_data.motor.phase_inductance_valid = 0;
+            hfoc.flash_data.controller.current_PID_gains_valid = 0;
+            hfoc.state = FOC_STATE_CHECKLIST;
+        }
     }
 
-    if (rxmsg.payload[0] == SOF1 || rxmsg.payload[1] == SOF2){
-        MsgTypeTypeDef msg_type = (MsgTypeTypeDef)rxmsg.payload[2];
-        uint16_t payload_length = (uint16_t)rxmsg.payload[3] | ((uint16_t)rxmsg.payload[4] << 8);
-        uint8_t* payload = &rxmsg.payload[5];
-        Debug_ExecuteBinaryCommand(hfoc, msg_type, payload, payload_length);
-    } else {
-        Debug_ExecuteTextCommand(hfoc, rxmsg.payload, rxmsg.length);
+    if(packet[0] == 'P' && packet[1] == 'd'){
+        int Pd = 0;
+        sscanf(packet, "Pd%d", &Pd);
+        hfoc.flash_data.controller.PID_gains_d.Kp = (float)Pd / 1000.0f;
+    }
+    if(packet[0] == 'P' && packet[1] == 'q'){
+        int Pq = 0;
+        sscanf(packet, "Pq%d", &Pq);
+        hfoc.flash_data.controller.PID_gains_q.Kp = (float)Pq / 1000.0f;
+    }
+    if(packet[0] == 'P' && packet[1] == 's'){
+        int Ps = 0;
+        sscanf(packet, "Ps%d", &Ps);
+        hfoc.flash_data.controller.PID_gains_speed.Kp = (float)Ps / 1000.0f;
+    }
+    if(packet[0] == 'P' && packet[1] == 'p'){
+        int Pp = 0;
+        sscanf(packet, "Pp%d", &Pp);
+        hfoc.flash_data.controller.PID_gains_position.Kp = (float)Pp / 1000.0f;
     }
 
-}
 
-void FOC_USB_Debug_TransmitCpltCallback(){
-    hdebugusb.tx_busy_flag = 0;
-    HAL_GPIO_WritePin(DEBUG_LED2_GPIO_Port, DEBUG_LED2_Pin, GPIO_PIN_RESET);
-}
-
-void FOC_USB_Debug_ReceiveCallback(uint8_t* buf, uint32_t* len){
-    if(*len < 1){
-        Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
-        return;
-    }
-
-    RxMsg_t rxmsg;
-    memcpy(rxmsg.payload, buf, *len);
-    rxmsg.length = (uint16_t)*len;
-
-    if(!RxQueue_push(&hdebugusb.rx_queue, &rxmsg)){
-        Debug_SendBinaryResponse(MSG_BUFFER_OVERFLOW, NULL, 0);
-    }
-}
-
-
-static void Debug_StartLogging(){
-    hlogdata.payload.sample_count = 0;
-    hlogdata.is_running = 1;
-}
-
-static void Debug_StopLogging(){
-    hlogdata.is_running = 0;
-}
-
-static Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask){
-    if(hlogdata.is_running) return DEBUG_ERROR;
-
-    uint8_t set_bits = countbits(new_mask);
-    if(set_bits > MAX_LOGDATA_SIGNAL_COUNT) return DEBUG_ERROR;
     
-    hlogdata.signal_mask = new_mask;
-    hlogdata.payload.signal_count = set_bits;
+    if(packet[0] == 'I' && packet[1] == 'd'){
+        int Id = 0;
+        sscanf(packet, "Id%d", &Id);
+        hfoc.flash_data.controller.PID_gains_d.Ki = (float)Id / 1000.0f;
+    }
+    if(packet[0] == 'I' && packet[1] == 'q'){
+        int Iq = 0;
+        sscanf(packet, "Iq%d", &Iq);
+        hfoc.flash_data.controller.PID_gains_q.Ki = (float)Iq / 1000.0f;
+    }
+    if(packet[0] == 'I' && packet[1] == 's'){
+        int Is = 0;
+        sscanf(packet, "Is%d", &Is);
+        hfoc.flash_data.controller.PID_gains_speed.Ki = (float)Is / 1000.0f;
+    }
+    if(packet[0] == 'I' && packet[1] == 'p'){
+        int Ip = 0;
+        sscanf(packet, "Ip%d", &Ip);
+        hfoc.flash_data.controller.PID_gains_position.Ki = (float)Ip / 1000.0f;
+    }
 
-    return DEBUG_OK;
+    if(packet[0] == 'S' && packet[1] == 'q'){
+        int Sq = 0;
+        sscanf(packet, "Sq%d", &Sq);
+        hfoc.dq_current_setpoint.q = (float)Sq / 1000.0f;
+    }
+    if(packet[0] == 'S' && packet[1] == 'd'){
+        int Sd = 0;
+        sscanf(packet, "Sd%d", &Sd);
+        hfoc.dq_current_setpoint.d = (float)Sd / 1000.0f;
+    }
+    if(packet[0] == 'S' && packet[1] == 's'){
+        int Ss = 0;
+        sscanf(packet, "Ss%d", &Ss);
+        hfoc.speed_setpoint = (float)Ss;
+    }
+    if(packet[0] == 'S' && packet[1] == 'p'){
+        int Sp = 0;
+        sscanf(packet, "Sp%d", &Sp);
+        hfoc.angle_setpoint = (float)Sp / 1000.0f;
+        normalize_angle_pm_pi(&hfoc.angle_setpoint); //normalize the angle to [-pi, pi]
+    }
+
+    if(packet[0] == 'L' && packet[1] == 'i'){
+        int Li = 0;
+        sscanf(packet, "Li%d", &Li);
+        hfoc.flash_data.limits.max_dq_current = (float)Li / 1000.0f;
+    }
+    if(packet[0] == 'L' && packet[1] == 'v'){
+        int Lv = 0;
+        sscanf(packet, "Lv%d", &Lv);
+        hfoc.flash_data.limits.max_dq_voltage = (float)Lv / 1000.0f;
+    }
 }
 
 static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t len){
     if(payload == NULL && len > 0) return 0;
-    TxMsg_t msg;
-    msg.payload[0] = SOF1;
-    msg.payload[1] = SOF2;
-    msg.payload[2] = (uint8_t)msg_type;
-    msg.payload[3] = (uint8_t)(len & 0xFF);
-    msg.payload[4] = (uint8_t)((len >> 8) & 0xFF);
-    if(len > sizeof(msg.payload) - 5) return 0;
+    uint8_t buffer[MAX_LOGDATA_SAMPLE_COUNT * MAX_LOGDATA_SIGNAL_COUNT * 4 + 5]; //maximum payload size + header
+    buffer[0] = SOF1;
+    buffer[1] = SOF2;
+    buffer[2] = (uint8_t)msg_type;
+    buffer[3] = (uint8_t)(len & 0xFF);
+    buffer[4] = (uint8_t)((len >> 8) & 0xFF);
+    if(len > sizeof(buffer) - 5) return 0;
     if((len > 0U)){
-        memcpy(&msg.payload[5], payload, len);
+        memcpy(&buffer[5], payload, len);
     }
-    msg.length = len + 5;
-
-    return TxQueue_push(&hdebugusb.tx_queue, &msg);
+    return USB_SendResponse(buffer, len + 5);
 }
 
-static uint8_t Debug_SendTextResponse(uint8_t* text, uint16_t len){
-
-    if (len > sizeof(TxMsg_t) - 1) return 0;
-
-    TxMsg_t msg;
-    memcpy(msg.payload, text, len);
-    msg.length = len;
-
-    return TxQueue_push(&hdebugusb.tx_queue, &msg);
+void USB_ProcessReceivedPacket(uint8_t* buf, uint16_t len){
+    if (buf[0] == SOF1 || buf[1] == SOF2){
+        MsgTypeTypeDef msg_type = (MsgTypeTypeDef)buf[2];
+        uint16_t payload_length = (uint16_t)buf[3] | ((uint16_t)buf[4] << 8);
+        uint8_t* payload = &buf[5];
+        Debug_ExecuteBinaryCommand(msg_type, payload, payload_length);
+    } else {
+        Debug_ExecuteTextCommand((const char*)buf, len);
+    }
 }

@@ -34,8 +34,8 @@ FOC_LoopStatusTypeDef FOC_PIDAutotune(FOC_HandleTypeDef *hfoc){
     switch(step){
         case 0:
             if(HAL_GetTick() >= next_step_time){
-                Log_printf("Starting PID Autotune\n");
-                Log_printf("Current Control Bandwidth: %d rad/s\n", (int)(hfoc->flash_data.controller.current_control_bandwidth));
+                USB_printf("Starting PID Autotune\n");
+                USB_printf("Current Control Bandwidth: %d rad/s\n", (int)(hfoc->flash_data.controller.current_control_bandwidth));
 
                 step++;
                 next_step_time = HAL_GetTick() + 10;
@@ -45,13 +45,13 @@ FOC_LoopStatusTypeDef FOC_PIDAutotune(FOC_HandleTypeDef *hfoc){
             if(HAL_GetTick() >= next_step_time){
                 if(FOC_TuneCurrentPID(hfoc) != FOC_OK){
                     step = 0;
-                    Log_printf("Error tuning PID gains\n");
+                    USB_printf("Error tuning PID gains\n");
                     return FOC_LOOP_ERROR;
                 } else{
                     step = 0;
-                    Log_printf("PID gains tuned successfully\n");
-                    Log_printf("Kp_d: %de-3, Ki_d: %d\n", (int)(hfoc->flash_data.controller.PID_gains_d.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_d.Ki));
-                    Log_printf("Kp_q: %de-3, Ki_q: %d\n", (int)(hfoc->flash_data.controller.PID_gains_q.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_q.Ki));
+                    USB_printf("PID gains tuned successfully\n");
+                    USB_printf("Kp_d: %de-3, Ki_d: %d\n", (int)(hfoc->flash_data.controller.PID_gains_d.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_d.Ki));
+                    USB_printf("Kp_q: %de-3, Ki_q: %d\n", (int)(hfoc->flash_data.controller.PID_gains_q.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_q.Ki));
                     return FOC_LOOP_COMPLETED;
                 }
             }

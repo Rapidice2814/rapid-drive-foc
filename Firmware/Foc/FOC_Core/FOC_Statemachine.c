@@ -11,15 +11,15 @@ extern volatile uint8_t debug_loop_flag;
 
 static void FOC_StateInit(FOC_HandleTypeDef* hfoc){
     if(hfoc->flash_data.contains_data == 1){
-        Log_printf("Flash data loaded!: Offset: %d\n", (int)(hfoc->flash_data.encoder.mechanical_offset * 1000));
+        USB_printf("Flash data loaded!: Offset: %d\n", (int)(hfoc->flash_data.encoder.mechanical_offset * 1000));
     }else{
-        Log_printf("Flash data is missing!\n");
+        USB_printf("Flash data is missing!\n");
     }
     hfoc->state = FOC_STATE_RESET;
 }
 
 static void FOC_StateReset(FOC_HandleTypeDef* hfoc){
-    Log_printf("Resetting FOC ...\n");
+    USB_printf("Resetting FOC ...\n");
     DRV8323_ExitHighImpedance(&hfoc->hdrv8323);
 
     hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
@@ -74,7 +74,7 @@ static void FOC_StateIdentify(FOC_HandleTypeDef* hfoc){
         hfoc->flash_data.controller.current_PID_gains_valid = 0;
         hfoc->state = FOC_STATE_CHECKLIST;
     } else if(ret == FOC_LOOP_ERROR){
-        Log_printf("Motor identification failed!\n");
+        USB_printf("Motor identification failed!\n");
         hfoc->state = FOC_STATE_ERROR;
     } 
 }
@@ -87,7 +87,7 @@ static void FOC_StatePIDAutotune(FOC_HandleTypeDef* hfoc){
         hfoc->flash_data.controller.current_PID_FF_enabled = 0;
         hfoc->state = FOC_STATE_CHECKLIST;
     } else if(ret == FOC_LOOP_ERROR){
-        Log_printf("PID autotune failed!\n");
+        USB_printf("PID autotune failed!\n");
         hfoc->state = FOC_STATE_ERROR;
     }
 }
@@ -98,7 +98,7 @@ static void FOC_StateAlignment(FOC_HandleTypeDef* hfoc){
         hfoc->flash_data.controller.anticogging_data_valid = 0;
         hfoc->state = FOC_STATE_ALIGNMENT_TEST;
     } else if(ret == FOC_LOOP_ERROR){
-        Log_printf("Alignment failed!\n");
+        USB_printf("Alignment failed!\n");
         hfoc->state = FOC_STATE_ERROR;
     }
 }
@@ -118,7 +118,7 @@ static void FOC_StateAntiCogging(FOC_HandleTypeDef* hfoc){
         hfoc->flash_data.controller.anticogging_data_valid = 1;
         hfoc->state = FOC_STATE_CHECKLIST;
     } else if(ret == FOC_LOOP_ERROR){
-        Log_printf("Anti-cogging measurement failed!\n");
+        USB_printf("Anti-cogging measurement failed!\n");
         hfoc->state = FOC_STATE_ERROR;
     }
 }
@@ -133,13 +133,13 @@ static void FOC_StateRun(FOC_HandleTypeDef* hfoc){
     }
 
     if(debug_loop_flag){
-        // Log_printf("Vq:%d, Iq:%d, Iq_set:%d, Mspeed:%d, Ibus:%d, Vbus:%d, Temp:%d, Mang:%d\n",
+        // USB_printf("Vq:%d, Iq:%d, Iq_set:%d, Mspeed:%d, Ibus:%d, Vbus:%d, Temp:%d, Mang:%d\n",
         // (int)(hfoc->dq_voltage.q * 1000), (int)(hfoc->dq_current.q * 1000), 
         // (int)(hfoc->dq_current_setpoint.q * 1000), (int)(hfoc->encoder_speed_mechanical * 1000),
         // (int)(hfoc->ibus * 1000), (int)(hfoc->adc_values.vbus * 10), (int)(hfoc->adc_values.motor_temp * 10),
         // (int)(hfoc->encoder_angle_mechanical * 1000));
 
-        // Log_printf("Execution Time: %d, State Time: %d\n",
+        // USB_printf("Execution Time: %d, State Time: %d\n",
         //     (int)hfoc->execution_time.loop_max, (int)hfoc->execution_time.state_max);
 
 
