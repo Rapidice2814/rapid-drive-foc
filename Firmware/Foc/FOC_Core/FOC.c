@@ -158,18 +158,16 @@ void FOC_Loop(){
         FOC_UpdateEncoderAngle(&hfoc);
         FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY);
 
-
-        uint32_t log_start_time = get_current_time();
-        Log_Loop();
-        calculate_execution_time(&hfoc.execution_time.log_max, log_start_time);
-
         FOC_CheckErrors(&hfoc);
-
+        
         uint32_t state_start_time = get_current_time();
         FOC_StateLoop(&hfoc);
         calculate_execution_time(&hfoc.execution_time.state_max, state_start_time);
-
-
+        
+        uint32_t log_start_time = get_current_time();
+        Log_Loop();
+        calculate_execution_time(&hfoc.execution_time.log_max, log_start_time);
+        
         uint32_t usb_debug_start_time = get_current_time();
         FOC_USB_Debug_CaptureSamples(&hfoc);
         FOC_USB_Debug_TransmitPacket();

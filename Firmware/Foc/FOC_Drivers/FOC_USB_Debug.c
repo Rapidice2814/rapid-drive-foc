@@ -5,6 +5,8 @@
 
 /******Packet Structure******/
 /*
+Binary Packets:
+Binary packets are detected based on the SOF bytes at the beginning of the payload. In case the SOF bytes are not found, the packet is decoded as a text packet, based on ASCII values.
 All values are represented either as a 4-byte float or a 4-byte integer, signed or unsigned depending on the signal type. 
 The PC should interpret the values based on the signal definitions in FOC_USB_DEBUG_SIGNAL_LIST and the corresponding types (f for float, i32 for signed int, u32 for unsigned int).
 All the USB packets follow the same structure: 
@@ -140,7 +142,7 @@ typedef enum {
     X(2, pid_speed)                             \
     X(3, pid_position)                          \
 
-#define VAR_ID_LIST(X)                          \
+#define VAR_ID_LIST(X)                         \
     X(0, f, dq_current_setpoint.d)             \
     X(1, f, dq_current_setpoint.q)             \
     X(2, f, angle_setpoint)                    \
@@ -153,14 +155,14 @@ typedef enum {
 #define MAX_LOGDATA_SIGNAL_COUNT 8
 
 #define RX_QUEUE_SIZE 2
-#define TX_QUEUE_SIZE 2
+#define TX_QUEUE_SIZE 4
 
 
 typedef union{
     float    f;
     int32_t  i32;
     uint32_t u32;
-} TypeConverterUnion;
+} TypeConvU_t;
 
 typedef struct{
     uint32_t timestamp;
@@ -175,56 +177,35 @@ typedef struct{
     LogDataPayloadTypeDef payload;
 } LogDataHandleTypeDef;
 
-typedef struct {
-    uint8_t msg_type_uint;
-    uint16_t payload_length;
-} MsgHdr_t;
-
 typedef struct{
-    MsgHdr_t hdr;
-    uint8_t payload[32];
+    uint16_t length;
+    uint8_t payload[5 + 32];
 } RxMsg_t;
 
 typedef struct{
-    MsgHdr_t hdr;
-    uint8_t payload[(MAX_LOGDATA_SAMPLE_COUNT * MAX_LOGDATA_SIGNAL_COUNT) * 4 + 2];
+    uint16_t length;
+    uint8_t payload[5 + (MAX_LOGDATA_SAMPLE_COUNT * MAX_LOGDATA_SIGNAL_COUNT) * 4 + 2];
 } TxMsg_t;
 
-typedef struct {
-    volatile uint8_t head;
-    volatile uint8_t tail;
-    RxMsg_t items[RX_QUEUE_SIZE];
-} RxQueue_t;
 
-typedef struct {
-    volatile uint8_t head;
-    volatile uint8_t tail;
-    TxMsg_t items[TX_QUEUE_SIZE];
-} TxQueue_t;
+DECLARE_QUEUE(RxMsg_t, RxQueue, RX_QUEUE_SIZE)
+DECLARE_QUEUE(TxMsg_t, TxQueue, TX_QUEUE_SIZE)
 
 typedef struct{
     volatile uint8_t tx_busy_flag;
     uint32_t tx_missed_packets;
-    TxQueue_t tx_queue;
-    uint8_t tx_buffer[5 + (MAX_LOGDATA_SAMPLE_COUNT * MAX_LOGDATA_SIGNAL_COUNT) * 4 + 2];
-    
+    TxQueue_t tx_queue;    
     RxQueue_t rx_queue;
+    TxMsg_t tx_usb_buffer;
 } DebugUSBHandleTypeDef;
 
 
+static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t len);
+static uint8_t Debug_SendTextResponse(uint8_t* text, uint16_t len);
 
-uint16_t Debug_ConstructPacket(uint8_t* usb_buffer, MsgTypeTypeDef msg_type, uint8_t* payload_buffer, uint16_t payload_length);
-
-
-uint8_t Debug_AddPacketToTxBuffer(TxQueue_t* queue, uint8_t* payload, uint16_t len, MsgTypeTypeDef msg_type);
-uint8_t Debug_AddPacketToRxBuffer(RxQueue_t* queue, uint8_t* payload, uint16_t len, MsgTypeTypeDef msg_type);
-
-uint16_t Debug_PopPacketFromTxBuffer(TxQueue_t* queue, uint8_t *usb_buffer);
-uint8_t Debug_PopPacketFromRxBuffer(RxQueue_t *queue, RxMsg_t *msg);
-
-Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask);
-void Debug_StartLogging();
-void Debug_StopLogging();
+static Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask);
+static void Debug_StartLogging();
+static void Debug_StopLogging();
 
 static DebugUSBHandleTypeDef hdebugusb = {0};
 static LogDataHandleTypeDef hlogdata = {0};
@@ -250,7 +231,7 @@ Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(FOC_HandleTypeDef *hfoc){
     uint8_t signal_index = 0;
     uint16_t write_index;
 
-    TypeConverterUnion conv;
+    TypeConvU_t conv;
 
     write_index = (uint16_t)hlogdata.payload.sample_count * hlogdata.payload.signal_count;
 
@@ -269,7 +250,7 @@ Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(FOC_HandleTypeDef *hfoc){
 
     if(++hlogdata.payload.sample_count >= MAX_LOGDATA_SAMPLE_COUNT){
         uint16_t payload_bytes = 8 + hlogdata.payload.sample_count * hlogdata.payload.signal_count * 4;
-        if(!Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, (uint8_t*)&hlogdata.payload, payload_bytes, MSG_LOG_DATA)){
+        if(!Debug_SendBinaryResponse(MSG_LOG_DATA, (uint8_t*)&hlogdata.payload, payload_bytes)){
             hdebugusb.tx_missed_packets++;
         }
         hlogdata.payload.sample_count = 0;
@@ -292,11 +273,10 @@ Debug_StatusTypeDef FOC_USB_Debug_TransmitPacket(){
 
     if(hdebugusb.tx_busy_flag) return DEBUG_BUSY;
 
-    uint16_t len = Debug_PopPacketFromTxBuffer(&hdebugusb.tx_queue, hdebugusb.tx_buffer);
-    if(len == 0) return DEBUG_OK;
-    
+    if(!TxQueue_pop(&hdebugusb.tx_queue, &hdebugusb.tx_usb_buffer)) return DEBUG_OK;
+
     hdebugusb.tx_busy_flag = 1;
-    if(CDC_Transmit_FS(hdebugusb.tx_buffer, len) == USBD_OK){
+    if(CDC_Transmit_FS(hdebugusb.tx_usb_buffer.payload, hdebugusb.tx_usb_buffer.length) == USBD_OK){
         HAL_GPIO_WritePin(DEBUG_LED2_GPIO_Port, DEBUG_LED2_Pin, GPIO_PIN_SET);
         return DEBUG_OK;
     }else{
@@ -305,46 +285,42 @@ Debug_StatusTypeDef FOC_USB_Debug_TransmitPacket(){
     
 }
 
-void FOC_USB_Debug_ExecuteReceivedCommand(FOC_HandleTypeDef *hfoc){
-    RxMsg_t rxmsg;
-    if(!Debug_PopPacketFromRxBuffer(&hdebugusb.rx_queue, &rxmsg)){
-        return;
-    }
+static void Debug_ExecuteBinaryCommand(FOC_HandleTypeDef *hfoc,MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t payload_length){
     uint8_t controller_id;
 
-    switch ((MsgTypeTypeDef)(rxmsg.hdr.msg_type_uint)){
+    switch ((MsgTypeTypeDef)(msg_type)){
     case MSG_SET_MASK:
-        if(rxmsg.hdr.payload_length != 4){
-            Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_INVALID_PAYLOAD);
+        if(payload_length != 4){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
             break;
         }
         uint32_t new_mask;
-        memcpy(&new_mask, &rxmsg.payload[0], 4);
+        memcpy(&new_mask, payload, 4);
         if(Debug_UpdateMask(new_mask) != DEBUG_OK){
-            Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_ERROR);
+            Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
             break;
         }
-        Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_ACK);
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
     
     case MSG_START_LOG:
         Debug_StartLogging();
-        Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_ACK);
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
 
     case MSG_STOP_LOG:
         Debug_StopLogging();
-        Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_ACK);
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
 
     case MSG_SET_PID:
-        if(rxmsg.hdr.payload_length != 13){
-            Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_INVALID_PAYLOAD);
+        if(payload_length != 13){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
             break;
         }
-        controller_id = rxmsg.payload[0];
+        controller_id = payload[0];
         PIDValuesTypeDef new_gains;
-        memcpy(&new_gains, &rxmsg.payload[1], sizeof(new_gains));
+        memcpy(&new_gains, &payload[1], sizeof(new_gains));
         switch (controller_id) {
         #define X(id, name)                                                         \
             case id:                                                                \
@@ -353,17 +329,17 @@ void FOC_USB_Debug_ExecuteReceivedCommand(FOC_HandleTypeDef *hfoc){
             FOC_PID_CONTROLLERS_LIST(X)
         #undef X
             default:
-                Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_UNKNOWN_ID);
+                Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
                 break;
         }
-        Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_ACK);
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
     case MSG_GET_PID:
-        if(rxmsg.hdr.payload_length != 1){
-            Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_INVALID_PAYLOAD);
+        if(payload_length != 1){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
             break;
         }
-        controller_id = rxmsg.payload[0];
+        controller_id = payload[0];
         PIDValuesTypeDef current_gains;
         switch (controller_id) {
         #define X(id, name)                                                         \
@@ -373,13 +349,13 @@ void FOC_USB_Debug_ExecuteReceivedCommand(FOC_HandleTypeDef *hfoc){
             FOC_PID_CONTROLLERS_LIST(X)
         #undef X
             default:
-                Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_UNKNOWN_ID);
+                Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
                 break;
         }
         uint8_t response_payload[13];
         response_payload[0] = controller_id;
         memcpy(&response_payload[1], &current_gains, sizeof(current_gains));
-        Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, response_payload, sizeof(response_payload), MSG_PID_REPLY);
+        Debug_SendBinaryResponse(MSG_PID_REPLY, response_payload, sizeof(response_payload));
         break;
     case MSG_FLASH_SAVE:
         //not implemented yet
@@ -394,153 +370,64 @@ void FOC_USB_Debug_ExecuteReceivedCommand(FOC_HandleTypeDef *hfoc){
         //not implemented yet
         break;
     default:
-        Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_UNKNOWN_TYPE);
+        Debug_SendBinaryResponse(MSG_UNKNOWN_TYPE, NULL, 0);
         break;
     }
 }
 
-/**
- * @brief Adds a packet to the USB transmission buffer.
- * @param buf Pointer to the buffer containing the packet data.
- * @param len Length of the packet data.
- * @param msg_type Type of the message.
- * @return Debug_StatusTypeDef indicating the status of the operation.
- */
-uint8_t Debug_AddPacketToTxBuffer(TxQueue_t* queue, uint8_t* payload, uint16_t len, MsgTypeTypeDef msg_type){
-    if(queue == NULL) return 0;
+static void Debug_ExecuteTextCommand(FOC_HandleTypeDef *hfoc, uint8_t *packet, uint16_t length){
+    Debug_SendTextResponse((uint8_t*)"Received text command:", 22);
+    Debug_SendTextResponse(packet, length);
+}
 
-    uint8_t next = (uint8_t)((queue->head + 1U) % TX_QUEUE_SIZE);
-
-    if (next == queue->tail) return 0;
-
-    if (len > sizeof(queue->items[0].payload)) return 0;
-    queue->items[queue->head].hdr.msg_type_uint = (uint8_t)msg_type;
-    queue->items[queue->head].hdr.payload_length = len;
-
-    if ((payload != NULL) && (len > 0U)){
-        memcpy(queue->items[queue->head].payload, payload, len);
+void FOC_USB_Debug_ExecuteReceivedCommand(FOC_HandleTypeDef *hfoc){
+    RxMsg_t rxmsg;
+    if(!RxQueue_pop(&hdebugusb.rx_queue, &rxmsg)){
+        return;
     }
 
-    queue->head = next;
-    return 1;
-}
-
-/**
- * @brief Adds a packet to the USB reception buffer.
- * @param queue Pointer to the reception queue.
- * @param payload Pointer to the buffer containing the packet data.
- * @param len Length of the packet data.
- * @param msg_type Type of the message.
- * @return Status of the operation. Returns 1 if successful, 0 otherwise.
- */
-uint8_t Debug_AddPacketToRxBuffer(RxQueue_t* queue, uint8_t* payload, uint16_t len, MsgTypeTypeDef msg_type){
-    if(queue == NULL || payload == NULL) return 0;
-
-    uint8_t next = (uint8_t)((queue->head + 1U) % RX_QUEUE_SIZE);
-
-    if (next == queue->tail) return 0;
-
-    if (len > sizeof(queue->items[0].payload)) return 0;
-
-    queue->items[queue->head].hdr.msg_type_uint = (uint8_t)msg_type;
-    queue->items[queue->head].hdr.payload_length = len;
-
-    if ((payload != NULL) && (len > 0U)){
-        memcpy(queue->items[queue->head].payload, payload, len);
+    if (rxmsg.payload[0] == SOF1 || rxmsg.payload[1] == SOF2){
+        MsgTypeTypeDef msg_type = (MsgTypeTypeDef)rxmsg.payload[2];
+        uint16_t payload_length = (uint16_t)rxmsg.payload[3] | ((uint16_t)rxmsg.payload[4] << 8);
+        uint8_t* payload = &rxmsg.payload[5];
+        Debug_ExecuteBinaryCommand(hfoc, msg_type, payload, payload_length);
+    } else {
+        Debug_ExecuteTextCommand(hfoc, rxmsg.payload, rxmsg.length);
     }
 
-    queue->head = next;
-    return 1;
 }
-
-/**
- * @brief Pops a packet from the USB transmission buffer.
- * @param queue Pointer to the transmission queue.
- * @param usb_buffer Pointer to the buffer where the packet data will be copied.
- * @return Length of the popped packet. Returns 0 if the buffer is empty or if there was an error.
- */
-uint16_t Debug_PopPacketFromTxBuffer(TxQueue_t* queue, uint8_t *usb_buffer){
-    if ((usb_buffer == NULL) || (queue == NULL)) return 0;
-
-    if (queue->head == queue->tail) return 0;
-
-    TxMsg_t *msg;
-
-    msg = &queue->items[queue->tail];
-
-    usb_buffer[0] = SOF1;
-    usb_buffer[1] = SOF2;
-    usb_buffer[2] = (uint8_t)msg->hdr.msg_type_uint;
-    usb_buffer[3] = (uint8_t)(msg->hdr.payload_length & 0xFFU);
-    usb_buffer[4] = (uint8_t)((msg->hdr.payload_length >> 8) & 0xFFU);
-
-    if (msg->hdr.payload_length > 0U){
-        memcpy(&usb_buffer[5], msg->payload, msg->hdr.payload_length);
-    }
-
-    queue->tail = (uint8_t)((queue->tail + 1U) % TX_QUEUE_SIZE);
-
-    return (uint16_t)(5U + msg->hdr.payload_length);
-}
-
-
-
-/**
- * @brief Pops a packet from the USB reception buffer.
- * @param queue Pointer to the reception queue.
- * @param msg Pointer to the message structure where the packet data will be copied.
- * @return Status of the operation. Returns 1 if successful, 0 otherwise.
- */
-uint8_t Debug_PopPacketFromRxBuffer(RxQueue_t *queue, RxMsg_t *msg){
-    if ((queue == NULL) || (msg == NULL)) return 0;
-
-    if (queue->head == queue->tail) return 0;
-
-    *msg = queue->items[queue->tail];
-    queue->tail = (uint8_t)((queue->tail + 1U) % RX_QUEUE_SIZE);
-
-    return 1;
-}
-
-
-
-
-
-
 
 void FOC_USB_Debug_TransmitCpltCallback(){
     hdebugusb.tx_busy_flag = 0;
     HAL_GPIO_WritePin(DEBUG_LED2_GPIO_Port, DEBUG_LED2_Pin, GPIO_PIN_RESET);
 }
 
-void Debug_ReceivePacket(uint8_t* buf, uint32_t* len){
+void FOC_USB_Debug_ReceiveCallback(uint8_t* buf, uint32_t* len){
     if(*len < 1){
-        Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_ERROR);
+        Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
         return;
     }
-    if(buf[0] != SOF1 || buf[1] != SOF2){
-        Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_ERROR);
-        return;
-    }
-    
-    MsgTypeTypeDef msg_type = (MsgTypeTypeDef)buf[2];
-    uint16_t payload_length = (uint16_t)buf[3] | ((uint16_t)buf[4] << 8);
-    if(!Debug_AddPacketToRxBuffer(&hdebugusb.rx_queue, &buf[5], payload_length, msg_type)){
-        Debug_AddPacketToTxBuffer(&hdebugusb.tx_queue, NULL, 0, MSG_BUFFER_OVERFLOW);
+
+    RxMsg_t rxmsg;
+    memcpy(rxmsg.payload, buf, *len);
+    rxmsg.length = (uint16_t)*len;
+
+    if(!RxQueue_push(&hdebugusb.rx_queue, &rxmsg)){
+        Debug_SendBinaryResponse(MSG_BUFFER_OVERFLOW, NULL, 0);
     }
 }
 
 
-void Debug_StartLogging(){
+static void Debug_StartLogging(){
     hlogdata.payload.sample_count = 0;
     hlogdata.is_running = 1;
 }
 
-void Debug_StopLogging(){
+static void Debug_StopLogging(){
     hlogdata.is_running = 0;
 }
 
-Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask){
+static Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask){
     if(hlogdata.is_running) return DEBUG_ERROR;
 
     uint8_t set_bits = countbits(new_mask);
@@ -550,4 +437,32 @@ Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask){
     hlogdata.payload.signal_count = set_bits;
 
     return DEBUG_OK;
+}
+
+static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t len){
+    if(payload == NULL && len > 0) return 0;
+    TxMsg_t msg;
+    msg.payload[0] = SOF1;
+    msg.payload[1] = SOF2;
+    msg.payload[2] = (uint8_t)msg_type;
+    msg.payload[3] = (uint8_t)(len & 0xFF);
+    msg.payload[4] = (uint8_t)((len >> 8) & 0xFF);
+    if(len > sizeof(msg.payload) - 5) return 0;
+    if((len > 0U)){
+        memcpy(&msg.payload[5], payload, len);
+    }
+    msg.length = len + 5;
+
+    return TxQueue_push(&hdebugusb.tx_queue, &msg);
+}
+
+static uint8_t Debug_SendTextResponse(uint8_t* text, uint16_t len){
+
+    if (len > sizeof(TxMsg_t) - 1) return 0;
+
+    TxMsg_t msg;
+    memcpy(msg.payload, text, len);
+    msg.length = len;
+
+    return TxQueue_push(&hdebugusb.tx_queue, &msg);
 }

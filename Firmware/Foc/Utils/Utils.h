@@ -22,4 +22,46 @@ uint8_t countbits(uint32_t n);
 void GenerateNtcLut();
 float GetNtcTemperature(float ntc_resistance);
 
+
+
+/** 
+ * Declares a ring queue for type `type` with base name `name` 
+ * and capacity `size`. 
+ * Generated symbols: 
+ *   - `name##_t`   : the queue struct type 
+ *   - `name##_push`: push a message onto the queue. Returns 1 on success, 0 if the queue is full or if the input is invalid.
+ *   - `name##_pop` : pop a message from the queue. Returns 1 on success, 0 if the queue is empty or if the input is invalid.
+ * 
+ * Usage: 
+ *   DECLARE_QUEUE(RxMsg_t, RxQueue, RX_QUEUE_SIZE) 
+ */ 
+#define DECLARE_QUEUE(type, name, size)                                 \
+typedef struct {                                                        \
+    volatile uint8_t head;                                              \
+    volatile uint8_t tail;                                              \
+    type items[size];                                                   \
+} name##_t;                                                             \
+                                                                        \
+static uint8_t name##_push(name##_t *queue, const type *msg) {          \
+    if (!queue || !msg) return 0;                                       \
+    uint8_t next = (uint8_t)((queue->head + 1U) % (size));              \
+    if (next == queue->tail) return 0;                                  \
+    queue->items[queue->head] = *msg;                                   \
+    queue->head = next;                                                 \
+    return 1;                                                           \
+}                                                                       \
+                                                                        \
+static uint8_t name##_pop(name##_t *queue, type *msg) {                 \
+    if (!queue || !msg) return 0;                                       \
+    if (queue->head == queue->tail) return 0;                           \
+    *msg = queue->items[queue->tail];                                   \
+    queue->tail = (uint8_t)((queue->tail + 1U) % (size));               \
+    return 1;                                                           \
+}
+
 #endif // UTILS_H
+
+
+
+
+
