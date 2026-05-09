@@ -2,6 +2,9 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "Timing.h"
+uint32_t usb_debug_times[5] = {0};
+
 /******Packet Structure******/
 /*
 Binary Packets:
@@ -196,7 +199,7 @@ Debug_StatusTypeDef FOC_USB_Setup(){
  * @return Debug_StatusTypeDef indicating the status of the capture operation.
  */
 Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(){
-
+    uint32_t start_time = get_current_time();
     if(!hlogdata.is_running) return DEBUG_STOPPED;
 
     uint8_t signal_index = 0;
@@ -224,7 +227,8 @@ Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(){
         Debug_SendBinaryResponse(MSG_LOG_DATA, (uint8_t*)&hlogdata.payload, payload_bytes);
         hlogdata.payload.sample_count = 0;
     }
-
+    
+    calculate_execution_time(&usb_debug_times[0], start_time);
     hlogdata.payload.timestamp++;
     return DEBUG_OK;
 }
@@ -469,19 +473,26 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
     }
 }
 
+
+
 static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t len){
     if(payload == NULL && len > 0) return 0;
-    uint8_t buffer[MAX_LOGDATA_SAMPLE_COUNT * MAX_LOGDATA_SIGNAL_COUNT * 4 + 5]; //maximum payload size + header
-    buffer[0] = SOF1;
-    buffer[1] = SOF2;
-    buffer[2] = (uint8_t)msg_type;
-    buffer[3] = (uint8_t)(len & 0xFF);
-    buffer[4] = (uint8_t)((len >> 8) & 0xFF);
-    if(len > sizeof(buffer) - 5) return 0;
+
+    TxMsg_t* txbuf = USB_GetTxBuffer();
+    if(!txbuf) return 0;
+
+    txbuf->payload[0] = SOF1;
+    txbuf->payload[1] = SOF2;
+    txbuf->payload[2] = (uint8_t)msg_type;
+    txbuf->payload[3] = (uint8_t)(len & 0xFF);
+    txbuf->payload[4] = (uint8_t)((len >> 8) & 0xFF);
+    if(len > sizeof(txbuf->payload) - 5) return 0;
     if((len > 0U)){
-        memcpy(&buffer[5], payload, len);
+        memcpy(&txbuf->payload[5], payload, len);
     }
-    return USB_SendResponse(buffer, len + 5);
+    txbuf->length = len + 5;
+    USB_CommitTxBuffer();
+    return 1;
 }
 
 void USB_ProcessReceivedPacket(uint8_t* buf, uint16_t len){
