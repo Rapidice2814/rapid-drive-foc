@@ -1,5 +1,5 @@
 #ifndef FOC_Diagnostics_H
-#define FOC_Diag_H
+#define FOC_Diagnostics_H
 
 #include "FOC_Utils.h"
 

@@ -6,8 +6,16 @@
             "hidden": true,
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/${presetName}",
-		    "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
+            "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
             "cacheVariables": {
+            }
+        },
+        {
+            "name": "Debug_Clang",
+            "toolchainFile": "${sourceDir}/cmake/starm-clang.cmake",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
             }
         },
         {
@@ -23,6 +31,13 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release"
             }
+        },
+        {
+            "name": "Release_Clang",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
         }
     ],
     "buildPresets": [
@@ -31,8 +46,16 @@
             "configurePreset": "Debug"
         },
         {
+            "name": "Debug_Clang",
+            "configurePreset": "Debug_Clang"
+        },
+        {
             "name": "Release",
             "configurePreset": "Release"
+        },
+        {
+            "name": "Release_Clang",
+            "configurePreset": "Release_Clang"
         }
     ]
 }
