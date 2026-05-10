@@ -95,7 +95,7 @@ uint8_t UserRxBufferFS[APP_RX_DATA_SIZE];
 uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
-
+uint8_t RxBuffer[RX_USB_BUF_SIZE];
 /* USER CODE END PRIVATE_VARIABLES */
 
 /**
@@ -153,9 +153,9 @@ USBD_CDC_ItfTypeDef USBD_Interface_fops_FS =
 static int8_t CDC_Init_FS(void)
 {
   /* USER CODE BEGIN 3 */
-  /* Set Application Buffers */
-  USBD_CDC_SetTxBuffer(&hUsbDeviceFS, UserTxBufferFS, 0);
-  USBD_CDC_SetRxBuffer(&hUsbDeviceFS, UserRxBufferFS);
+  uint8_t tembbuf[1]; //not used, but needs to be non-null for the USBD_CDC_SetTxBuffer function. Maybe NULL is also ok?
+  USBD_CDC_SetTxBuffer(&hUsbDeviceFS, tembbuf, 0);
+  USBD_CDC_SetRxBuffer(&hUsbDeviceFS, RxBuffer);
   return (USBD_OK);
   /* USER CODE END 3 */
 }

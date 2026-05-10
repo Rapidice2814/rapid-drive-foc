@@ -161,16 +161,12 @@ typedef union{
 } TypeConvU_t;
 
 typedef struct{
+    uint8_t is_running;
+    uint32_t signal_mask;
     uint32_t timestamp;
     uint16_t sample_count;
     uint16_t signal_count;
-    uint32_t buffer[MAX_LOGDATA_SAMPLE_COUNT * MAX_LOGDATA_SIGNAL_COUNT];
-} LogDataPayloadTypeDef;
-
-typedef struct{
-    uint8_t is_running;
-    uint32_t signal_mask;
-    LogDataPayloadTypeDef payload;
+    TxUsbBuf_t* txbuf;
 } LogDataHandleTypeDef;
 
 extern FOC_HandleTypeDef hfoc;
@@ -198,43 +194,63 @@ Debug_StatusTypeDef FOC_USB_Setup(){
  * @param hfoc Pointer to the FOC handle containing the current state and signal values.
  * @return Debug_StatusTypeDef indicating the status of the capture operation.
  */
-Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(){
+Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(void){
     uint32_t start_time = get_current_time();
     if(!hlogdata.is_running) return DEBUG_STOPPED;
 
-    uint8_t signal_index = 0;
-    uint16_t write_index;
+    if(hlogdata.txbuf == NULL){
+        hlogdata.txbuf = USB_AllocTxBuffer();
+        if(hlogdata.txbuf == NULL) return DEBUG_ERROR;
 
+        hlogdata.sample_count = 0;
+
+        hlogdata.txbuf->payload[0] = SOF1;
+        hlogdata.txbuf->payload[1] = SOF2;
+        hlogdata.txbuf->payload[2] = (uint8_t)MSG_LOG_DATA;
+
+        write_u32_le(&hlogdata.txbuf->payload[5], hlogdata.timestamp);
+        write_u16_le(&hlogdata.txbuf->payload[9], 0);
+        write_u16_le(&hlogdata.txbuf->payload[11], hlogdata.signal_count);
+    }
+
+    uint8_t signal_index = 0;
+    uint16_t write_index = (uint16_t)(13u + hlogdata.sample_count * hlogdata.signal_count * 4u);
     TypeConvU_t conv;
 
-    write_index = (uint16_t)hlogdata.payload.sample_count * hlogdata.payload.signal_count;
-
-    #define CAPTURE_SIGNAL(bit, member, field)                                      \
-        do {                                                                        \
-            if ((hlogdata.signal_mask & (1u << (bit))) != 0u)                       \
-            {                                                                       \
-                conv.member = hfoc.field;                                           \
-                hlogdata.payload.buffer[write_index + signal_index] = conv.u32;     \
-                signal_index++;                                                     \
-            }                                                                       \
-        } while (0);
+    #define CAPTURE_SIGNAL(bit, member, field)                                  \
+        do{                                                                      \
+            if((hlogdata.signal_mask & (1u << (bit))) != 0u){                   \
+                conv.member = hfoc.field;                                        \
+                write_u32_le(&hlogdata.txbuf->payload[write_index + signal_index * 4u], conv.u32); \
+                signal_index++;                                                  \
+            }                                                                    \
+        }while(0);
 
     FOC_USB_DEBUG_SIGNAL_LIST(CAPTURE_SIGNAL);
     #undef CAPTURE_SIGNAL
 
-    if(++hlogdata.payload.sample_count >= MAX_LOGDATA_SAMPLE_COUNT){
-        uint16_t payload_bytes = 8 + hlogdata.payload.sample_count * hlogdata.payload.signal_count * 4;
-        Debug_SendBinaryResponse(MSG_LOG_DATA, (uint8_t*)&hlogdata.payload, payload_bytes);
-        hlogdata.payload.sample_count = 0;
+    hlogdata.sample_count++;
+    write_u16_le(&hlogdata.txbuf->payload[9], hlogdata.sample_count);
+
+    if(hlogdata.sample_count >= MAX_LOGDATA_SAMPLE_COUNT){
+        uint16_t payload_bytes = (uint16_t)(8u + hlogdata.sample_count * hlogdata.signal_count * 4u);
+
+        hlogdata.txbuf->payload[3] = (uint8_t)(payload_bytes & 0xFFu);
+        hlogdata.txbuf->payload[4] = (uint8_t)((payload_bytes >> 8) & 0xFFu);
+        hlogdata.txbuf->length = (uint16_t)(payload_bytes + 5u);
+
+        USB_PushTxBuffer(hlogdata.txbuf);
+        hlogdata.txbuf = NULL;
+        hlogdata.sample_count = 0;
+        hlogdata.timestamp++;
     }
-    
+
     calculate_execution_time(&usb_debug_times[0], start_time);
-    hlogdata.payload.timestamp++;
     return DEBUG_OK;
 }
 
 static void Debug_StartLogging(){
-    hlogdata.payload.sample_count = 0;
+    hlogdata.sample_count = 0;
     hlogdata.is_running = 1;
 }
 
@@ -249,7 +265,7 @@ static Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask){
     if(set_bits > MAX_LOGDATA_SIGNAL_COUNT) return DEBUG_ERROR;
     
     hlogdata.signal_mask = new_mask;
-    hlogdata.payload.signal_count = set_bits;
+    hlogdata.signal_count = set_bits;
 
     return DEBUG_OK;
 }
@@ -478,7 +494,7 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
 static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t len){
     if(payload == NULL && len > 0) return 0;
 
-    TxMsg_t* txbuf = USB_GetTxBuffer();
+    TxUsbBuf_t* txbuf = USB_AllocTxBuffer();
     if(!txbuf) return 0;
 
     txbuf->payload[0] = SOF1;
@@ -491,7 +507,7 @@ static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payloa
         memcpy(&txbuf->payload[5], payload, len);
     }
     txbuf->length = len + 5;
-    USB_CommitTxBuffer();
+    USB_PushTxBuffer(txbuf);
     return 1;
 }
 

@@ -17,132 +17,79 @@
 void normalize_angle_0_2pi(float *angle);
 void normalize_angle_pm_pi(float *angle);
 float constrainf(float value, float min, float max);
+
+void write_u16_le(uint8_t *dst, uint16_t v);
+void write_u32_le(uint8_t *dst, uint32_t v);
 uint8_t countbits(uint32_t n);
 
 void GenerateNtcLut();
 float GetNtcTemperature(float ntc_resistance);
 
 
+/**************MACROS**************/
 
 /** 
- * Declares a ring queue for type `type` with base name `name` 
- * and capacity `size`. 
+ * Declares a fixed-size pool of type `type` with base name `name` and capacity `size`. 
+ * The pool supports allocation and freeing of individual items, as well as pushing and popping items to/from a queue. 
  * Generated symbols: 
- *   - `name##_t`   : the queue struct type 
- *   - `name##_push`: push a message onto the queue. Returns 1 on success, 0 if the queue is full or if the input is invalid.
- *   - `name##_pop` : pop a message from the queue. Returns 1 on success, 0 if the queue is empty or if the input is invalid.
+ *   - `name##_t`   : the pool struct type 
+ *   - `name##_alloc`: allocates an item from the pool. Returns a pointer to the allocated item on success, 0 if no items are available or if the input is invalid.
+ *   - `name##_push`: pushes the item which was allocated onto the queue. Returns 1 on success, 0 if the queue is full or if the input is invalid.
+ *   - `name##_pop` : pops an item from the queue. Returns a pointer to the popped item on success, 0 if the queue is empty or if the input is invalid. Must be freed back to the pool after use.
+ *   - `name##_free` : frees an item back to the pool. Returns 1 on success, 0 if the item is invalid or does not belong to the pool.
  * 
  * Usage: 
- *   DECLARE_QUEUE(RxMsg_t, RxQueue, RX_QUEUE_SIZE) 
- */ 
-#define DECLARE_QUEUE(type, name, size)                                 \
-typedef struct {                                                        \
-    volatile uint8_t head;                                              \
-    volatile uint8_t tail;                                              \
-    type items[size];                                                   \
-} name##_t;                                                             \
-                                                                        \
-static uint8_t name##_push(name##_t *queue, const type *msg) {          \
-    if (!queue || !msg) return 0;                                       \
-    uint8_t next = (uint8_t)((queue->head + 1U) % (size));              \
-    if (next == queue->tail) return 0;                                  \
-    queue->items[queue->head] = *msg;                                   \
-    queue->head = next;                                                 \
-    return 1;                                                           \
-}                                                                       \
-                                                                        \
-static uint8_t name##_pop(name##_t *queue, type *msg) {                 \
-    if (!queue || !msg) return 0;                                       \
-    if (queue->head == queue->tail) return 0;                           \
-    *msg = queue->items[queue->tail];                                   \
-    queue->tail = (uint8_t)((queue->tail + 1U) % (size));               \
-    return 1;                                                           \
-}
-
-/** 
- * Declares a ring queue with reservation support for type `type` with base name `name` 
- * and capacity `size`. 
- * Generated symbols: 
- *   - `name##_t`   : the queue struct type 
- *   - `name##_push`: push a message onto the queue. Returns 1 on success, 0 if the queue is full or if the input is invalid.
- *   - `name##_pop` : pop a message from the queue. Returns 1 on success, 0 if the queue is empty or if the input is invalid.
- *   - `name##_reserve_push`: reserve a slot for pushing a message onto the queue. Returns a pointer to the reserved slot on success, 0 if no slot is available or if the input is invalid.
- *   - `name##_commit_push`: commit the reserved push operation. Returns 1 on success, 0 if the operation failed.
- *   - `name##_reserve_pop`: reserve a slot for popping a message from the queue. Returns a pointer to the reserved slot on success, 0 if no message is available or if the input is invalid.
- *   - `name##_commit_pop`: commit the reserved pop operation. Returns 1 on success, 0 if the operation failed.
- * 
- * Usage: 
- *   DECLARE_QUEUE_RESERVE(RxMsg_t, RxQueue, RX_QUEUE_SIZE) 
- */ 
-#define DECLARE_QUEUE_RESERVE(type, name, size)                               \
-typedef struct {                                                              \
-    volatile uint8_t head;                                                    \
-    volatile uint8_t tail;                                                    \
-    volatile uint8_t push_reserved;                                           \
-    volatile uint8_t pop_reserved;                                            \
-    type items[size];                                                         \
+ *   DECLARE_POOL(type, name, size)
+ */
+#define DECLARE_POOL(type, name, size)                                        \
+typedef struct{                                                               \
+    uint8_t used[size];                                                       \
+    type pool[size];                                                          \
+    type *queue[size];                                                        \
+    volatile uint8_t queue_head;                                              \
+    volatile uint8_t queue_tail;                                              \
+    volatile uint8_t queue_count;                                             \
 } name##_t;                                                                   \
                                                                               \
-static uint8_t name##_push(name##_t *queue, const type *msg) {                \
-    if (!queue || !msg) return 0;                                             \
-    uint8_t next = (uint8_t)((queue->head + 1U) % (size));                    \
-    if (next == queue->tail) return 0;                                        \
-    if (queue->push_reserved) return 0;                                       \
-    queue->items[queue->head] = *msg;                                         \
-    queue->head = next;                                                       \
+static name##_t h##name = {0};                                                \
+                                                                              \
+static type *name##_alloc(void){                                              \
+    for(uint8_t i = 0; i < (size); i++){                                      \
+        if(h##name.used[i] == 0U){                                            \
+            h##name.used[i] = 1U;                                             \
+            return &h##name.pool[i];                                          \
+        }                                                                     \
+    }                                                                         \
+    return NULL;                                                              \
+}                                                                             \
+                                                                              \
+static uint8_t name##_push(type *msg){                                        \
+    if(msg == NULL) return 0;                                                 \
+    if(h##name.queue_count >= (size)) return 0;                               \
+    h##name.queue[h##name.queue_head] = msg;                                  \
+    h##name.queue_head = (uint8_t)((h##name.queue_head + 1U) % (size));       \
+    h##name.queue_count++;                                                    \
     return 1;                                                                 \
 }                                                                             \
                                                                               \
-static uint8_t name##_pop(name##_t *queue, type *msg) {                       \
-    if (!queue || !msg) return 0;                                             \
-    if (queue->head == queue->tail) return 0;                                 \
-    if (queue->pop_reserved) return 0;                                        \
-    *msg = queue->items[queue->tail];                                         \
-    queue->tail = (uint8_t)((queue->tail + 1U) % (size));                     \
-    return 1;                                                                 \
+static type *name##_pop(void){                                                \
+    type *msg;                                                                \
+    if(h##name.queue_count == 0U) return NULL;                                \
+    msg = h##name.queue[h##name.queue_tail];                                  \
+    h##name.queue_tail = (uint8_t)((h##name.queue_tail + 1U) % (size));       \
+    h##name.queue_count--;                                                    \
+    return msg;                                                               \
 }                                                                             \
                                                                               \
-static type *name##_reserve_push(name##_t *queue) {                           \
-    if (!queue) return (type *)0;                                             \
-    if (queue->push_reserved) return (type *)0;                               \
-    uint8_t next = (uint8_t)((queue->head + 1U) % (size));                    \
-    if (next == queue->tail) return (type *)0;                                \
-    queue->push_reserved = 1U;                                                \
-    return &queue->items[queue->head];                                        \
-}                                                                             \
-                                                                              \
-static uint8_t name##_commit_push(name##_t *queue) {                          \
-    if (!queue) return 0;                                                     \
-    if (!queue->push_reserved) return 0;                                      \
-    queue->push_reserved = 0U;                                                \
-    queue->head = (uint8_t)((queue->head + 1U) % (size));                     \
-    return 1;                                                                 \
-}                                                                             \
-                                                                              \
-static void name##_cancel_push(name##_t *queue) {                             \
-    if (!queue) return;                                                       \
-    queue->push_reserved = 0U;                                                \
-}                                                                             \
-                                                                              \
-static type *name##_reserve_pop(name##_t *queue) {                            \
-    if (!queue) return (type *)0;                                             \
-    if (queue->pop_reserved) return (type *)0;                                \
-    if (queue->head == queue->tail) return (type *)0;                         \
-    queue->pop_reserved = 1U;                                                 \
-    return &queue->items[queue->tail];                                        \
-}                                                                             \
-                                                                              \
-static uint8_t name##_commit_pop(name##_t *queue) {                           \
-    if (!queue) return 0;                                                     \
-    if (!queue->pop_reserved) return 0;                                       \
-    queue->pop_reserved = 0U;                                                 \
-    queue->tail = (uint8_t)((queue->tail + 1U) % (size));                     \
-    return 1;                                                                 \
-}                                                                             \
-                                                                              \
-static void name##_cancel_pop(name##_t *queue) {                              \
-    if (!queue) return;                                                       \
-    queue->pop_reserved = 0U;                                                 \
+static uint8_t name##_free(type *msg){                                        \
+    if(msg == NULL) return 0;                                                 \
+    for(uint8_t i = 0; i < (size); i++){                                      \
+        if(msg == &h##name.pool[i]){                                          \
+            h##name.used[i] = 0U;                                             \
+            return 1;                                                         \
+        }                                                                     \
+    }                                                                         \
+    return 0;                                                                 \
 }
 
 
