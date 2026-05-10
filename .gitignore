@@ -5,5 +5,3 @@
 !.vscode/launch.json
 !.vscode/extensions.json
 build/
-*.h5
-__pycache__/
