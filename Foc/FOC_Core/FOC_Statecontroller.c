@@ -1,13 +1,8 @@
-#include "FOC_Statemachine.h"
+#include "FOC_Statecontroller.h"
 #include "FOC_Loops.h"
 
 #include "Sounds.h"
 #include "Lights.h"
-
-
-
-extern volatile uint8_t debug_loop_flag;
-
 
 static void FOC_StateInit(FOC_HandleTypeDef* hfoc){
     if(hfoc->flash_data.contains_data == 1){
@@ -131,20 +126,6 @@ static void FOC_StateRun(FOC_HandleTypeDef* hfoc){
         current_loop_counter = 0;
         Speed_Loop(hfoc); 
     }
-
-    if(debug_loop_flag){
-        // USB_printf("Vq:%d, Iq:%d, Iq_set:%d, Mspeed:%d, Ibus:%d, Vbus:%d, Temp:%d, Mang:%d\n",
-        // (int)(hfoc->dq_voltage.q * 1000), (int)(hfoc->dq_current.q * 1000), 
-        // (int)(hfoc->dq_current_setpoint.q * 1000), (int)(hfoc->encoder_speed_mechanical * 1000),
-        // (int)(hfoc->ibus * 1000), (int)(hfoc->adc_values.vbus * 10), (int)(hfoc->adc_values.motor_temp * 10),
-        // (int)(hfoc->encoder_angle_mechanical * 1000));
-
-        // USB_printf("Execution Time: %d, State Time: %d\n",
-        //     (int)hfoc->execution_time.loop_max, (int)hfoc->execution_time.state_max);
-
-
-        debug_loop_flag = 0;
-    }
 }
 
 static void FOC_StateError(FOC_HandleTypeDef* hfoc){
@@ -163,8 +144,65 @@ static void FOC_StateFlashSave(FOC_HandleTypeDef* hfoc){
     hfoc->state = FOC_STATE_RUN;
 }
 
+static void FOC_StateFlashLoad(FOC_HandleTypeDef* hfoc){
+    if(FOC_FLASH_ReadData(&hfoc->flash_data) != FLASH_OK){
+        hfoc->state = FOC_STATE_ERROR;
+    }
+    hfoc->state = FOC_STATE_RUN;
+}
+
 static void FOC_StateOpenLoop(FOC_HandleTypeDef* hfoc){
     FOC_OpenLoop(hfoc, hfoc->speed_setpoint, 1.0f, CURRENT_LOOP_FREQUENCY);
+}
+
+
+
+
+FOC_StatusTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDef new_state){
+    
+    switch(new_state){
+        case FOC_STATE_INIT:
+            break;
+        case FOC_STATE_RESET:
+            break;
+        case FOC_STATE_BOOTUP_SOUND:
+            break;
+        case FOC_STATE_CURRENT_SENSOR_CALIBRATION:
+            break;
+        case FOC_STATE_IDENTIFY:
+            break;
+        case FOC_STATE_ANTICOGGING:
+            break;
+        case FOC_STATE_CHECKLIST:
+            break;
+        case FOC_STATE_PID_AUTOTUNE:
+            break;
+        case FOC_STATE_GENERAL_TEST:
+            break;
+        case FOC_STATE_ERROR:
+            break;
+        case FOC_STATE_CALIBRATION:
+            break;
+        case FOC_STATE_ALIGNMENT:
+            break;
+        case FOC_STATE_ALIGNMENT_TEST:
+            break;
+        case FOC_STATE_RUN:
+            break;
+        case FOC_STATE_FLASH_SAVE:
+            break;
+        case FOC_STATE_FLASH_LOAD:
+            break;
+        case FOC_STATE_OPENLOOP:
+            break;
+    }
+    
+    
+    
+    
+    hfoc->previous_state = hfoc->state;
+    hfoc->state = new_state;
+    return FOC_OK;
 }
 
 void FOC_StateLoop(FOC_HandleTypeDef *hfoc){
@@ -184,6 +222,7 @@ void FOC_StateLoop(FOC_HandleTypeDef *hfoc){
         case FOC_STATE_RUN: FOC_StateRun(hfoc); break;
         case FOC_STATE_ERROR: FOC_StateError(hfoc); break;
         case FOC_STATE_FLASH_SAVE: FOC_StateFlashSave(hfoc); break;
+        case FOC_STATE_FLASH_LOAD: FOC_StateFlashLoad(hfoc); break;
         case FOC_STATE_OPENLOOP: FOC_StateOpenLoop(hfoc); break;
     }
 }

@@ -62,9 +62,9 @@ struct FLASH_Limits {
     float vbus_undervoltage_trip_level; // [V]
     float max_bus_current; // [A]
 
-    float voltage_limit; // [V], the maximum voltage that can be applied to the motor. This should be smaller than vbus
+    float max_voltage; // [V], the maximum voltage that can be applied to the motor. This should be smaller than vbus
 
-    float max_dq_voltage; // [V], used to limit the output of the PID. should be smaller than voltage_limit/sqrt(3) = 0.577 * voltage_limit
+    float max_dq_voltage; // [V], used to limit the output of the PID.
     float max_dq_current; // [A], used to limit the output of the PID.
 };
 

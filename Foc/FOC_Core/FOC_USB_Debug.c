@@ -84,21 +84,23 @@ MSG_ERROR: FOC -> PC
 #define SOF2 0x55
 
 typedef enum {
-    MSG_LOG_DATA = 0x01, //FOC -> PC
-    MSG_SET_MASK = 0x02, //PC -> FOC
-    MSG_START_LOG = 0x03, //PC -> FOC
-    MSG_STOP_LOG = 0x04, //PC -> FOC
-    MSG_SET_PID = 0x05, //PC -> FOC
-    MSG_GET_PID = 0x06, //PC -> FOC
-    MSG_PID_REPLY = 0x07, //FOC -> PC
-    MSG_SET_VAR = 0x08, //PC -> FOC
-    MSG_GET_VAR = 0x09, //PC -> FOC
-    MSG_VAR_REPLY = 0x0A, //FOC -> PC
-    MSG_FLASH_SAVE = 0x0B, //PC -> FOC
-    MSG_FLASH_LOAD = 0x0C, //PC -> FOC
-    MSG_SET_STATE = 0x0D, //PC -> FOC
-    MSG_GET_STATE = 0x0E, //PC -> FOC
-    MSG_STATE_REPLY = 0x0F, //FOC -> PC
+    MSG_GET_VERSION = 0x00, //PC -> FOC
+    MSG_VERSION_REPLY = 0x01, //FOC -> PC
+    MSG_LOG_DATA = 0x02, //FOC -> PC
+    MSG_SET_MASK = 0x03, //PC -> FOC
+    MSG_START_LOG = 0x04, //PC -> FOC
+    MSG_STOP_LOG = 0x05, //PC -> FOC
+    MSG_SET_PID = 0x06, //PC -> FOC
+    MSG_GET_PID = 0x07, //PC -> FOC
+    MSG_PID_REPLY = 0x08, //FOC -> PC
+    MSG_SET_VAR = 0x09, //PC -> FOC
+    MSG_GET_VAR = 0x0A, //PC -> FOC
+    MSG_VAR_REPLY = 0x0B, //FOC -> PC
+    MSG_FLASH_SAVE = 0x0C, //PC -> FOC
+    MSG_FLASH_LOAD = 0x0D, //PC -> FOC
+    MSG_SET_STATE = 0x0E, //PC -> FOC
+    MSG_GET_STATE = 0x0F, //PC -> FOC
+    MSG_STATE_REPLY = 0x10, //FOC -> PC
 
     MSG_UNKNOWN_TYPE = 0xFA, //FOC -> PC
     MSG_INVALID_PAYLOAD = 0xFB, //FOC -> PC
@@ -231,7 +233,9 @@ Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(void){
 
     hlogdata.sample_count++;
     write_u16_le(&hlogdata.txbuf->payload[9], hlogdata.sample_count);
-
+    
+    hlogdata.timestamp++;
+    
     if(hlogdata.sample_count >= MAX_LOGDATA_SAMPLE_COUNT){
         uint16_t payload_bytes = (uint16_t)(8u + hlogdata.sample_count * hlogdata.signal_count * 4u);
 
@@ -242,7 +246,6 @@ Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(void){
         USB_PushTxBuffer(hlogdata.txbuf);
         hlogdata.txbuf = NULL;
         hlogdata.sample_count = 0;
-        hlogdata.timestamp++;
     }
 
     calculate_execution_time(&usb_debug_times[0], start_time);

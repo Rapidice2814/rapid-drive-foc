@@ -24,6 +24,10 @@ static volatile uint16_t adc1_buffer[ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER 
 static volatile uint16_t adc2_buffer[ADC2_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2] = {0};
 
 
+/**
+ * @brief Initializes the ADCs for current and voltage measurements. Starts the ADC in DMA mode. Triggered by the PWM timer.
+ * @param None
+ */
 void FOC_ADC_Setup(){
     HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc1_buffer, ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2); //start adc in dma mode for the current and vbus
     HAL_ADC_Start_DMA(&hadc2, (uint32_t*)adc2_buffer, ADC2_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2); //adc for temp sensor

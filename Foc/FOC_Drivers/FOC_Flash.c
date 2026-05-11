@@ -41,8 +41,9 @@ static const FLASH_DataTypeDef flash_data_default_values = {
         .vbus_overvoltage_trip_level = 27.0f,
         .vbus_undervoltage_trip_level = 20.0f,
         .max_bus_current = 0.0f,
-        .max_dq_voltage = MAX_DQ_VOLTAGE,
-        .max_dq_current = MAX_DQ_CURRENT
+        .max_voltage = VOLTAGE_LIMIT,
+        .max_dq_voltage = VOLTAGE_LIMIT * M_1_SQRT3F,
+        .max_dq_current = VOLTAGE_LIMIT * M_1_SQRT3F
     },
 
     .node = {

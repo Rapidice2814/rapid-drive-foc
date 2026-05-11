@@ -1,13 +1,14 @@
 #include "Timing.h"
 
-extern TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef* hfunction_timer;
 
-void FunctionTimer_Init(){
-    HAL_TIM_Base_Start(&htim2);
+void FunctionTimer_Init(TIM_HandleTypeDef *htim){
+    hfunction_timer = htim;
+    HAL_TIM_Base_Start(hfunction_timer);
 }
 
 uint32_t get_current_time(){
-    return __HAL_TIM_GET_COUNTER(&htim2);
+    return __HAL_TIM_GET_COUNTER(hfunction_timer);
 }
 
 void calculate_execution_time(uint32_t *max_time, uint32_t start_time){

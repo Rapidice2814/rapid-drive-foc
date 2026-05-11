@@ -37,6 +37,8 @@ DRV8323_StatusTypeDef DRV8323_Init(DRV8323_HandleTypeDef *hdrv8323){
 
 	DRV8323_ClearFaults(hdrv8323); //clear faults before configuring the registers
 
+	DRV8323_SetHighImpedance(hdrv8323); //set high impedance before configuring the registers
+
 	uint16_t fault_reg1, fault_reg2;
 	if(DRV8323_ReadFaultStatusRegister1(hdrv8323, &fault_reg1) != DRV8323_OK) return DRV8323_ERROR;
 	if(DRV8323_ReadFaultStatusRegister2(hdrv8323, &fault_reg2) != DRV8323_OK) return DRV8323_ERROR;

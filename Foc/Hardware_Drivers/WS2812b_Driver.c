@@ -11,11 +11,6 @@ static volatile uint8_t ws2812b_pulse_busy = 0;
 void WS2812b_Setup(TIM_HandleTypeDef *htim, uint32_t channel) {
     ws2812b_timer_ptr = htim;
     ws2812b_channel = channel;
-
-    for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++) {
-        WS2812b_SetColor(i, 0, 0, 0);
-    }
-    WS2812b_Send();
 } 
 
 void WS2812b_SetColor(uint8_t led, uint8_t r, uint8_t g, uint8_t b) {

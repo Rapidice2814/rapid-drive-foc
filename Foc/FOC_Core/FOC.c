@@ -15,7 +15,7 @@
 #include "FOC_CAN.h"
 #include "FOC_ADC.h"
 #include "FOC_Diagnostics.h"
-#include "FOC_Statemachine.h"
+#include "FOC_Statecontroller.h"
 #include "Cordic.h"
 #include "Timing.h"
 
@@ -28,6 +28,7 @@ extern RNG_HandleTypeDef hrng;
 extern  SPI_HandleTypeDef hspi2;
 
 extern TIM_HandleTypeDef htim1;
+extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
 extern  TIM_HandleTypeDef htim4;
 extern TIM_HandleTypeDef htim7;
@@ -60,9 +61,23 @@ void FOC_Setup(){
         FOC_FLASH_SetDefault(&hfoc.flash_data);
     }
 
+    /* Setup pins and peripherals */
+
     WS2812b_Setup(&htim4, TIM_CHANNEL_1);
 
     if(DRV8323_SetPins(&hfoc.hdrv8323, &hspi2, DRV_NCS_GPIO_Port, DRV_NCS_Pin, DRV_ENABLE_GPIO_Port, DRV_ENABLE_Pin, INL_ALL_GPIO_Port, INL_ALL_Pin, DRV_NFAULT_GPIO_Port, DRV_NFAULT_Pin) != DRV8323_OK){
+        Error_Handler();
+    }
+    
+    if(AS5047P_SetPins(&hfoc.has5047p, &hspi2, AS_NCS_GPIO_Port, AS_NCS_Pin) != AS5047P_OK){
+        Error_Handler();
+    }
+
+    if(FOC_SetEncoderPointer(&hfoc, &htim3.Instance->CNT) != FOC_OK){
+        Error_Handler();
+    }
+
+    if(FOC_SetPWMCCRPointers(&hfoc, &htim1.Instance->CCR3, &htim1.Instance->CCR2, &htim1.Instance->CCR1, PWM_CLOCK_DIVIDER) != FOC_OK){
         Error_Handler();
     }
 
@@ -73,10 +88,6 @@ void FOC_Setup(){
         };
     }
 
-    if(AS5047P_SetPins(&hfoc.has5047p, &hspi2, AS_NCS_GPIO_Port, AS_NCS_Pin) != AS5047P_OK){
-        Error_Handler();
-    }
-
     if(AS5047P_Init(&hfoc.has5047p) != AS5047P_OK){
         while(1){
             HAL_GPIO_TogglePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin);
@@ -84,27 +95,25 @@ void FOC_Setup(){
         };
     }
 
-    FOC_SetEncoderPointer(&hfoc, &htim3.Instance->CNT);
+
+
+    for(int i = 0; i < WS2812B_NUMBER_OF_LEDS; i++) {
+        WS2812b_SetColor(i, 0, 0, 0);
+    }
+    WS2812b_Send();
+
     HAL_TIM_Base_Start(&htim3); //start encoder timer
-    
-    hfoc.voltage_limit = VOLTAGE_LIMIT;
-
-    FOC_SetPWMCCRPointers(&hfoc, &htim1.Instance->CCR3, &htim1.Instance->CCR2, &htim1.Instance->CCR1, PWM_CLOCK_DIVIDER); //set the pwm ccr register pointers
-
-    FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
 
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
     HAL_TIM_OC_Start(&htim1, TIM_CHANNEL_4); //this triggers the adc
-
-    DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
-
     HAL_TIM_Base_Start(&htim1); //pwm timer and also adc trigger
-    FOC_ADC_Setup(); //setup the adc for current and voltage measurements
 
-    FunctionTimer_Init();
-    HAL_TIM_Base_Start_IT(&htim7); //timer for the debug
+    FOC_ADC_Setup(); //setup the ADCs
+
+    FunctionTimer_Init(&htim2); //timer for the debug
+    // HAL_TIM_Base_Start_IT(&htim7); //not used
 
     /* PID controllers */
     PID_Init(&hfoc.pid_current_d, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, &hfoc.flash_data.limits.max_dq_voltage, &hfoc.flash_data.controller.PID_gains_d, 0);
@@ -113,15 +122,12 @@ void FOC_Setup(){
     PID_Init(&hfoc.pid_speed, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_speed, 0);
     PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_position, 1);
 
-    /* UART */
-    // Log_Setup(&huart3);
 
     /* USB Debug */
     FOC_USB_Setup();
     
-    /* generate the NTC lookup table */
+    /* Generate the NTC lookup table */
     GenerateNtcLut(); 
-
 
     uint32_t rand32 = 0;
     if (HAL_RNG_GenerateRandomNumber(&hrng, &rand32) != HAL_OK)    {
@@ -133,6 +139,8 @@ void FOC_Setup(){
     FOC_SetNodeId(&hfoc, 1);
     // FOC_TransmitCANMessage(&hfoc, CMD_HEARTBEAT);
 
+    FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
+    DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
 
     USB_printf("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
 
@@ -163,9 +171,6 @@ void FOC_Loop(){
         FOC_StateLoop(&hfoc);
         calculate_execution_time(&hfoc.execution_time.state_max, state_start_time);
         
-        // uint32_t log_start_time = get_current_time();
-        // Log_Loop();
-        // calculate_execution_time(&hfoc.execution_time.log_max, log_start_time);
         
         FOC_USB_Debug_CaptureSamples();
         uint32_t usb_debug_start_time = get_current_time();
@@ -183,7 +188,7 @@ void FOC_Loop(){
     if(hfoc.execution_time.loop_max > 1200){ //max 125us for 8kHz loop
         HAL_GPIO_WritePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin, GPIO_PIN_SET);
         hfoc.execution_time.usb_debug_max = 0;
-        // USB_printf("Execution time: %dus\n", (int)hfoc.execution_time.loop_max);
+        USB_printf("Execution Limit Exceeded: %dus\n", (int)hfoc.execution_time.loop_max);
     } else {
         HAL_GPIO_WritePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin, GPIO_PIN_RESET);
     }
@@ -194,21 +199,17 @@ void FOC_Loop(){
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
     UNUSED(huart);
-    // Log_UART_TxCpltCallback(huart);
 }
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
     UNUSED(huart);
     UNUSED(Size);
-    // Log_UARTEx_RxEventCallback(huart, Size);
 }
 
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
     if(htim->Instance == TIM6){ //not used
-        
-    } else if(htim->Instance == TIM7){
-        debug_loop_flag = 1;
+    } else if(htim->Instance == TIM7){ //not used
     } else if(htim->Instance == TIM17){ //not used
 
     }

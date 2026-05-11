@@ -131,6 +131,20 @@ FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTyp
 }
 
 /**
+ * @brief Sets the voltage limit for the FOC controller.
+ * @param hfoc Handle to the FOC structure
+ * @param voltage_limit Maximum voltage limit
+ * @retval FOC_StatusTypeDef Status of the operation
+ */
+FOC_StatusTypeDef FOC_SetVoltageLimit(FOC_HandleTypeDef *hfoc, float voltage_limit){
+    hfoc->flash_data.limits.max_voltage = voltage_limit;
+    hfoc->flash_data.limits.max_dq_voltage = voltage_limit / M_SQRT3F;
+    return FOC_OK;
+}
+
+
+
+/**
   * @brief Sets the PWM CCR pointers and max CCR value
   * @param hfoc Handle to the FOC structure
   * @param pCCRa Pointer to the CCR register for phase A

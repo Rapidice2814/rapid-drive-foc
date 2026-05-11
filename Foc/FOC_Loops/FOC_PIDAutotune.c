@@ -22,7 +22,6 @@ FOC_StatusTypeDef FOC_TuneCurrentPID(FOC_HandleTypeDef *hfoc){
 
 /**
   * @brief 
-  * @note 
   * @param hfoc Handle to the FOC structure
   * @retval FOC_LoopStatusTypeDef
   */
@@ -44,16 +43,15 @@ FOC_LoopStatusTypeDef FOC_PIDAutotune(FOC_HandleTypeDef *hfoc){
         case 1:
             if(HAL_GetTick() >= next_step_time){
                 if(FOC_TuneCurrentPID(hfoc) != FOC_OK){
-                    step = 0;
                     USB_printf("Error tuning PID gains\n");
                     return FOC_LOOP_ERROR;
                 } else{
-                    step = 0;
                     USB_printf("PID gains tuned successfully\n");
                     USB_printf("Kp_d: %de-3, Ki_d: %d\n", (int)(hfoc->flash_data.controller.PID_gains_d.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_d.Ki));
                     USB_printf("Kp_q: %de-3, Ki_q: %d\n", (int)(hfoc->flash_data.controller.PID_gains_q.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_q.Ki));
                     return FOC_LOOP_COMPLETED;
                 }
+                step = 0;
             }
             break;
     }

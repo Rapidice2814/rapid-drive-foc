@@ -71,6 +71,7 @@ typedef enum {
     FOC_STATE_ALIGNMENT_TEST,
     FOC_STATE_RUN,
     FOC_STATE_FLASH_SAVE,
+    FOC_STATE_FLASH_LOAD,
     FOC_STATE_OPENLOOP
 } FOC_StateTypeDef;
 
@@ -78,6 +79,7 @@ typedef enum {
 typedef struct {
     /* FOC State */
     FOC_StateTypeDef state; // Current state of the FOC driver
+    FOC_StateTypeDef previous_state;
 
     /* Flags */
     uint8_t adc_calibrated;
@@ -91,7 +93,6 @@ typedef struct {
     uint32_t latched_errors;
 
     /* General */
-    float voltage_limit; // max voltage put out by the inverter
     FLASH_DataTypeDef flash_data; // flash data structure
 
     /* ADC values */

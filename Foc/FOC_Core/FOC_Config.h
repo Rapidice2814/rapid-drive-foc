@@ -35,7 +35,6 @@
 
 /*limits*/
 #define VOLTAGE_LIMIT 8.0f //[V], max motor voltage
-#define MAX_DQ_VOLTAGE (VOLTAGE_LIMIT * M_1_SQRT3F)//[V]
 #define MAX_DQ_CURRENT 17.2f //[A]
 
 
