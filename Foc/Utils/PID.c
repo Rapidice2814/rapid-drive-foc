@@ -99,3 +99,11 @@ void PID_SetGains(PIDControllerTypeDef *pid, PIDValuesTypeDef K) {
 PIDValuesTypeDef PID_GetGains(PIDControllerTypeDef *pid) {
     return *(pid->K);
 }
+
+void PID_Reset(PIDControllerTypeDef *pid){
+    pid->integrator = 0.0f;
+    pid->prevError  = 0.0f;
+    pid->differentiator  = 0.0f;
+    pid->prevMeasurement = 0.0f;
+    pid->out = 0.0f;
+}

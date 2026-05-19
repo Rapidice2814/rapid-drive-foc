@@ -56,6 +56,7 @@ typedef struct {
 
 
 typedef enum {
+    FOC_STATE_NONE = 0,
     FOC_STATE_INIT,
     FOC_STATE_RESET,
     FOC_STATE_BOOTUP_SOUND,
@@ -70,6 +71,8 @@ typedef enum {
     FOC_STATE_ALIGNMENT,
     FOC_STATE_ALIGNMENT_TEST,
     FOC_STATE_RUN,
+    FOC_STATE_STOP,
+    FOC_STATE_IDLE,
     FOC_STATE_FLASH_SAVE,
     FOC_STATE_FLASH_LOAD,
     FOC_STATE_OPENLOOP
@@ -80,6 +83,7 @@ typedef struct {
     /* FOC State */
     FOC_StateTypeDef state; // Current state of the FOC driver
     FOC_StateTypeDef previous_state;
+    FOC_StateTypeDef next_state;
 
     /* Flags */
     uint8_t adc_calibrated;

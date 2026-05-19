@@ -10,18 +10,19 @@ static void FOC_StateInit(FOC_HandleTypeDef* hfoc){
     }else{
         USB_printf("Flash data is missing!\n");
     }
-    hfoc->state = FOC_STATE_RESET;
+    FOC_SetState(hfoc, FOC_STATE_RESET, FOC_STATE_NONE);
 }
 
 static void FOC_StateReset(FOC_HandleTypeDef* hfoc){
     USB_printf("Resetting FOC ...\n");
-    DRV8323_ExitHighImpedance(&hfoc->hdrv8323);
-
+    
     hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
     hfoc->speed_setpoint = 0.0f;
     hfoc->angle_setpoint = 0.0f;
 
-    hfoc->state = FOC_STATE_BOOTUP_SOUND;
+    DRV8323_ExitHighImpedance(&hfoc->hdrv8323);
+
+    FOC_SetState(hfoc, FOC_STATE_BOOTUP_SOUND, FOC_STATE_NONE);
 }
 
 static void FOC_StateBootupSound(FOC_HandleTypeDef* hfoc){
@@ -128,6 +129,18 @@ static void FOC_StateRun(FOC_HandleTypeDef* hfoc){
     }
 }
 
+static void FOC_StateStop(FOC_HandleTypeDef* hfoc){
+    hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
+    Current_Loop(hfoc);
+    if(hfoc->encoder_speed_mechanical < 0.1f){
+        FOC_SetState(hfoc, FOC_STATE_IDLE, FOC_STATE_NONE);
+    }
+}
+
+static void FOC_StateIdle(FOC_HandleTypeDef* hfoc){
+    UNUSED(hfoc);
+}
+
 static void FOC_StateError(FOC_HandleTypeDef* hfoc){
     DRV8323_SetHighImpedance(&hfoc->hdrv8323);
     FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
@@ -158,9 +171,15 @@ static void FOC_StateOpenLoop(FOC_HandleTypeDef* hfoc){
 
 
 
-FOC_StatusTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDef new_state){
+FOC_StatusTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDef state, FOC_StateTypeDef next_state){
+    if(next_state != FOC_STATE_NONE){
+        hfoc->next_state = next_state;
+    }
     
-    switch(new_state){
+    switch(state){
+        case FOC_STATE_NONE:
+            return FOC_OK;
+            break;
         case FOC_STATE_INIT:
             break;
         case FOC_STATE_RESET:
@@ -189,9 +208,30 @@ FOC_StatusTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDef new_sta
             break;
         case FOC_STATE_RUN:
             break;
+        case FOC_STATE_STOP:
+            break;
+        case FOC_STATE_IDLE:
+            if(hfoc->state != FOC_STATE_STOP) return FOC_ERROR; // can only enter IDLE state from STOP state
+            if(hfoc->encoder_speed_mechanical < 0.1f) return FOC_ERROR; // can only enter IDLE state if motor is stopped
+
+            hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
+            hfoc->speed_setpoint = 0.0f;
+            hfoc->angle_setpoint = 0.0f;
+
+            PID_Reset(&hfoc->pid_current_d);
+            PID_Reset(&hfoc->pid_current_q);
+            PID_Reset(&hfoc->pid_speed);
+            PID_Reset(&hfoc->pid_position);
+
+            FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
+            DRV8323_SetHighImpedance(&hfoc->hdrv8323);
+
+            break;
         case FOC_STATE_FLASH_SAVE:
+            if(hfoc->state != FOC_STATE_IDLE) return FOC_ERROR; // can only save flash from IDLE state
             break;
         case FOC_STATE_FLASH_LOAD:
+            if(hfoc->state != FOC_STATE_IDLE) return FOC_ERROR; // can only load flash from IDLE state
             break;
         case FOC_STATE_OPENLOOP:
             break;
@@ -201,12 +241,13 @@ FOC_StatusTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDef new_sta
     
     
     hfoc->previous_state = hfoc->state;
-    hfoc->state = new_state;
+    hfoc->state = state;
     return FOC_OK;
 }
 
 void FOC_StateLoop(FOC_HandleTypeDef *hfoc){
     switch(hfoc->state){
+        case FOC_STATE_NONE: return; break;
         case FOC_STATE_INIT: FOC_StateInit(hfoc); break;
         case FOC_STATE_RESET: FOC_StateReset(hfoc); break;
         case FOC_STATE_BOOTUP_SOUND: FOC_StateBootupSound(hfoc); break;
@@ -220,6 +261,8 @@ void FOC_StateLoop(FOC_HandleTypeDef *hfoc){
         case FOC_STATE_ALIGNMENT_TEST: FOC_StateAlignmentTest(hfoc); break;
         case FOC_STATE_ANTICOGGING: FOC_StateAntiCogging(hfoc); break;
         case FOC_STATE_RUN: FOC_StateRun(hfoc); break;
+        case FOC_STATE_STOP: FOC_StateStop(hfoc); break;
+        case FOC_STATE_IDLE: FOC_StateIdle(hfoc); break;
         case FOC_STATE_ERROR: FOC_StateError(hfoc); break;
         case FOC_STATE_FLASH_SAVE: FOC_StateFlashSave(hfoc); break;
         case FOC_STATE_FLASH_LOAD: FOC_StateFlashLoad(hfoc); break;

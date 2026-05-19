@@ -41,5 +41,6 @@ void PID_Init(PIDControllerTypeDef *pid, float T, float tau, float *max_out, PID
 float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement);
 void PID_SetGains(PIDControllerTypeDef *pid, PIDValuesTypeDef K);
 PIDValuesTypeDef PID_GetGains(PIDControllerTypeDef *pid);
+void PID_Reset(PIDControllerTypeDef *pid);
 
 #endif // PID_H
