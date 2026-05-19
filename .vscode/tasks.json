@@ -67,6 +67,18 @@
             "preset": "${command:cmake.activeBuildPresetName}",
             "problemMatcher": [],
             "detail": "CMake template clean task"
+        },
+        {
+            "type": "cmake",
+            "label": "CMake: build",
+            "command": "build",
+            "targets": [
+                "all"
+            ],
+            "preset": "Debug_Clang",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "CMake template build task"
         }
     ]
 }

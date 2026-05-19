@@ -9,5 +9,8 @@
     "cmake.configureArgs": [
         "-DCMAKE_COMMAND=cube-cmake"
     ],
-    "cmake.sourceDirectory": "${workspaceFolder}/Firmware"
+    "cmake.sourceDirectory": "${workspaceFolder}",
+    "cmake.preferredGenerators": [
+        "Ninja"
+    ]
 }
