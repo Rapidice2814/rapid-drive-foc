@@ -1,4 +1,5 @@
 #include "FOC_Diagnostics.h"
+#include "FOC_Statecontroller.h"
 
 
 #define FOC_ERROR_INITIALIZING (1u << 0)
@@ -41,10 +42,13 @@ void FOC_CheckErrors(FOC_HandleTypeDef *hfoc){
     if(hfoc->adc_values.motor_temp > MOTOR_MAX_TEMP) active_errors |= FOC_ERROR_MOTOR_OT;
     if(hfoc->adc_values.motor_temp < 0.0f) active_errors |= FOC_ERROR_MOTOR_UT;
 
+    if(hfoc->adc_values.mosfet_temp > MOSFET_MAX_TEMP) active_errors |= FOC_ERROR_MOSFET_OT;
+    if(hfoc->adc_values.mosfet_temp < 0.0f) active_errors |= FOC_ERROR_MOSFET_UT;
+
     if(hfoc->adc_values.vbus > hfoc->flash_data.limits.vbus_overvoltage_trip_level) active_errors |= FOC_ERROR_VBUS_OV;
     if(hfoc->adc_values.vbus < hfoc->flash_data.limits.vbus_undervoltage_trip_level) active_errors |= FOC_ERROR_VBUS_UV;
 
     if(active_errors){
-        hfoc->state = FOC_STATE_ERROR;
+        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }
 }

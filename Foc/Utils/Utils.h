@@ -22,8 +22,6 @@ void write_u16_le(uint8_t *dst, uint16_t v);
 void write_u32_le(uint8_t *dst, uint32_t v);
 uint8_t countbits(uint32_t n);
 
-void GenerateNtcLut();
-float GetNtcTemperature(float ntc_resistance);
 
 
 /**************MACROS**************/

@@ -73,14 +73,6 @@ void FOC_Setup(){
         Error_Handler();
     }
 
-    if(FOC_SetEncoderPointer(&hfoc, &htim3.Instance->CNT) != FOC_OK){
-        Error_Handler();
-    }
-
-    if(FOC_SetPWMCCRPointers(&hfoc, &htim1.Instance->CCR3, &htim1.Instance->CCR2, &htim1.Instance->CCR1, PWM_CLOCK_DIVIDER) != FOC_OK){
-        Error_Handler();
-    }
-
     if(DRV8323_Init(&hfoc.hdrv8323) != DRV8323_OK){
         while(1){
             HAL_GPIO_TogglePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin);
@@ -93,6 +85,14 @@ void FOC_Setup(){
             HAL_GPIO_TogglePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin);
             HAL_Delay(100);
         };
+    }
+
+    if(FOC_SetEncoderPointer(&hfoc, &htim3.Instance->CNT) != FOC_OK){
+        Error_Handler();
+    }
+
+    if(FOC_SetPWMCCRPointers(&hfoc, &htim1.Instance->CCR3, &htim1.Instance->CCR2, &htim1.Instance->CCR1, PWM_CLOCK_DIVIDER) != FOC_OK){
+        Error_Handler();
     }
 
 
@@ -126,8 +126,6 @@ void FOC_Setup(){
     /* USB Debug */
     FOC_USB_Setup();
     
-    /* Generate the NTC lookup table */
-    GenerateNtcLut(); 
 
     uint32_t rand32 = 0;
     if (HAL_RNG_GenerateRandomNumber(&hrng, &rand32) != HAL_OK)    {

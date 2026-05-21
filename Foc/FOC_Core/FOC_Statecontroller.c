@@ -71,7 +71,7 @@ static void FOC_StateIdentify(FOC_HandleTypeDef* hfoc){
         hfoc->state = FOC_STATE_CHECKLIST;
     } else if(ret == FOC_LOOP_ERROR){
         USB_printf("Motor identification failed!\n");
-        hfoc->state = FOC_STATE_ERROR;
+        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     } 
 }
 
@@ -84,7 +84,7 @@ static void FOC_StatePIDAutotune(FOC_HandleTypeDef* hfoc){
         hfoc->state = FOC_STATE_CHECKLIST;
     } else if(ret == FOC_LOOP_ERROR){
         USB_printf("PID autotune failed!\n");
-        hfoc->state = FOC_STATE_ERROR;
+        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }
 }
 
@@ -95,7 +95,7 @@ static void FOC_StateAlignment(FOC_HandleTypeDef* hfoc){
         hfoc->state = FOC_STATE_ALIGNMENT_TEST;
     } else if(ret == FOC_LOOP_ERROR){
         USB_printf("Alignment failed!\n");
-        hfoc->state = FOC_STATE_ERROR;
+        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }
 }
 
@@ -104,7 +104,7 @@ static void FOC_StateAlignmentTest(FOC_HandleTypeDef* hfoc){
     if(ret == FOC_LOOP_COMPLETED){
         hfoc->state = FOC_STATE_CHECKLIST;
     } else if(ret == FOC_LOOP_ERROR){
-        hfoc->state = FOC_STATE_ERROR;
+        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }
 }
 
@@ -115,7 +115,7 @@ static void FOC_StateAntiCogging(FOC_HandleTypeDef* hfoc){
         hfoc->state = FOC_STATE_CHECKLIST;
     } else if(ret == FOC_LOOP_ERROR){
         USB_printf("Anti-cogging measurement failed!\n");
-        hfoc->state = FOC_STATE_ERROR;
+        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }
 }
 
@@ -151,17 +151,21 @@ static void FOC_StateError(FOC_HandleTypeDef* hfoc){
 }
 
 static void FOC_StateFlashSave(FOC_HandleTypeDef* hfoc){
+    USB_printf("Saving flash data ...\n");
     if(FOC_FLASH_WriteData(&hfoc->flash_data) != FLASH_OK){
-        hfoc->state = FOC_STATE_ERROR;
+        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }
-    hfoc->state = FOC_STATE_RUN;
+    USB_printf("Flash data saved!\n");
+    hfoc->state = hfoc->next_state;
 }
 
 static void FOC_StateFlashLoad(FOC_HandleTypeDef* hfoc){
+    USB_printf("Loading flash data ...\n");
     if(FOC_FLASH_ReadData(&hfoc->flash_data) != FLASH_OK){
-        hfoc->state = FOC_STATE_ERROR;
+        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }
-    hfoc->state = FOC_STATE_RUN;
+    USB_printf("Flash data loaded!\n");
+    hfoc->state = hfoc->next_state;
 }
 
 static void FOC_StateOpenLoop(FOC_HandleTypeDef* hfoc){
@@ -211,8 +215,14 @@ FOC_StatusTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDef state, 
         case FOC_STATE_STOP:
             break;
         case FOC_STATE_IDLE:
-            if(hfoc->state != FOC_STATE_STOP) return FOC_ERROR; // can only enter IDLE state from STOP state
-            if(hfoc->encoder_speed_mechanical < 0.1f) return FOC_ERROR; // can only enter IDLE state if motor is stopped
+            if(hfoc->state != FOC_STATE_STOP){
+                USB_printf("Can only enter IDLE state from STOP state! Current state: %d\n", hfoc->state);
+                return FOC_ERROR; // can only enter IDLE state from STOP state
+            }
+            if(hfoc->encoder_speed_mechanical > 0.1f){
+                USB_printf("Cannot enter IDLE state because motor is not stopped! Speed: %dmRad/s\n", (int)(hfoc->encoder_speed_mechanical * 1000.0f));
+                return FOC_ERROR; // can only enter IDLE state if motor is stopped
+            }
 
             hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
             hfoc->speed_setpoint = 0.0f;
@@ -228,10 +238,16 @@ FOC_StatusTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDef state, 
 
             break;
         case FOC_STATE_FLASH_SAVE:
-            if(hfoc->state != FOC_STATE_IDLE) return FOC_ERROR; // can only save flash from IDLE state
+            if(hfoc->state != FOC_STATE_IDLE){
+                USB_printf("Can only enter FLASH_SAVE from IDLE state! Current state: %d\n", hfoc->state);
+                return FOC_ERROR; // can only save flash from IDLE state
+            }
             break;
         case FOC_STATE_FLASH_LOAD:
-            if(hfoc->state != FOC_STATE_IDLE) return FOC_ERROR; // can only load flash from IDLE state
+            if(hfoc->state != FOC_STATE_IDLE){
+                USB_printf("Can only enter FLASH_LOAD from IDLE state! Current state: %d\n", hfoc->state);
+                return FOC_ERROR; // can only load flash from IDLE state
+            }
             break;
         case FOC_STATE_OPENLOOP:
             break;

@@ -1,9 +1,9 @@
 #include "FOC_ADC.h"
 #include "FOC_Config.h"
+#include "NTC_Lookup.h"
 
 extern ADC_HandleTypeDef hadc1;
 extern ADC_HandleTypeDef hadc2;
-
 
 /* flags, used for the interrupts*/
 static volatile uint8_t adc1_complete_flag = 0;
@@ -23,6 +23,7 @@ static FOC_ADC_ValuesTypeDef adc_offset_values = {0};
 static volatile uint16_t adc1_buffer[ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2] = {0};
 static volatile uint16_t adc2_buffer[ADC2_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2] = {0};
 
+NTC_LUT_TypeDef hntclut;
 
 /**
  * @brief Initializes the ADCs for current and voltage measurements. Starts the ADC in DMA mode. Triggered by the PWM timer.
@@ -30,7 +31,8 @@ static volatile uint16_t adc2_buffer[ADC2_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER 
  */
 void FOC_ADC_Setup(){
     HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc1_buffer, ADC1_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2); //start adc in dma mode for the current and vbus
-    HAL_ADC_Start_DMA(&hadc2, (uint32_t*)adc2_buffer, ADC2_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2); //adc for temp sensor
+    HAL_ADC_Start_DMA(&hadc2, (uint32_t*)adc2_buffer, ADC2_CHANNELS * CURRENT_LOOP_CLOCK_DIVIDER * 2); //adc for temp sensors
+    GenerateNtcLut(&hntclut, NTC_TEMP_MIN, NTC_TEMP_MAX, NTC_B, NTC_R0, NTC_T0);
 }
 
 
@@ -85,18 +87,24 @@ FOC_ADC_StatusTypeDef FOC_ADC_Measure(FOC_ADC_ValuesTypeDef *hadc_values){
     if(adc2_half_complete_flag || adc2_complete_flag){
 
         int32_t acc_ntc1_resistance = 0;
+        int32_t acc_ntc2_resistance = 0;
 
         int start_index = adc2_half_complete_flag ? 0 : CURRENT_LOOP_CLOCK_DIVIDER * ADC2_CHANNELS;
         int end_index = start_index + CURRENT_LOOP_CLOCK_DIVIDER * ADC2_CHANNELS;
 
         for (int i = start_index; i < end_index; i += ADC2_CHANNELS) {
             int32_t raw_ntc1 = (int32_t)adc2_buffer[i + 0];
+            int32_t raw_ntc2 = (int32_t)adc2_buffer[i + 1];
 
             acc_ntc1_resistance += raw_ntc1;
+            acc_ntc2_resistance += raw_ntc2;
         }
 
-        float ntc_resistance = 100e3f * ((4095.0f / (float)acc_ntc1_resistance * CURRENT_LOOP_CLOCK_DIVIDER) - 1);
-        adc_values.motor_temp = GetNtcTemperature(ntc_resistance);
+        float ntc1_resistance = NTC_SERIES_RESISTOR * ((4095.0f / (float)acc_ntc1_resistance * CURRENT_LOOP_CLOCK_DIVIDER) - 1);
+        float ntc2_resistance = NTC_SERIES_RESISTOR * ((4095.0f / (float)acc_ntc2_resistance * CURRENT_LOOP_CLOCK_DIVIDER) - 1);
+
+        adc_values.mosfet_temp = GetNtcTemperature(&hntclut, ntc1_resistance);
+        adc_values.motor_temp = GetNtcTemperature(&hntclut, ntc2_resistance);
 
         foc_adc2_measurement_flag = 1;
         adc2_half_complete_flag = 0;
@@ -112,6 +120,7 @@ FOC_ADC_StatusTypeDef FOC_ADC_Measure(FOC_ADC_ValuesTypeDef *hadc_values){
         hadc_values->phase_current.c = adc_values.phase_current.c - adc_offset_values.phase_current.c;
 
         hadc_values->vbus = adc_values.vbus - adc_offset_values.vbus;
+        hadc_values->mosfet_temp = adc_values.mosfet_temp - adc_offset_values.mosfet_temp;
         hadc_values->motor_temp = adc_values.motor_temp - adc_offset_values.motor_temp;
 
         return FOC_ADC_MEASUREMENT_COMPLETE;

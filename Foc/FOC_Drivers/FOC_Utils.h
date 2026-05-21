@@ -50,8 +50,8 @@ typedef struct {
     
     float vbus; //bus voltage [V]
 
-    float motor_temp; //motor temperature [C]
     float mosfet_temp; //mosfet temperature [C]
+    float motor_temp; //motor temperature [C]
 } FOC_ADC_ValuesTypeDef;
 
 

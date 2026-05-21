@@ -150,7 +150,6 @@ uint8_t USB_PushRxBuffer(RxUsbBuf_t* buf){
  * @return 1 if the message was successfully queued for transmission, 0 otherwise.
  */
 uint8_t USB_printf(const char* format, ...){
-    return 0;
     TxUsbBuf_t* msg = TxQueue_alloc();
     va_list args;
     int n;

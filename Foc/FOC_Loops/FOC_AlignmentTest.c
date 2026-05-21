@@ -114,8 +114,8 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
                         step = 0;
                         next_step_time = HAL_GetTick() + 1;
                     } else{
-                        attempt = 0;
                         USB_printf("Alignment test failed after %d attempts!\n", attempt);
+                        attempt = 0;
                         return FOC_LOOP_ERROR;
                     }
                 }

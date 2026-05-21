@@ -325,11 +325,11 @@ static void MX_ADC2_Init(void)
   hadc2.Init.Resolution = ADC_RESOLUTION_12B;
   hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc2.Init.GainCompensation = 0;
-  hadc2.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  hadc2.Init.ScanConvMode = ADC_SCAN_ENABLE;
   hadc2.Init.EOCSelection = ADC_EOC_SEQ_CONV;
   hadc2.Init.LowPowerAutoWait = DISABLE;
   hadc2.Init.ContinuousConvMode = DISABLE;
-  hadc2.Init.NbrOfConversion = 1;
+  hadc2.Init.NbrOfConversion = 2;
   hadc2.Init.DiscontinuousConvMode = DISABLE;
   hadc2.Init.ExternalTrigConv = ADC_EXTERNALTRIG_T1_TRGO2;
   hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISINGFALLING;
@@ -349,6 +349,15 @@ static void MX_ADC2_Init(void)
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_13;
+  sConfig.Rank = ADC_REGULAR_RANK_2;
   if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -954,22 +963,22 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, DRV_ENABLE_Pin|INL_ALL_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, DRV_ENABLE_Pin|DEBUG_LED2_Pin|INL_ALL_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(DRV_NCS_GPIO_Port, DRV_NCS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, DEBUG_LED0_Pin|DEBUG_LED1_Pin|DEBUG_LED2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(PWM_AUX_GPIO_Port, PWM_AUX_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(PB2_GPIO_Port, PB2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, DEBUG_LED1_Pin|DEBUG_LED0_Pin|PB2_Pin|AS_NCS_EXT_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(AS_NCS_GPIO_Port, AS_NCS_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pins : DRV_ENABLE_Pin DRV_NCS_Pin INL_ALL_Pin */
-  GPIO_InitStruct.Pin = DRV_ENABLE_Pin|DRV_NCS_Pin|INL_ALL_Pin;
+  /*Configure GPIO pins : DRV_ENABLE_Pin DRV_NCS_Pin DEBUG_LED2_Pin INL_ALL_Pin */
+  GPIO_InitStruct.Pin = DRV_ENABLE_Pin|DRV_NCS_Pin|DEBUG_LED2_Pin|INL_ALL_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -987,15 +996,17 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(Button_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : DEBUG_LED0_Pin DEBUG_LED1_Pin DEBUG_LED2_Pin */
-  GPIO_InitStruct.Pin = DEBUG_LED0_Pin|DEBUG_LED1_Pin|DEBUG_LED2_Pin;
+  /*Configure GPIO pin : PWM_AUX_Pin */
+  GPIO_InitStruct.Pin = PWM_AUX_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(PWM_AUX_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB2_Pin AS_NCS_Pin */
-  GPIO_InitStruct.Pin = PB2_Pin|AS_NCS_Pin;
+  /*Configure GPIO pins : DEBUG_LED1_Pin DEBUG_LED0_Pin PB2_Pin AS_NCS_EXT_Pin
+                           AS_NCS_Pin */
+  GPIO_InitStruct.Pin = DEBUG_LED1_Pin|DEBUG_LED0_Pin|PB2_Pin|AS_NCS_EXT_Pin
+                          |AS_NCS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

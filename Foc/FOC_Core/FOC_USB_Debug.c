@@ -2,6 +2,8 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "FOC_Statecontroller.h"
+
 #include "Timing.h"
 uint32_t usb_debug_times[5] = {0};
 
@@ -373,31 +375,34 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
             } 
         }
         if(packet[i] == 'A'){
-            hfoc.state = FOC_STATE_ANTICOGGING;
+            FOC_SetState(&hfoc, FOC_STATE_ANTICOGGING, FOC_STATE_NONE);
         }
         if(packet[i] == 'R'){
-            hfoc.state = FOC_STATE_RESET;
+            FOC_SetState(&hfoc, FOC_STATE_RUN, FOC_STATE_NONE);
         }
         if(packet[i] == 'E'){
-            hfoc.state = FOC_STATE_ERROR;
+            FOC_SetState(&hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
+        }
+        if(packet[i] == 'O'){
+            FOC_SetState(&hfoc, FOC_STATE_STOP, FOC_STATE_NONE);
         }
         if(packet[i] == 'F'){
-            hfoc.state = FOC_STATE_FLASH_SAVE;
+            FOC_SetState(&hfoc, FOC_STATE_FLASH_SAVE, FOC_STATE_RUN);
         }
         if(packet[i] == 'M'){
             if(packet[i+1] == 's'){
                 hfoc.flash_data.controller.speed_PID_enabled = 1;
                 hfoc.flash_data.controller.position_PID_enabled = 0;
+                USB_printf("Enabled speed PID, disabled position PID\n");
             } else if(packet[i+1] == 'p'){
                 hfoc.flash_data.controller.position_PID_enabled = 1;
                 hfoc.flash_data.controller.speed_PID_enabled = 0;
+                USB_printf("Enabled position PID, disabled speed PID\n");
             } else if(packet[i+1] == 'o'){
                 hfoc.flash_data.controller.speed_PID_enabled = 0;
                 hfoc.flash_data.controller.position_PID_enabled = 0;
+                USB_printf("Disabled both speed and position PID\n");
             }
-        }
-        if(packet[i] == 'O'){
-            hfoc.state = FOC_STATE_OPENLOOP;
         }
         if(packet[i] == 'K'){
             hfoc.motor_disable_flag = 1;
@@ -410,7 +415,7 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
             hfoc.flash_data.motor.phase_resistance_valid = 0;
             hfoc.flash_data.motor.phase_inductance_valid = 0;
             hfoc.flash_data.controller.current_PID_gains_valid = 0;
-            hfoc.state = FOC_STATE_CHECKLIST;
+            FOC_SetState(&hfoc, FOC_STATE_CHECKLIST, FOC_STATE_NONE);
         }
     }
 
@@ -418,21 +423,25 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
         int Pd = 0;
         sscanf(packet, "Pd%d", &Pd);
         hfoc.flash_data.controller.PID_gains_d.Kp = (float)Pd / 1000.0f;
+        USB_printf("Set Pd to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_d.Kp * 1000.0f));
     }
     if(packet[0] == 'P' && packet[1] == 'q'){
         int Pq = 0;
         sscanf(packet, "Pq%d", &Pq);
         hfoc.flash_data.controller.PID_gains_q.Kp = (float)Pq / 1000.0f;
+        USB_printf("Set Pq to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_q.Kp * 1000.0f));
     }
     if(packet[0] == 'P' && packet[1] == 's'){
         int Ps = 0;
         sscanf(packet, "Ps%d", &Ps);
         hfoc.flash_data.controller.PID_gains_speed.Kp = (float)Ps / 1000.0f;
+        USB_printf("Set Ps to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_speed.Kp * 1000.0f));
     }
     if(packet[0] == 'P' && packet[1] == 'p'){
         int Pp = 0;
         sscanf(packet, "Pp%d", &Pp);
         hfoc.flash_data.controller.PID_gains_position.Kp = (float)Pp / 1000.0f;
+        USB_printf("Set Pp to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_position.Kp * 1000.0f));
     }
 
 
@@ -441,54 +450,64 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
         int Id = 0;
         sscanf(packet, "Id%d", &Id);
         hfoc.flash_data.controller.PID_gains_d.Ki = (float)Id / 1000.0f;
+        USB_printf("Set Id to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_d.Ki * 1000.0f));
     }
     if(packet[0] == 'I' && packet[1] == 'q'){
         int Iq = 0;
         sscanf(packet, "Iq%d", &Iq);
         hfoc.flash_data.controller.PID_gains_q.Ki = (float)Iq / 1000.0f;
+        USB_printf("Set Iq to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_q.Ki * 1000.0f));
     }
     if(packet[0] == 'I' && packet[1] == 's'){
         int Is = 0;
         sscanf(packet, "Is%d", &Is);
         hfoc.flash_data.controller.PID_gains_speed.Ki = (float)Is / 1000.0f;
+        USB_printf("Set Is to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_speed.Ki * 1000.0f));
     }
     if(packet[0] == 'I' && packet[1] == 'p'){
         int Ip = 0;
         sscanf(packet, "Ip%d", &Ip);
         hfoc.flash_data.controller.PID_gains_position.Ki = (float)Ip / 1000.0f;
+        USB_printf("Set Ip to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_position.Ki * 1000.0f));
     }
 
     if(packet[0] == 'S' && packet[1] == 'q'){
         int Sq = 0;
         sscanf(packet, "Sq%d", &Sq);
         hfoc.dq_current_setpoint.q = (float)Sq / 1000.0f;
+        USB_printf("Set Sq to %dmA\n", (int)(hfoc.dq_current_setpoint.q * 1000.0f));
     }
     if(packet[0] == 'S' && packet[1] == 'd'){
         int Sd = 0;
         sscanf(packet, "Sd%d", &Sd);
         hfoc.dq_current_setpoint.d = (float)Sd / 1000.0f;
+        USB_printf("Set Sd to %dmA\n", (int)(hfoc.dq_current_setpoint.d * 1000.0f));
     }
     if(packet[0] == 'S' && packet[1] == 's'){
         int Ss = 0;
         sscanf(packet, "Ss%d", &Ss);
         hfoc.speed_setpoint = (float)Ss;
+        USB_printf("Set Ss to %dRad/s\n", (int)hfoc.speed_setpoint);
     }
     if(packet[0] == 'S' && packet[1] == 'p'){
         int Sp = 0;
         sscanf(packet, "Sp%d", &Sp);
         hfoc.angle_setpoint = (float)Sp / 1000.0f;
         normalize_angle_pm_pi(&hfoc.angle_setpoint); //normalize the angle to [-pi, pi]
+        USB_printf("Set Sp to %dRad\n", (int)(hfoc.angle_setpoint * 1000.0f));
     }
 
     if(packet[0] == 'L' && packet[1] == 'i'){
         int Li = 0;
         sscanf(packet, "Li%d", &Li);
         hfoc.flash_data.limits.max_dq_current = (float)Li / 1000.0f;
+        USB_printf("Set Li to %dmA\n", (int)(hfoc.flash_data.limits.max_dq_current * 1000.0f));
     }
     if(packet[0] == 'L' && packet[1] == 'v'){
         int Lv = 0;
         sscanf(packet, "Lv%d", &Lv);
         hfoc.flash_data.limits.max_dq_voltage = (float)Lv / 1000.0f;
+        USB_printf("Set Lv to %dmV\n", (int)(hfoc.flash_data.limits.max_dq_voltage * 1000.0f));
     }
 }
 
