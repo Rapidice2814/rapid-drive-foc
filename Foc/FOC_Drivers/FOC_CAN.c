@@ -92,7 +92,6 @@ void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CommandTypeDef command){
     
     if (HAL_FDCAN_AddMessageToTxFifoQ(hfoc->phfdcan, &TxHeader, TxData) != HAL_OK) {
         // Error_Handler();
-        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }
 }
 

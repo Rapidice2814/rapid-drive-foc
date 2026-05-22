@@ -1,6 +1,7 @@
 #include <math.h>
 #include <stdio.h>
 
+#include "FOC_States.h"
 #include "FOC_Utils.h"
 #include "Utils.h"
 #include "FOC_Config.h"
@@ -10,7 +11,7 @@
 //Sets default values for the FOC structure
 FOC_StatusTypeDef FOC_Init(FOC_HandleTypeDef *hfoc){
 
-    hfoc->state = FOC_STATE_INIT;
+    FOC_SetState(hfoc, FOC_STATE_INIT, FOC_STATE_NONE);
 
     hfoc->speed_setpoint = 0.0f;
     hfoc->angle_setpoint = 0.0f;

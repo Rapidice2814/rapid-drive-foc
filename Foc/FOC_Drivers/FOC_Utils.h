@@ -54,7 +54,6 @@ typedef struct {
     float motor_temp; //motor temperature [C]
 } FOC_ADC_ValuesTypeDef;
 
-
 typedef enum {
     FOC_STATE_NONE = 0,
     FOC_STATE_INIT,
@@ -65,9 +64,7 @@ typedef enum {
     FOC_STATE_ANTICOGGING,
     FOC_STATE_CHECKLIST,
     FOC_STATE_PID_AUTOTUNE,
-    FOC_STATE_GENERAL_TEST,
     FOC_STATE_ERROR,
-    FOC_STATE_CALIBRATION,
     FOC_STATE_ALIGNMENT,
     FOC_STATE_ALIGNMENT_TEST,
     FOC_STATE_RUN,
@@ -87,7 +84,6 @@ typedef struct {
 
     /* Flags */
     uint8_t adc_calibrated;
-    uint8_t encoder_aligned;
 
     /* More flags */
     uint8_t motor_disable_flag;

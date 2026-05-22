@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "FOC_Statecontroller.h"
+#include "FOC_States.h"
 
 #include "Timing.h"
 uint32_t usb_debug_times[5] = {0};

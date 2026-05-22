@@ -15,7 +15,7 @@
 #include "FOC_CAN.h"
 #include "FOC_ADC.h"
 #include "FOC_Diagnostics.h"
-#include "FOC_Statecontroller.h"
+#include "FOC_States.h"
 #include "Cordic.h"
 #include "Timing.h"
 

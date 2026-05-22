@@ -44,7 +44,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC_Diagnostics.c
-    ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC_Statecontroller.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC_USB_Debug.c
 
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_ADC.c
@@ -53,6 +52,13 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Utils.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_HFI.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_USB.c
+
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_States/FOC_StateController.c
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_States/FOC_States_Calibration.c
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_States/FOC_States_Fault.c
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_States/FOC_States_Operation.c
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_States/FOC_States_Startup.c
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_States/FOC_States_Storage.c
 
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_Alignment.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_AlignmentTest.c
@@ -85,6 +91,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Core
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_States
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops
     ${CMAKE_SOURCE_DIR}/Foc/Hardware_Drivers
     ${CMAKE_SOURCE_DIR}/Foc/Sequencers

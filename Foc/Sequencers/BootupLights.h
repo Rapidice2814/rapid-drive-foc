@@ -1,5 +1,5 @@
-#ifndef LIGHTS_H
-#define LIGHTS_H
+#ifndef BOOTUP_LIGHTS_H
+#define BOOTUP_LIGHTS_H
 
 #include "LightEngine.h"
 
@@ -33,14 +33,5 @@ const LightCommandTypeDef super_mario_light_array[] = {
 
 
 
-const LightCommandTypeDef error_light_array[] = {
-    
-    { { {25,0,0}, {25,0,0}, {25,0,0}, {25,0,0} }, 200},
-    { { {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0} }, 200},
 
-};
-
-
-
-
-#endif // LIGHTS_H
+#endif // BOOTUP_LIGHTS_H
