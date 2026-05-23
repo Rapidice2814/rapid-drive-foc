@@ -8,8 +8,10 @@
 
 typedef enum {
     FLASH_OK = 0,
-    FLASH_ERROR = 1,
-    FLASH_EMPTY = 2
+    FLASH_SAME,
+    FLASH_DIFFERENT,
+    FLASH_ERROR,
+    FLASH_EMPTY
 } FLASH_StatusTypeDef;
 
 struct FLASH_MotorParameters {
@@ -91,6 +93,7 @@ typedef struct {
 
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata);
 FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata);
+FLASH_StatusTypeDef FOC_FLASH_CompareData(const FLASH_DataTypeDef *pdata);
 FLASH_StatusTypeDef FOC_FLASH_SetDefault(FLASH_DataTypeDef *pdata);
 
 

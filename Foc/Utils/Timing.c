@@ -8,6 +8,7 @@ void FunctionTimer_Init(TIM_HandleTypeDef *htim){
 }
 
 uint32_t get_current_time(){
+    if(hfunction_timer == NULL) return 0;
     return __HAL_TIM_GET_COUNTER(hfunction_timer);
 }
 

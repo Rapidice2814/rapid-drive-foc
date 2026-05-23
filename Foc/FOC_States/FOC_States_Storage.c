@@ -17,7 +17,7 @@ void FOC_StateFlashSave(FOC_HandleTypeDef* hfoc){
         FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }
     USB_printf("Flash data saved!\n");
-    hfoc->state = hfoc->next_state;
+    FOC_NextState(hfoc);
 }
 
 /* FOC_STATE_FLASH_LOAD */
@@ -36,5 +36,5 @@ void FOC_StateFlashLoad(FOC_HandleTypeDef* hfoc){
         FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }
     USB_printf("Flash data loaded!\n");
-    hfoc->state = hfoc->next_state;
+    FOC_NextState(hfoc);
 }

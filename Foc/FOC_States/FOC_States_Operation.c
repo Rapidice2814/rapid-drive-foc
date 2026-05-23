@@ -18,6 +18,18 @@ FOC_StateTransitionTypeDef FOC_StateRun_Transition(FOC_HandleTypeDef* hfoc){
         return FOC_STATETRANSITION_DENIED; // can only enter RUN state if current PID gains are valid
     }
 
+    hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
+    hfoc->speed_setpoint = 0.0f;
+    hfoc->angle_setpoint = 0.0f;
+
+    PID_Reset(&hfoc->pid_current_d);
+    PID_Reset(&hfoc->pid_current_q);
+    PID_Reset(&hfoc->pid_speed);
+    PID_Reset(&hfoc->pid_position);
+
+    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
+    DRV8323_ExitHighImpedance(&hfoc->hdrv8323);
+
     return FOC_STATETRANSITION_OK;
 }
 
@@ -40,9 +52,8 @@ FOC_StateTransitionTypeDef FOC_StateStop_Transition(FOC_HandleTypeDef* hfoc){
 
 void FOC_StateStop(FOC_HandleTypeDef* hfoc){
     Current_Loop(hfoc);
-    if(fabsf(hfoc->encoder_speed_mechanical) < 0.1f){
-        FOC_SetState(hfoc, FOC_STATE_IDLE, FOC_STATE_NONE);
-    }
+    if(fabsf(hfoc->encoder_speed_mechanical) > 0.1f) return; //wait until the motor is stopped before transitioning to IDLE state
+    FOC_SetState(hfoc, FOC_STATE_IDLE, FOC_STATE_NONE);
 }
 
 /* FOC_STATE_IDLE */
@@ -52,7 +63,7 @@ FOC_StateTransitionTypeDef FOC_StateIdle_Transition(FOC_HandleTypeDef* hfoc){
         USB_printf("Can only enter IDLE state from STOP state! Current state: %d\n", hfoc->state);
         return FOC_STATETRANSITION_DENIED; // can only enter IDLE state from STOP state
     }
-    if(fabsf(hfoc->encoder_speed_mechanical) < 0.1f){
+    if(fabsf(hfoc->encoder_speed_mechanical) > 0.1f){
         USB_printf("Cannot enter IDLE state because motor is not stopped! Speed: %dmRad/s\n", (int)(hfoc->encoder_speed_mechanical * 1000.0f));
         return FOC_STATETRANSITION_DENIED; // can only enter IDLE state if motor is stopped
     }
