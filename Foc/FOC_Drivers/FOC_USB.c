@@ -1,8 +1,9 @@
-#include "FOC_USB.h"
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdint.h>
+
+#include "main.h"
+#include "FOC_USB.h"
 #include "Utils.h"
 #include "usbd_cdc_if.h"
 

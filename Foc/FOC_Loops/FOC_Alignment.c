@@ -1,5 +1,8 @@
-#include "FOC_Loops.h"
 #include <math.h>
+
+#include "FOC_Loops.h"
+#include "FOC_Handle.h"
+#include "FOC_USB.h"
 #include "Cordic.h"
 
 #define ALIGNMENT_STEPS 10

@@ -1,10 +1,12 @@
-#include "FOC_USB_Debug.h"
 #include <string.h>
 #include <stdio.h>
 
+#include "FOC_USB_Debug.h"
+#include "FOC_Handle.h"
 #include "FOC_States.h"
-
+#include "FOC_USB.h"
 #include "Timing.h"
+
 uint32_t usb_debug_times[5] = {0};
 
 /******Packet Structure******/

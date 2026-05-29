@@ -1,6 +1,7 @@
 #include "FOC_ADC.h"
 #include "FOC_Config.h"
 #include "NTC_Lookup.h"
+#include "DRV8323_Driver.h"
 
 extern ADC_HandleTypeDef hadc1;
 extern ADC_HandleTypeDef hadc2;

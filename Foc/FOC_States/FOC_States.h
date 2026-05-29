@@ -1,8 +1,6 @@
 #ifndef FOC_STATES_H
 #define FOC_STATES_H
 
-#include "FOC_Utils.h"
-
 typedef enum {
     FOC_STATETRANSITION_OK,
     FOC_STATETRANSITION_INVALID,
@@ -10,6 +8,28 @@ typedef enum {
     FOC_STATETRANSITION_ERROR
 } FOC_StateTransitionTypeDef;
 
+typedef enum {
+    FOC_STATE_NONE = 0,
+    FOC_STATE_INIT,
+    FOC_STATE_RESET,
+    FOC_STATE_BOOTUP_SOUND,
+    FOC_STATE_CURRENT_SENSOR_CALIBRATION,
+    FOC_STATE_IDENTIFY,
+    FOC_STATE_ANTICOGGING,
+    FOC_STATE_CHECKLIST,
+    FOC_STATE_PID_AUTOTUNE,
+    FOC_STATE_ERROR,
+    FOC_STATE_ALIGNMENT,
+    FOC_STATE_ALIGNMENT_TEST,
+    FOC_STATE_RUN,
+    FOC_STATE_STOP,
+    FOC_STATE_IDLE,
+    FOC_STATE_FLASH_SAVE,
+    FOC_STATE_FLASH_LOAD,
+    FOC_STATE_OPENLOOP
+} FOC_StateTypeDef;
+
+typedef struct FOC_Handle FOC_HandleTypeDef;
 
 /* State Functions */
 FOC_StateTransitionTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDef state, FOC_StateTypeDef next_state);

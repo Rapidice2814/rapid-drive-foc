@@ -1,4 +1,5 @@
 #include "Timing.h"
+#include "main.h"
 
 TIM_HandleTypeDef* hfunction_timer;
 

@@ -3,21 +3,16 @@
 #include <string.h>
 
 #include "FOC.h"
-#include "FOC_Utils.h"
-#include "DRV8323_Driver.h"
+#include "FOC_Handle.h"
 #include "Utils.h"
-#include "PID.h"
-#include "FOC_Flash.h"
 #include "WS2812b_Driver.h"
 #include "FOC_Loops.h"
 #include "FOC_USB_Debug.h"
 #include "FOC_Config.h"
 #include "FOC_CAN.h"
-#include "FOC_ADC.h"
 #include "FOC_Diagnostics.h"
-#include "FOC_States.h"
+#include "FOC_USB.h"
 #include "Cordic.h"
-#include "Timing.h"
 
 extern FDCAN_HandleTypeDef hfdcan1;
 

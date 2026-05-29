@@ -1,7 +1,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include "main.h"
+#include <stdint.h>
 
 
 #define M_2PIF 6.28318530717958647692f

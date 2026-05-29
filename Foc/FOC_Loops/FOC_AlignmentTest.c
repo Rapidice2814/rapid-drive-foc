@@ -1,6 +1,8 @@
+#include <math.h>
 
 #include "FOC_Loops.h"
-#include <math.h>
+#include "FOC_Handle.h"
+#include "FOC_USB.h"
 #include "Cordic.h"
 
 /**

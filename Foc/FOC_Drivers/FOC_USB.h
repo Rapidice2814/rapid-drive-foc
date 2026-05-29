@@ -1,7 +1,7 @@
 #ifndef FOC_USB_H
 #define FOC_USB_H
 
-#include "main.h"
+#include <stdint.h>
 
 #define RX_USB_BUF_SIZE 64
 #define TX_USB_BUF_SIZE 1024

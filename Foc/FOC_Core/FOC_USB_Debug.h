@@ -1,9 +1,6 @@
 #ifndef FOC_USB_DEBUG_H
 #define FOC_USB_DEBUG_H
 
-#include "FOC_Utils.h"
-#include "FOC_USB.h"
-
 typedef enum{
 	DEBUG_OK,
 	DEBUG_STOPPED,

@@ -2,14 +2,14 @@
 #define FOC_LOOPS_H
 
 #include "main.h"
-#include "FOC_Utils.h"
-#include "FOC_USB_Debug.h"
 
 typedef enum{
 	FOC_LOOP_IN_PROGRESS,
 	FOC_LOOP_COMPLETED,
     FOC_LOOP_ERROR
 }FOC_LoopStatusTypeDef;
+
+typedef struct FOC_Handle FOC_HandleTypeDef;
 
 FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc);
 uint8_t FOC_OpenLoop(FOC_HandleTypeDef *hfoc, float espeed, float magnitude, float loop_frequency);

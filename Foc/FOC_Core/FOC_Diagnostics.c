@@ -1,5 +1,6 @@
 #include "FOC_Diagnostics.h"
 #include "FOC_States.h"
+#include "FOC_Handle.h"
 
 
 #define FOC_ERROR_INITIALIZING (1u << 0)
@@ -23,11 +24,6 @@
 #define FOC_ERROR_IBUS_OC (1u << 13)
 
 #define FOC_ERROR_ENCODER_FAULT (1u << 14)
-
-
-
-
-
 
 
 

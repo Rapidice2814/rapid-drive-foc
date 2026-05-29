@@ -1,7 +1,7 @@
 #ifndef TIMING_H
 #define TIMING_H
 
-#include "main.h"
+#include <stdint.h>
 
 typedef struct {
     uint32_t adc_max;

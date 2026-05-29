@@ -1,4 +1,6 @@
 #include "FOC_Loops.h"
+#include "FOC_Handle.h"
+#include "FOC_USB.h"
 
 /**
   * @brief Sets the Current controller PI gains based on the motor parameters

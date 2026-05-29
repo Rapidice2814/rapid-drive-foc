@@ -1,6 +1,7 @@
-#include "FOC_Flash.h"
 #include <string.h>
 #include <assert.h>
+
+#include "FOC_Flash.h"
 
 #define STORAGE_FLASH_PAGE 56
 #define NUMBER_OF_FLASH_PAGES 8

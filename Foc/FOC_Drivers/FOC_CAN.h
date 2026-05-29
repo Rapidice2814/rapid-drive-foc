@@ -2,7 +2,6 @@
 #define FOC_CAN_H
 
 #include "main.h"
-#include "FOC_Utils.h"
 #include <stdint.h>
 
 #define ID_MASK 0x0F                // 4-bit ID mask
@@ -30,6 +29,8 @@ typedef enum {
     CMD_ERROR,
     CMD_STATUS
 } CommandTypeDef;
+
+typedef struct FOC_Handle FOC_HandleTypeDef;
 
 void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id);
 void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc);

@@ -1,5 +1,7 @@
 #include "FOC_States.h"
+#include "FOC_Handle.h"
 #include "FOC_Loops.h"
+#include "FOC_USB.h"
 #include <math.h>
 
 /* FOC_STATE_RUN */

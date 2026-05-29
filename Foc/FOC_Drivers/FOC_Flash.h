@@ -1,7 +1,7 @@
 #ifndef FOC_FLASH_H
 #define FOC_FLASH_H
 
-#include "stm32g4xx_hal.h"
+#include "main.h"
 #include "Utils.h"
 #include "PID.h"
 #include "FOC_Config.h"

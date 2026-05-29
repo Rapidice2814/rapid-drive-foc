@@ -1,5 +1,7 @@
 #include "FOC_Loops.h"
+#include "FOC_Handle.h"
 #include "FOC_ADC.h"
+#include "FOC_USB.h"
 
 #define CURRENT_SENSOR_CALIBRATION_STEPS 100
 

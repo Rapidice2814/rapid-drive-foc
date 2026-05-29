@@ -1,4 +1,5 @@
 #include "FOC_States.h"
+#include "FOC_Handle.h"
 #include "FOC_USB.h"
 
 /* FOC_STATE_FLASH_SAVE */
