@@ -31,19 +31,32 @@ static inline FOC_StateTransitionTypeDef FOC_StateTransition_AlwaysOk(FOC_Handle
 }
 
 
-
 static void FOC_StateChecklist(FOC_HandleTypeDef* hfoc){
-    if(hfoc->adc_calibrated != 1){
-        FOC_SetState(hfoc, FOC_STATE_CURRENT_SENSOR_CALIBRATION, FOC_STATE_CHECKLIST);
-    }else if(hfoc->flash_data.encoder.offset_valid != 1){
-        FOC_SetState(hfoc, FOC_STATE_ALIGNMENT, FOC_STATE_CHECKLIST);
-    }else if(hfoc->flash_data.motor.phase_resistance_valid != 1 || hfoc->flash_data.motor.phase_inductance_valid != 1){
-        FOC_SetState(hfoc, FOC_STATE_IDENTIFY, FOC_STATE_CHECKLIST);
-    }else if(hfoc->flash_data.controller.current_PID_gains_valid != 1){
-        FOC_SetState(hfoc, FOC_STATE_PID_AUTOTUNE, FOC_STATE_CHECKLIST);
-    } else {
-        FOC_SetState(hfoc, FOC_STATE_RUN, FOC_STATE_NONE);
+    static uint8_t checklist_step = 0;
+    switch(checklist_step){
+        case 0:
+            if(hfoc->adc_calibrated != 1)
+                FOC_SetState(hfoc, FOC_STATE_CURRENT_SENSOR_CALIBRATION, FOC_STATE_CHECKLIST);
+            break;
+        case 1:
+            if(hfoc->flash_data.encoder.offset_valid != 1)
+                FOC_SetState(hfoc, FOC_STATE_ALIGNMENT, FOC_STATE_CHECKLIST);
+            break;
+        case 2:
+            if(hfoc->flash_data.motor.phase_resistance == 0 || hfoc->flash_data.motor.phase_inductance == 0)
+                FOC_SetState(hfoc, FOC_STATE_IDENTIFY, FOC_STATE_CHECKLIST);
+            break;
+        case 3:
+            FOC_SetState(hfoc, FOC_STATE_PID_AUTOTUNE, FOC_STATE_CHECKLIST);
+            break;
+        case 4:
+            FOC_SetState(hfoc, FOC_STATE_RUN, FOC_STATE_NONE);
+            checklist_step = 0;
+            return;
+        default:
+            break;
     }
+    checklist_step++;
 }
 
 

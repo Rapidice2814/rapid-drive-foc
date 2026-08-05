@@ -15,14 +15,13 @@ FOC_StateTransitionTypeDef FOC_StateRun_Transition(FOC_HandleTypeDef* hfoc){
         Debug_SendTextResponse("Cannot enter RUN state because encoder is not aligned!\n");
         return FOC_STATETRANSITION_DENIED; // can only enter RUN state if encoder is aligned
     }
-    if(hfoc->flash_data.controller.current_PID_gains_valid != 1){
-        Debug_SendTextResponse("Cannot enter RUN state because current PID gains are not valid!\n");
-        return FOC_STATETRANSITION_DENIED; // can only enter RUN state if current PID gains are valid
-    }
 
     hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
     hfoc->speed_setpoint = 0.0f;
     hfoc->angle_setpoint = 0.0f;
+
+    hfoc->flash_data.controller.speed_PID_enabled = 0;
+    hfoc->flash_data.controller.position_PID_enabled = 0;
 
     PID_Reset(&hfoc->pid_current_d);
     PID_Reset(&hfoc->pid_current_q);

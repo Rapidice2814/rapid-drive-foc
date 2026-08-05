@@ -28,7 +28,6 @@ FOC_StateTransitionTypeDef FOC_StateIdentify_Transition(FOC_HandleTypeDef* hfoc)
 void FOC_StateIdentify(FOC_HandleTypeDef* hfoc){
     FOC_LoopStatusTypeDef ret = FOC_MotorIdentification(hfoc);
     if(ret == FOC_LOOP_COMPLETED){
-        hfoc->flash_data.controller.current_PID_gains_valid = 0;
         FOC_NextState(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("Motor identification failed!\n");
@@ -47,7 +46,6 @@ void FOC_StatePIDAutotune(FOC_HandleTypeDef* hfoc){
     FOC_LoopStatusTypeDef ret = FOC_PIDAutotune(hfoc);
     if(ret == FOC_LOOP_COMPLETED){
         hfoc->flash_data.controller.anticogging_data_valid = 0;
-        hfoc->flash_data.controller.current_PID_gains_valid = 1;
         hfoc->flash_data.controller.current_PID_FF_enabled = 0;
         FOC_NextState(hfoc);
     } else if(ret == FOC_LOOP_ERROR){

@@ -169,6 +169,7 @@ uint8_t USB_printf(const char* format, ...){
     va_end(args);
 
     if (n < 0) {
+        TxQueue_free(msg);
         return 0;
     }
 

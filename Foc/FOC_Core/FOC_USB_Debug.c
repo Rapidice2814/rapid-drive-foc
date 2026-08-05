@@ -159,6 +159,16 @@ typedef enum {
     X(3, f, speed_setpoint)                    \
     X(4, f, flash_data.limits.max_dq_current)  \
     X(5, f, flash_data.limits.max_dq_voltage)  \
+    X(6, f, flash_data.limits.vbus_overvoltage_trip_level) \
+    X(7, f, flash_data.limits.vbus_undervoltage_trip_level) \
+    X(8, f, flash_data.limits.ibus_overcurrent_trip_level) \
+    X(9, f, flash_data.limits.motor_temp_trip_level) \
+    X(10, f, flash_data.limits.mosfet_temp_trip_level) \
+    X(11, u32, flash_data.motor.pole_pairs) \
+    X(12, f, flash_data.motor.phase_resistance) \
+    X(13, f, flash_data.motor.phase_inductance) \
+    X(14, f, flash_data.motor.torque_constant) \
+
 
 
 typedef union{
@@ -469,9 +479,8 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
         }
         if(packet[i] == 'C'){
             hfoc.flash_data.encoder.offset_valid = 0;
-            hfoc.flash_data.motor.phase_resistance_valid = 0;
-            hfoc.flash_data.motor.phase_inductance_valid = 0;
-            hfoc.flash_data.controller.current_PID_gains_valid = 0;
+            hfoc.flash_data.motor.phase_inductance = 0;
+            hfoc.flash_data.motor.phase_resistance = 0;
             FOC_SetState(&hfoc, FOC_STATE_CHECKLIST, FOC_STATE_NONE);
         }
     }
@@ -551,19 +560,6 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
         sscanf(packet, "Sp%d", &Sp);
         hfoc.angle_setpoint = (float)Sp / 1000.0f;
         Debug_SendTextResponse("Set Sp to %dRad\n", (int)(hfoc.angle_setpoint * 1000.0f));
-    }
-
-    if(packet[0] == 'L' && packet[1] == 'i'){
-        int Li = 0;
-        sscanf(packet, "Li%d", &Li);
-        hfoc.flash_data.limits.max_dq_current = (float)Li / 1000.0f;
-        Debug_SendTextResponse("Set Li to %dmA\n", (int)(hfoc.flash_data.limits.max_dq_current * 1000.0f));
-    }
-    if(packet[0] == 'L' && packet[1] == 'v'){
-        int Lv = 0;
-        sscanf(packet, "Lv%d", &Lv);
-        hfoc.flash_data.limits.max_dq_voltage = (float)Lv / 1000.0f;
-        Debug_SendTextResponse("Set Lv to %dmV\n", (int)(hfoc.flash_data.limits.max_dq_voltage * 1000.0f));
     }
 }
 

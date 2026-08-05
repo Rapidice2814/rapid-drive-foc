@@ -17,30 +17,19 @@ typedef enum {
 struct FLASH_MotorParameters {
     uint8_t direction; // boolean, 0 for normal, 1 for reversed
 
-    uint8_t pole_pairs; // [-], number of pole pairs
-    uint8_t pole_pairs_valid; // boolean
-
-    float phase_resistance; // [ohms]
-    uint8_t phase_resistance_valid; // boolean
-
-    float phase_inductance; // [H]
-    uint8_t phase_inductance_valid; // boolean
-
-    float torque_constant; // [Nm/A]
-    uint8_t torque_constant_valid; // boolean
+    uint8_t pole_pairs; // [-], 0 if unknown
+    float phase_resistance; // [ohms], 0 if unknown
+    float phase_inductance; // [H], 0 if unknown
+    float torque_constant; // [Nm/A], 0 if unknown
 };
 
 struct FLASH_ControllerParameters {
     PIDValuesTypeDef PID_gains_d; // d-axis current PID gains
-    PIDValuesTypeDef PID_gains_q; // q-axis current PID gains
-    uint8_t current_PID_gains_valid; // boolean
-    
+    PIDValuesTypeDef PID_gains_q; // q-axis current PID gains    
 
     uint8_t current_PID_FF_enabled; // boolean
 
-    float current_control_bandwidth; // [rad/s]
-    uint8_t current_control_bandwidth_valid; // boolean
-
+    float current_control_bandwidth; // [rad/s], 0 for unset
 
     PIDValuesTypeDef PID_gains_speed; // speed PID gains
     PIDValuesTypeDef PID_gains_position; // position PID gains
@@ -62,12 +51,15 @@ struct FLASH_EncoderParameters {
 struct FLASH_Limits {
     float vbus_overvoltage_trip_level; // [V]
     float vbus_undervoltage_trip_level; // [V]
-    float max_bus_current; // [A]
+    float ibus_overcurrent_trip_level; // [A]
 
-    float max_voltage; // [V], the maximum voltage that can be applied to the motor. This should be smaller than vbus
+    float motor_temp_trip_level; // [C], max temperature of the motor
+    float mosfet_temp_trip_level; // [C], max temperature of the mosfet
 
-    float max_dq_voltage; // [V], used to limit the output of the PID.
+    float max_dq_voltage; // [V], used to limit the output of the PID. Can be at most Vbus/sqrt(3) to avoid overmodulation.
     float max_dq_current; // [A], used to limit the output of the PID.
+
+    
 };
 
 struct FLASH_DriverParameters {
@@ -87,6 +79,8 @@ typedef struct {
     struct FLASH_ControllerParameters controller; // controller parameters
     struct FLASH_Limits limits; // limits
     struct FLASH_DriverParameters node; // driver parameters
+
+    uint8_t filler[4]; // filler to make the struct size a multiple of 8 bytes. This is used to avoid issues with flash programming, which requires 8-byte alignment.
 
     uint32_t struct_terminator; // Last part of the struct, should be set to FLASH_DATA_STRUCT_TERMINATOR. This is used to detect whether the struct is correctly read from flash.
 } FLASH_DataTypeDef;

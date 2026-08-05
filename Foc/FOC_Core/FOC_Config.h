@@ -32,7 +32,7 @@
 
 /*Temperature*/
 #define MOTOR_MAX_TEMP 60.0f // [Celsius], maximum motor temperature
-#define MOSFET_MAX_TEMP 60.0f // [Celsius], maximum mosfet temperature
+#define MOSFET_MAX_TEMP 80.0f // [Celsius], maximum mosfet temperature
 
 
 /*NTC Parameters*/

@@ -12,51 +12,35 @@
 // The actual data is read and written directly from flash using the FOC_FLASH_ReadData and FOC_FLASH_WriteData functions, so this variable is not used directly in the code.
 __attribute((section(".permanent"))) FLASH_DataTypeDef flash_data_storage; 
 
-static_assert(sizeof(FLASH_DataTypeDef) % 8 == 0, "struct not aligned to 8 bytes");
+static_assert(sizeof(FLASH_DataTypeDef) % 8 == 0, "struct not aligned to 8 bytes"); // Ensure that the struct size is a multiple of 8 bytes, as required by the flash programming algorithm.
 static_assert(sizeof(FLASH_DataTypeDef) <= FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAGES, "struct size exceeds flash storage size");
 
 
 // static const FLASH_DataTypeDef flash_data_default_values = {0};
 static const FLASH_DataTypeDef flash_data_default_values = {
-    .contains_data = 0,
-
     .motor = {
         .torque_constant = MOTOR_TORQUE_CONSTANT,
-        .torque_constant_valid = 1,
         .pole_pairs = MOTOR_POLE_PAIRS,
-        .pole_pairs_valid = 1
     },
     
     .controller = {
-        .PID_gains_speed = {
-            .Kp = 0.1f,
-            .Ki = 10.0f,
-            .Kd = 0.0f
-        },
-        .PID_gains_position = {
-            .Kp = 5.0f,
-            .Ki = 10.0f,
-            .Kd = 0.0f
-        },
         .current_control_bandwidth = 3000.0f,
-        .current_PID_FF_enabled = 0,
     },
 
     .limits = {
         .vbus_overvoltage_trip_level = 27.0f,
         .vbus_undervoltage_trip_level = 20.0f,
-        .max_bus_current = 0.0f,
-        .max_voltage = VOLTAGE_LIMIT,
+        .ibus_overcurrent_trip_level = 0.0f,
+        .mosfet_temp_trip_level = MOSFET_MAX_TEMP,
+        .motor_temp_trip_level = MOTOR_MAX_TEMP,
         .max_dq_voltage = VOLTAGE_LIMIT * M_1_SQRT3F,
-        .max_dq_current = VOLTAGE_LIMIT * M_1_SQRT3F
+        .max_dq_current = MAX_DQ_CURRENT
     },
 
     .node = {
         .node_id = 0, // Set a default node ID to unassigned
         .heartbeat_msg_rate_ms = 100
     },
-    
-    .struct_terminator = 0
 };
 
 

@@ -276,8 +276,7 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
 
                     hfoc->flash_data.motor.phase_resistance = sumR * (2.0f / (3.0f * 3.0f));
                     hfoc->flash_data.motor.phase_inductance = sumL * (2.0f / (3.0f * 3.0f));
-                    hfoc->flash_data.motor.phase_resistance_valid = 1;
-                    hfoc->flash_data.motor.phase_inductance_valid = 1;
+                    
 
                     Debug_SendTextResponse("Motor Identified! Resistance: %dmOhm, Inductance: %duH\n", 
                         (int)(hfoc->flash_data.motor.phase_resistance * 1000), 
@@ -292,8 +291,8 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                     if(attempt > 3){
                         Debug_SendTextResponse("Motor identification failed after 3 attempts\n");
 
-                        hfoc->flash_data.motor.phase_resistance_valid = 0;
-                        hfoc->flash_data.motor.phase_inductance_valid = 0;
+                        hfoc->flash_data.motor.phase_inductance = 0;
+                        hfoc->flash_data.motor.phase_resistance = 0;
 
                         attempt = 0;
                         return FOC_LOOP_ERROR; // error
@@ -306,6 +305,29 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
         default:
             if(HAL_GetTick() >= next_step_time){
                 step = 0;
+                next_step_time = 0;
+                selector = 0;
+
+                for (int i = 0; i < MEASUREMENT_STEPS; i++) {
+                    timeArray[i] = 0.0f;
+                    measuredCurrentArray[i] = 0.0f;
+                    predictedCurrentArray[i] = 0.0f;
+                }
+
+                for (int i = 0; i < 3; i++) {
+                    RArray[i] = 0.0f;
+                    LArray[i] = 0.0f;
+                }
+
+                estimatedR = 0.0f;
+                estimatedL = 0.0f;
+                R = 0.0f;
+                L = 0.0f;
+                error = 0.0f;
+                gradient_R = 0.0f;
+                gradient_L = 0.0f;
+
+                attempt = 0;
                 return FOC_LOOP_COMPLETED; // complete
             }
             break;

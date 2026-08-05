@@ -9,8 +9,8 @@
   * @retval FOC_StatusTypeDef
   */
 FOC_StatusTypeDef FOC_TuneCurrentPID(FOC_HandleTypeDef *hfoc){
-    if(hfoc->flash_data.controller.current_control_bandwidth <= 0.0f || hfoc->flash_data.controller.current_control_bandwidth > 5000) return FOC_ERROR; // check if the bandwidth is in range
-    if(hfoc->flash_data.motor.phase_resistance_valid != 1 || hfoc->flash_data.motor.phase_inductance_valid != 1) return FOC_ERROR; // check if the motor parameters are valid
+    if(hfoc->flash_data.controller.current_control_bandwidth == 0 || hfoc->flash_data.controller.current_control_bandwidth > 5000) return FOC_ERROR; // check if the bandwidth is in range
+    if(hfoc->flash_data.motor.phase_resistance == 0 || hfoc->flash_data.motor.phase_inductance == 0) return FOC_ERROR; // check if the motor parameters are valid
 
     hfoc->flash_data.controller.PID_gains_d.Kp = hfoc->flash_data.motor.phase_inductance * hfoc->flash_data.controller.current_control_bandwidth;
     hfoc->flash_data.controller.PID_gains_q.Kp = hfoc->flash_data.motor.phase_inductance * hfoc->flash_data.controller.current_control_bandwidth;

@@ -42,10 +42,10 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
     // hfoc->dq_voltage.d += FOC_HFI_GetInjectedVoltage();
 
     if(hfoc->flash_data.controller.current_PID_FF_enabled == 1){
-        if(hfoc->flash_data.motor.torque_constant_valid == 1 && 
-            hfoc->flash_data.motor.pole_pairs_valid == 1 && 
-            hfoc->flash_data.motor.phase_inductance_valid == 1 &&
-            hfoc->flash_data.motor.phase_resistance_valid == 1){
+        if(hfoc->flash_data.motor.torque_constant != 0 && 
+            hfoc->flash_data.motor.pole_pairs != 0 && 
+            hfoc->flash_data.motor.phase_inductance != 0 &&
+            hfoc->flash_data.motor.phase_resistance != 0){
 
                 float lambda = (2.0f/3.0f) * hfoc->flash_data.motor.torque_constant / (float)hfoc->flash_data.motor.pole_pairs;
                 hfoc->dq_voltage.d += -hfoc->encoder_speed_electrical * hfoc->flash_data.motor.phase_inductance * hfoc->dq_current.q;
