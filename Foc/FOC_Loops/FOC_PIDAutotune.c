@@ -1,6 +1,6 @@
 #include "FOC_Loops.h"
 #include "FOC_Handle.h"
-#include "FOC_USB.h"
+#include "FOC_USB_Debug.h"
 
 /**
   * @brief Sets the Current controller PI gains based on the motor parameters
@@ -35,8 +35,8 @@ FOC_LoopStatusTypeDef FOC_PIDAutotune(FOC_HandleTypeDef *hfoc){
     switch(step){
         case 0:
             if(HAL_GetTick() >= next_step_time){
-                USB_printf("Starting PID Autotune\n");
-                USB_printf("Current Control Bandwidth: %d rad/s\n", (int)(hfoc->flash_data.controller.current_control_bandwidth));
+                Debug_SendTextResponse("Starting PID Autotune\n");
+                Debug_SendTextResponse("Current Control Bandwidth: %d rad/s\n", (int)(hfoc->flash_data.controller.current_control_bandwidth));
 
                 step++;
                 next_step_time = HAL_GetTick() + 10;
@@ -45,12 +45,12 @@ FOC_LoopStatusTypeDef FOC_PIDAutotune(FOC_HandleTypeDef *hfoc){
         case 1:
             if(HAL_GetTick() >= next_step_time){
                 if(FOC_TuneCurrentPID(hfoc) != FOC_OK){
-                    USB_printf("Error tuning PID gains\n");
+                    Debug_SendTextResponse("Error tuning PID gains\n");
                     return FOC_LOOP_ERROR;
                 } else{
-                    USB_printf("PID gains tuned successfully\n");
-                    USB_printf("Kp_d: %de-3, Ki_d: %d\n", (int)(hfoc->flash_data.controller.PID_gains_d.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_d.Ki));
-                    USB_printf("Kp_q: %de-3, Ki_q: %d\n", (int)(hfoc->flash_data.controller.PID_gains_q.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_q.Ki));
+                    Debug_SendTextResponse("PID gains tuned successfully\n");
+                    Debug_SendTextResponse("Kp_d: %de-3, Ki_d: %d\n", (int)(hfoc->flash_data.controller.PID_gains_d.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_d.Ki));
+                    Debug_SendTextResponse("Kp_q: %de-3, Ki_q: %d\n", (int)(hfoc->flash_data.controller.PID_gains_q.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_q.Ki));
                     return FOC_LOOP_COMPLETED;
                 }
                 step = 0;

@@ -1,6 +1,7 @@
 #include "FOC_States.h"
 #include "FOC_Handle.h"
 #include "FOC_USB.h"
+#include "FOC_USB_Debug.h"
 
 #include "BootupSounds.h"
 #include "BootupLights.h"
@@ -14,9 +15,9 @@ FOC_StateTransitionTypeDef FOC_StateInit_Transition(FOC_HandleTypeDef* hfoc){
 
 void FOC_StateInit(FOC_HandleTypeDef* hfoc){
     if(hfoc->flash_data.contains_data == 1){
-        USB_printf("Flash data loaded!: Offset: %d\n", (int)(hfoc->flash_data.encoder.mechanical_offset * 1000));
+        Debug_SendTextResponse("Flash data loaded!: Offset: %d\n", (int)(hfoc->flash_data.encoder.mechanical_offset * 1000));
     }else{
-        USB_printf("Flash data is missing!\n");
+        Debug_SendTextResponse("Flash data is missing!\n");
     }
     FOC_SetState(hfoc, FOC_STATE_RESET, FOC_STATE_NONE);
 }
@@ -29,7 +30,7 @@ FOC_StateTransitionTypeDef FOC_StateReset_Transition(FOC_HandleTypeDef* hfoc){
 }
 
 void FOC_StateReset(FOC_HandleTypeDef* hfoc){
-    USB_printf("Resetting FOC ...\n");
+    Debug_SendTextResponse("Resetting FOC ...\n");
     
     hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
     hfoc->speed_setpoint = 0.0f;

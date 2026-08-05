@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdarg.h>
 #include <stdio.h>
 
 #include "FOC_USB_Debug.h"
@@ -6,6 +7,7 @@
 #include "FOC_States.h"
 #include "FOC_USB.h"
 #include "Timing.h"
+#include "FOC_Config.h"
 
 uint32_t usb_debug_times[5] = {0};
 
@@ -84,9 +86,6 @@ MSG_ERROR: FOC -> PC
 
 */
 
-#define SOF1 0xAA
-#define SOF2 0x55
-
 typedef enum {
     MSG_GET_VERSION = 0x00, //PC -> FOC
     MSG_VERSION_REPLY = 0x01, //FOC -> PC
@@ -105,6 +104,8 @@ typedef enum {
     MSG_SET_STATE = 0x0E, //PC -> FOC
     MSG_GET_STATE = 0x0F, //PC -> FOC
     MSG_STATE_REPLY = 0x10, //FOC -> PC
+    MSG_TEXT_COMMAND = 0x11, // PC -> FOC
+    MSG_TEXT_REPLY = 0x12, // FOC -> PC
 
     MSG_UNKNOWN_TYPE = 0xFA, //FOC -> PC
     MSG_INVALID_PAYLOAD = 0xFB, //FOC -> PC
@@ -134,15 +135,16 @@ typedef enum {
     X(16, f,    ab_voltage.beta)                \
     X(17, f,    dq_voltage.d)                   \
     X(18, f,    dq_voltage.q)                   \
-    X(19, f,    encoder_angle_mechanical)       \
-    X(20, f,    encoder_speed_mechanical)       \
-    X(21, f,    encoder_angle_electrical)       \
-    X(22, f,    encoder_speed_electrical)       \
-    X(23, f,    dq_current_setpoint.d)          \
-    X(24, f,    dq_current_setpoint.q)          \
-    X(25, f,    angle_setpoint)                 \
-    X(26, f,    speed_setpoint)                 \
-    X(27, u32,  execution_time.loop_max)        \
+    X(19, f,    encoder_angle_mechanical_wrapped) \
+    X(20, f,    encoder_angle_mechanical_unwrapped) \
+    X(21, f,    encoder_speed_mechanical)       \
+    X(22, f,    encoder_angle_electrical)       \
+    X(23, f,    encoder_speed_electrical)       \
+    X(24, f,    dq_current_setpoint.d)          \
+    X(25, f,    dq_current_setpoint.q)          \
+    X(26, f,    angle_setpoint)                 \
+    X(27, f,    speed_setpoint)                 \
+    X(28, u32,  execution_time.loop_max)        \
 
 #define FOC_PID_CONTROLLERS_LIST(X)             \
     X(0, pid_current_d)                         \
@@ -155,10 +157,9 @@ typedef enum {
     X(1, f, dq_current_setpoint.q)             \
     X(2, f, angle_setpoint)                    \
     X(3, f, speed_setpoint)                    \
+    X(4, f, flash_data.limits.max_dq_current)  \
+    X(5, f, flash_data.limits.max_dq_voltage)  \
 
-
-#define MAX_LOGDATA_SAMPLE_COUNT 30
-#define MAX_LOGDATA_SIGNAL_COUNT 8
 
 typedef union{
     float    f;
@@ -178,7 +179,7 @@ typedef struct{
 extern FOC_HandleTypeDef hfoc;
 
 static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t len);
-
+static void Debug_ExecuteTextCommand(const char *packet, uint16_t length);
 
 static Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask);
 static void Debug_StartLogging();
@@ -210,8 +211,8 @@ Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(void){
 
         hlogdata.sample_count = 0;
 
-        hlogdata.txbuf->payload[0] = SOF1;
-        hlogdata.txbuf->payload[1] = SOF2;
+        hlogdata.txbuf->payload[0] = DEBUG_SOF1_BIN;
+        hlogdata.txbuf->payload[1] = DEBUG_SOF2_BIN;
         hlogdata.txbuf->payload[2] = (uint8_t)MSG_LOG_DATA;
 
         write_u32_le(&hlogdata.txbuf->payload[5], hlogdata.timestamp);
@@ -279,6 +280,8 @@ static Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask){
 
 static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t payload_length){
     uint8_t controller_id;
+    uint8_t var_id;
+    uint8_t response_payload[13];
 
     switch ((MsgTypeTypeDef)(msg_type)){
     case MSG_SET_MASK:
@@ -344,10 +347,59 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
                 Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
                 break;
         }
-        uint8_t response_payload[13];
         response_payload[0] = controller_id;
         memcpy(&response_payload[1], &current_gains, sizeof(current_gains));
-        Debug_SendBinaryResponse(MSG_PID_REPLY, response_payload, sizeof(response_payload));
+        Debug_SendBinaryResponse(MSG_PID_REPLY, response_payload, 13);
+        break;
+    case MSG_SET_VAR:
+        if(payload_length != 5){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+
+        var_id = payload[0];
+        TypeConvU_t conv;
+        conv.u32 = read_u32_le(&payload[1]);
+
+        switch (var_id) {
+        #define X(id, typ, field)                                     \
+            case id:                                                  \
+                hfoc.field = conv.typ;                                \
+                break;
+            VAR_ID_LIST(X)
+        #undef X
+            default:
+                Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
+                break;
+        }
+
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+    case MSG_GET_VAR:
+        if(payload_length != 1){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+
+        var_id = payload[0];
+        response_payload[0] = var_id;
+
+        switch (var_id) {
+        #define X(id, typ, field)                                     \
+            case id: {                                                \
+                TypeConvU_t conv;                                     \
+                conv.typ = hfoc.field;                                \
+                write_u32_le(&response_payload[1], conv.u32);         \
+                break;                                                \
+            }
+            VAR_ID_LIST(X)
+        #undef X
+            default:
+                Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
+                break;
+        }
+
+        Debug_SendBinaryResponse(MSG_VAR_REPLY, response_payload, 5);
         break;
     case MSG_FLASH_SAVE:
         //not implemented yet
@@ -360,6 +412,9 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         break;
     case MSG_GET_STATE:
         //not implemented yet
+        break;
+    case MSG_TEXT_COMMAND:
+        Debug_ExecuteTextCommand((const char*)payload, payload_length);
         break;
     default:
         Debug_SendBinaryResponse(MSG_UNKNOWN_TYPE, NULL, 0);
@@ -395,15 +450,15 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
             if(packet[i+1] == 's'){
                 hfoc.flash_data.controller.speed_PID_enabled = 1;
                 hfoc.flash_data.controller.position_PID_enabled = 0;
-                USB_printf("Enabled speed PID, disabled position PID\n");
+                Debug_SendTextResponse("Enabled speed PID, disabled position PID\n");
             } else if(packet[i+1] == 'p'){
                 hfoc.flash_data.controller.position_PID_enabled = 1;
                 hfoc.flash_data.controller.speed_PID_enabled = 0;
-                USB_printf("Enabled position PID, disabled speed PID\n");
+                Debug_SendTextResponse("Enabled position PID, disabled speed PID\n");
             } else if(packet[i+1] == 'o'){
                 hfoc.flash_data.controller.speed_PID_enabled = 0;
                 hfoc.flash_data.controller.position_PID_enabled = 0;
-                USB_printf("Disabled both speed and position PID\n");
+                Debug_SendTextResponse("Disabled both speed and position PID\n");
             }
         }
         if(packet[i] == 'K'){
@@ -425,25 +480,25 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
         int Pd = 0;
         sscanf(packet, "Pd%d", &Pd);
         hfoc.flash_data.controller.PID_gains_d.Kp = (float)Pd / 1000.0f;
-        USB_printf("Set Pd to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_d.Kp * 1000.0f));
+        Debug_SendTextResponse("Set Pd to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_d.Kp * 1000.0f));
     }
     if(packet[0] == 'P' && packet[1] == 'q'){
         int Pq = 0;
         sscanf(packet, "Pq%d", &Pq);
         hfoc.flash_data.controller.PID_gains_q.Kp = (float)Pq / 1000.0f;
-        USB_printf("Set Pq to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_q.Kp * 1000.0f));
+        Debug_SendTextResponse("Set Pq to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_q.Kp * 1000.0f));
     }
     if(packet[0] == 'P' && packet[1] == 's'){
         int Ps = 0;
         sscanf(packet, "Ps%d", &Ps);
         hfoc.flash_data.controller.PID_gains_speed.Kp = (float)Ps / 1000.0f;
-        USB_printf("Set Ps to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_speed.Kp * 1000.0f));
+        Debug_SendTextResponse("Set Ps to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_speed.Kp * 1000.0f));
     }
     if(packet[0] == 'P' && packet[1] == 'p'){
         int Pp = 0;
         sscanf(packet, "Pp%d", &Pp);
         hfoc.flash_data.controller.PID_gains_position.Kp = (float)Pp / 1000.0f;
-        USB_printf("Set Pp to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_position.Kp * 1000.0f));
+        Debug_SendTextResponse("Set Pp to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_position.Kp * 1000.0f));
     }
 
 
@@ -452,64 +507,63 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
         int Id = 0;
         sscanf(packet, "Id%d", &Id);
         hfoc.flash_data.controller.PID_gains_d.Ki = (float)Id / 1000.0f;
-        USB_printf("Set Id to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_d.Ki * 1000.0f));
+        Debug_SendTextResponse("Set Id to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_d.Ki * 1000.0f));
     }
     if(packet[0] == 'I' && packet[1] == 'q'){
         int Iq = 0;
         sscanf(packet, "Iq%d", &Iq);
         hfoc.flash_data.controller.PID_gains_q.Ki = (float)Iq / 1000.0f;
-        USB_printf("Set Iq to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_q.Ki * 1000.0f));
+        Debug_SendTextResponse("Set Iq to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_q.Ki * 1000.0f));
     }
     if(packet[0] == 'I' && packet[1] == 's'){
         int Is = 0;
         sscanf(packet, "Is%d", &Is);
         hfoc.flash_data.controller.PID_gains_speed.Ki = (float)Is / 1000.0f;
-        USB_printf("Set Is to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_speed.Ki * 1000.0f));
+        Debug_SendTextResponse("Set Is to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_speed.Ki * 1000.0f));
     }
     if(packet[0] == 'I' && packet[1] == 'p'){
         int Ip = 0;
         sscanf(packet, "Ip%d", &Ip);
         hfoc.flash_data.controller.PID_gains_position.Ki = (float)Ip / 1000.0f;
-        USB_printf("Set Ip to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_position.Ki * 1000.0f));
+        Debug_SendTextResponse("Set Ip to %dm\n", (int)(hfoc.flash_data.controller.PID_gains_position.Ki * 1000.0f));
     }
 
     if(packet[0] == 'S' && packet[1] == 'q'){
         int Sq = 0;
         sscanf(packet, "Sq%d", &Sq);
         hfoc.dq_current_setpoint.q = (float)Sq / 1000.0f;
-        USB_printf("Set Sq to %dmA\n", (int)(hfoc.dq_current_setpoint.q * 1000.0f));
+        Debug_SendTextResponse("Set Sq to %dmA\n", (int)(hfoc.dq_current_setpoint.q * 1000.0f));
     }
     if(packet[0] == 'S' && packet[1] == 'd'){
         int Sd = 0;
         sscanf(packet, "Sd%d", &Sd);
         hfoc.dq_current_setpoint.d = (float)Sd / 1000.0f;
-        USB_printf("Set Sd to %dmA\n", (int)(hfoc.dq_current_setpoint.d * 1000.0f));
+        Debug_SendTextResponse("Set Sd to %dmA\n", (int)(hfoc.dq_current_setpoint.d * 1000.0f));
     }
     if(packet[0] == 'S' && packet[1] == 's'){
         int Ss = 0;
         sscanf(packet, "Ss%d", &Ss);
         hfoc.speed_setpoint = (float)Ss;
-        USB_printf("Set Ss to %dRad/s\n", (int)hfoc.speed_setpoint);
+        Debug_SendTextResponse("Set Ss to %dRad/s\n", (int)hfoc.speed_setpoint);
     }
     if(packet[0] == 'S' && packet[1] == 'p'){
         int Sp = 0;
         sscanf(packet, "Sp%d", &Sp);
         hfoc.angle_setpoint = (float)Sp / 1000.0f;
-        normalize_angle_pm_pi(&hfoc.angle_setpoint); //normalize the angle to [-pi, pi]
-        USB_printf("Set Sp to %dRad\n", (int)(hfoc.angle_setpoint * 1000.0f));
+        Debug_SendTextResponse("Set Sp to %dRad\n", (int)(hfoc.angle_setpoint * 1000.0f));
     }
 
     if(packet[0] == 'L' && packet[1] == 'i'){
         int Li = 0;
         sscanf(packet, "Li%d", &Li);
         hfoc.flash_data.limits.max_dq_current = (float)Li / 1000.0f;
-        USB_printf("Set Li to %dmA\n", (int)(hfoc.flash_data.limits.max_dq_current * 1000.0f));
+        Debug_SendTextResponse("Set Li to %dmA\n", (int)(hfoc.flash_data.limits.max_dq_current * 1000.0f));
     }
     if(packet[0] == 'L' && packet[1] == 'v'){
         int Lv = 0;
         sscanf(packet, "Lv%d", &Lv);
         hfoc.flash_data.limits.max_dq_voltage = (float)Lv / 1000.0f;
-        USB_printf("Set Lv to %dmV\n", (int)(hfoc.flash_data.limits.max_dq_voltage * 1000.0f));
+        Debug_SendTextResponse("Set Lv to %dmV\n", (int)(hfoc.flash_data.limits.max_dq_voltage * 1000.0f));
     }
 }
 
@@ -521,12 +575,16 @@ static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payloa
     TxUsbBuf_t* txbuf = USB_AllocTxBuffer();
     if(!txbuf) return 0;
 
-    txbuf->payload[0] = SOF1;
-    txbuf->payload[1] = SOF2;
+    txbuf->payload[0] = DEBUG_SOF1_BIN;
+    txbuf->payload[1] = DEBUG_SOF2_BIN;
     txbuf->payload[2] = (uint8_t)msg_type;
     txbuf->payload[3] = (uint8_t)(len & 0xFF);
     txbuf->payload[4] = (uint8_t)((len >> 8) & 0xFF);
-    if(len > sizeof(txbuf->payload) - 5) return 0;
+    if(len > sizeof(txbuf->payload) - 5) {
+        USB_FreeTxBuffer(txbuf);
+        return 0;
+    }
+
     if((len > 0U)){
         memcpy(&txbuf->payload[5], payload, len);
     }
@@ -535,13 +593,47 @@ static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payloa
     return 1;
 }
 
+uint8_t Debug_SendTextResponse(const char* format, ...){
+    va_list args;
+
+    TxUsbBuf_t* txbuf = USB_AllocTxBuffer();
+    if(!txbuf) return 0;
+
+    va_start(args, format);
+    int len = vsnprintf((char*)&txbuf->payload[5], sizeof(txbuf->payload) - 5, format, args);
+    va_end(args);
+
+    if (len < 0) {
+        USB_FreeTxBuffer(txbuf);
+        return 0;
+    }
+
+    if (len >= (int)(sizeof(txbuf->payload) - 5)) {
+        USB_FreeTxBuffer(txbuf);
+        return 0;
+    }
+
+    txbuf->payload[0] = DEBUG_SOF1_BIN;
+    txbuf->payload[1] = DEBUG_SOF2_BIN;
+    txbuf->payload[2] = (uint8_t)MSG_TEXT_REPLY;
+    txbuf->payload[3] = (uint8_t)(len & 0xFF);
+    txbuf->payload[4] = (uint8_t)((len >> 8) & 0xFF);
+
+    if((size_t)len > sizeof(txbuf->payload) - 5) {
+        USB_FreeTxBuffer(txbuf);
+        return 0;
+    }
+
+    txbuf->length = len + 5;
+    USB_PushTxBuffer(txbuf);
+    return 1;
+}
+
 void USB_ProcessReceivedPacket(uint8_t* buf, uint16_t len){
-    if (buf[0] == SOF1 || buf[1] == SOF2){
+    if (buf[0] == DEBUG_SOF1_BIN || buf[1] == DEBUG_SOF2_BIN){
         MsgTypeTypeDef msg_type = (MsgTypeTypeDef)buf[2];
         uint16_t payload_length = (uint16_t)buf[3] | ((uint16_t)buf[4] << 8);
         uint8_t* payload = &buf[5];
         Debug_ExecuteBinaryCommand(msg_type, payload, payload_length);
-    } else {
-        Debug_ExecuteTextCommand((const char*)buf, len);
-    }
+    } 
 }

@@ -1,6 +1,6 @@
 #include "FOC_States.h"
 #include "FOC_Handle.h"
-#include "FOC_USB.h"
+#include "FOC_USB_Debug.h"
 
 
 /* ENUM, transition function, run function */
@@ -81,7 +81,7 @@ FOC_StateTransitionTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDe
     if(transition_result != FOC_STATETRANSITION_OK){
         return transition_result;
     }
-    USB_printf("Transitioning from state %d to state %d\n", hfoc->state, state);
+    Debug_SendTextResponse("Transitioning from state %d to state %d\n", hfoc->state, state);
     
     hfoc->previous_state = hfoc->state;
     hfoc->state = state;

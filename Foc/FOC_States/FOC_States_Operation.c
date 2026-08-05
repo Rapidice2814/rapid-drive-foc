@@ -1,22 +1,22 @@
 #include "FOC_States.h"
 #include "FOC_Handle.h"
 #include "FOC_Loops.h"
-#include "FOC_USB.h"
+#include "FOC_USB_Debug.h"
 #include <math.h>
 
 /* FOC_STATE_RUN */
 
 FOC_StateTransitionTypeDef FOC_StateRun_Transition(FOC_HandleTypeDef* hfoc){
     if(hfoc->adc_calibrated != 1){
-        USB_printf("Cannot enter RUN state because ADC is not calibrated!\n");
+        Debug_SendTextResponse("Cannot enter RUN state because ADC is not calibrated!\n");
         return FOC_STATETRANSITION_DENIED; // can only enter RUN state if ADC is calibrated
     }
     if(hfoc->flash_data.encoder.offset_valid != 1){
-        USB_printf("Cannot enter RUN state because encoder is not aligned!\n");
+        Debug_SendTextResponse("Cannot enter RUN state because encoder is not aligned!\n");
         return FOC_STATETRANSITION_DENIED; // can only enter RUN state if encoder is aligned
     }
     if(hfoc->flash_data.controller.current_PID_gains_valid != 1){
-        USB_printf("Cannot enter RUN state because current PID gains are not valid!\n");
+        Debug_SendTextResponse("Cannot enter RUN state because current PID gains are not valid!\n");
         return FOC_STATETRANSITION_DENIED; // can only enter RUN state if current PID gains are valid
     }
 
@@ -62,11 +62,11 @@ void FOC_StateStop(FOC_HandleTypeDef* hfoc){
 
 FOC_StateTransitionTypeDef FOC_StateIdle_Transition(FOC_HandleTypeDef* hfoc){
     if(hfoc->state != FOC_STATE_STOP){
-        USB_printf("Can only enter IDLE state from STOP state! Current state: %d\n", hfoc->state);
+        Debug_SendTextResponse("Can only enter IDLE state from STOP state! Current state: %d\n", hfoc->state);
         return FOC_STATETRANSITION_DENIED; // can only enter IDLE state from STOP state
     }
     if(fabsf(hfoc->encoder_speed_mechanical) > 0.1f){
-        USB_printf("Cannot enter IDLE state because motor is not stopped! Speed: %dmRad/s\n", (int)(hfoc->encoder_speed_mechanical * 1000.0f));
+        Debug_SendTextResponse("Cannot enter IDLE state because motor is not stopped! Speed: %dmRad/s\n", (int)(hfoc->encoder_speed_mechanical * 1000.0f));
         return FOC_STATETRANSITION_DENIED; // can only enter IDLE state if motor is stopped
     }
 

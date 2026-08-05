@@ -26,6 +26,19 @@ void write_u32_le(uint8_t *dst, uint32_t v){
     dst[3] = (uint8_t)((v >> 24) & 0xFFu);
 }
 
+/**
+ * @brief Reads a 32-bit value in little-endian format from a byte array
+ * @param src The source byte array
+ * @return The 32-bit value
+ */
+uint32_t read_u32_le(const uint8_t *src)
+{
+    return ((uint32_t)src[0]) |
+           ((uint32_t)src[1] << 8) |
+           ((uint32_t)src[2] << 16) |
+           ((uint32_t)src[3] << 24);
+}
+
 /** 
  * @brief Counts the number of set bits in a 32-bit integer
  * @param n The integer to count bits from

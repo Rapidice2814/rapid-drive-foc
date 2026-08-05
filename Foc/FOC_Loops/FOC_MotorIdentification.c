@@ -1,6 +1,6 @@
 #include "FOC_Loops.h"
 #include "FOC_Handle.h"
-#include "FOC_USB.h"
+#include "FOC_USB_Debug.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -101,7 +101,7 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
 
     switch(step){
         case 0:
-            USB_printf("Starting motor identification attempt %d\n", attempt);
+            Debug_SendTextResponse("Starting motor identification attempt %d\n", attempt);
 
             FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
             
@@ -218,13 +218,13 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                             LArray[selector] = estimatedL;
                             // EArray[selector] = error;
 
-                            USB_printf("Motor Identification step: %d, Resistance: %dmOhm, Inductance: %duH, Error: %d\n",
+                            Debug_SendTextResponse("Motor Identification step: %d, Resistance: %dmOhm, Inductance: %duH, Error: %d\n",
                                  selector, (int)(estimatedR * 1000), (int)(estimatedL * 1000000), (int)(error * 1000));
 
                             step += 2; //go to the next step
                             next_step_time = HAL_GetTick() + 10;
                         }else{
-                            // USB_printf("EError: %d\n", (int)(error * 1000));
+                            // Debug_SendTextResponse("EError: %d\n", (int)(error * 1000));
                         }
                         break;
                     default:
@@ -240,7 +240,7 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                     substep++;
                 } else if(substep == MEASUREMENT_STEPS){
                     error = compute_error(predictedCurrentArray, measuredCurrentArray, MEASUREMENT_STEPS);
-                    // USB_printf("Error: %d\n", (int)(error * 1000));
+                    // Debug_SendTextResponse("Error: %d\n", (int)(error * 1000));
                     substep++;
                 } else{
                     substep = 0;
@@ -263,10 +263,10 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
             if(HAL_GetTick() >= next_step_time){
                 float spreadR = percentDifferenceMaxMin(RArray, 3);
                 float spreadL = percentDifferenceMaxMin(LArray, 3);
-                USB_printf("Percent deviation of Resistance: %d%%, Inductance: %d%%\n", (int)(spreadR), (int)(spreadL));
+                Debug_SendTextResponse("Percent deviation of Resistance: %d%%, Inductance: %d%%\n", (int)(spreadR), (int)(spreadL));
 
                 if(spreadR < 30.0f && spreadL < 30.0f){
-                    // USB_printf("Deviation is acceptable\n");
+                    // Debug_SendTextResponse("Deviation is acceptable\n");
                     float sumR = 0.0f;
                     float sumL = 0.0f;
                     for(int i = 0; i < 3; i++){
@@ -279,18 +279,18 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
                     hfoc->flash_data.motor.phase_resistance_valid = 1;
                     hfoc->flash_data.motor.phase_inductance_valid = 1;
 
-                    USB_printf("Motor Identified! Resistance: %dmOhm, Inductance: %duH\n", 
+                    Debug_SendTextResponse("Motor Identified! Resistance: %dmOhm, Inductance: %duH\n", 
                         (int)(hfoc->flash_data.motor.phase_resistance * 1000), 
                         (int)(hfoc->flash_data.motor.phase_inductance * 1000000));
 
                     step++;
                     next_step_time = HAL_GetTick() + 10;
                 } else{
-                    USB_printf("Deviation is too high, retrying...\n");
+                    Debug_SendTextResponse("Deviation is too high, retrying...\n");
                     step = 0;
                     attempt++;
                     if(attempt > 3){
-                        USB_printf("Motor identification failed after 3 attempts\n");
+                        Debug_SendTextResponse("Motor identification failed after 3 attempts\n");
 
                         hfoc->flash_data.motor.phase_resistance_valid = 0;
                         hfoc->flash_data.motor.phase_inductance_valid = 0;

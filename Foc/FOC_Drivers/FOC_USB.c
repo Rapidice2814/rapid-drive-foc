@@ -126,6 +126,15 @@ uint8_t USB_PushTxBuffer(TxUsbBuf_t* buf){
 }
 
 /**
+ * @brief Frees a previously allocated transmit buffer, returning it to the pool of available buffers.
+ * @param buf Pointer to the buffer that was previously allocated and is no longer needed.
+ * @return 1 if the buffer was successfully freed, 0 otherwise.
+ */
+uint8_t USB_FreeTxBuffer(TxUsbBuf_t* buf){
+    return TxQueue_free(buf);
+}
+
+/**
  * @brief Gets a buffer from the USB receive queue.
  * @return A pointer to the allocated buffer, or 0 if no buffer is available.
  */

@@ -216,41 +216,38 @@ FOC_StatusTypeDef FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
 }
 
 /**
-  * @brief Updates the encoder angle
-  * @param Handle to the FOC structure
-  * @retval FOC_StatusTypeDef
-  */
-FOC_StatusTypeDef FOC_UpdateEncoderAngle(FOC_HandleTypeDef *hfoc){
-    hfoc->encoder_angle_mechanical = (((float)(*(hfoc->pencoder_count)) / ENCODER_PULSES_PER_ROTATION) * 2 * M_PIF) - hfoc->flash_data.encoder.mechanical_offset;
-
-    // uint16_t as5047p_angle = 0;
-    // AS5047P_GetAngle(&hfoc->has5047p, &as5047p_angle);
-    // hfoc->encoder_angle_mechanical = (((float)as5047p_angle / 16384.0f) * 2.0f * M_PIF) - hfoc->flash_data.encoder.mechanical_offset;
-
-    normalize_angle_0_2pi(&hfoc->encoder_angle_mechanical);
-    hfoc->encoder_angle_electrical = hfoc->encoder_angle_mechanical * (float)(hfoc->flash_data.motor.pole_pairs);
-    normalize_angle_0_2pi(&hfoc->encoder_angle_electrical);
-
-    return FOC_OK;
-}
-
-/**
-  * @brief Updates the encoder speed
+  * @brief Updates the encoder angle and speed in the FOC structure. This function should be called at a fixed frequency.
   * @param Handle to the FOC structure, delta time, filter alpha
   * @param frequency: frequency at which this function is called, used to calculate the speed from the change in angle. Should be in Hz.
   * @retval FOC_StatusTypeDef
-  * @note Before this function is called, the encoder angle must be updated.
   */
-FOC_StatusTypeDef FOC_UpdateEncoderSpeed(FOC_HandleTypeDef *hfoc, float frequency){
-    float delta_angle = hfoc->encoder_angle_mechanical - hfoc->previous_encoder_angle_mechanical;
-    normalize_angle_pm_pi(&delta_angle);
-    hfoc->encoder_speed_mechanical = hfoc->encoder_speed_mechanical * (1 - SPEED_MEASUREMENT_ALPHA) + SPEED_MEASUREMENT_ALPHA * delta_angle * frequency;
-    hfoc->previous_encoder_angle_mechanical = hfoc->encoder_angle_mechanical;
+FOC_StatusTypeDef FOC_UpdateEncoder(FOC_HandleTypeDef *hfoc, float frequency){
+    float raw_angle_mechanical = (((float)(*(hfoc->pencoder_count)) / ENCODER_PULSES_PER_ROTATION) * 2 * M_PIF) - hfoc->flash_data.encoder.mechanical_offset;
+    normalize_angle_0_2pi(&raw_angle_mechanical);
 
+    hfoc->encoder_angle_mechanical_wrapped = raw_angle_mechanical;
+    float delta = raw_angle_mechanical - hfoc->encoder_angle_mechanical_wrapped_prev;
+    normalize_angle_pm_pi(&delta);
+
+    hfoc->encoder_angle_mechanical_unwrapped += delta;
+    hfoc->encoder_angle_mechanical_wrapped_prev = raw_angle_mechanical;
+
+    // uint16_t as5047p_angle = 0;
+    // AS5047P_GetAngle(&hfoc->has5047p, &as5047p_angle);
+    // hfoc->encoder_angle_mechanical_wrapped = (((float)as5047p_angle / 16384.0f) * 2.0f * M_PIF) - hfoc->flash_data.encoder.mechanical_offset;
+
+    
+    float raw_angle_electrical = hfoc->encoder_angle_mechanical_wrapped * (float)(hfoc->flash_data.motor.pole_pairs);
+    normalize_angle_0_2pi(&raw_angle_electrical);
+
+    hfoc->encoder_angle_electrical = raw_angle_electrical;
+    
+    hfoc->encoder_speed_mechanical = hfoc->encoder_speed_mechanical * (1 - SPEED_MEASUREMENT_ALPHA) + SPEED_MEASUREMENT_ALPHA * delta * frequency;
     hfoc->encoder_speed_electrical = hfoc->encoder_speed_mechanical * (float)(hfoc->flash_data.motor.pole_pairs);
 
     return FOC_OK;
 }
+
 
 
 

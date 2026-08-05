@@ -22,9 +22,9 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
 
 
     if(hfoc->flash_data.controller.anticogging_FF_enabled == 1 && hfoc->flash_data.controller.anticogging_data_valid == 1){ //apply the anticog LUT to the setpoint
-        float encoder_angle_mechanical = hfoc->encoder_angle_mechanical;
-        normalize_angle_0_2pi(&encoder_angle_mechanical);
-        uint16_t anticog_index = (uint16_t)(encoder_angle_mechanical / ANTICOG_ANGLE_STEP); //TODO: put this in a function
+        float encoder_angle_mechanical_wrapped = hfoc->encoder_angle_mechanical_wrapped;
+        normalize_angle_0_2pi(&encoder_angle_mechanical_wrapped);
+        uint16_t anticog_index = (uint16_t)(encoder_angle_mechanical_wrapped / ANTICOG_ANGLE_STEP); //TODO: put this in a function
         uint8_t anticog_dir = (hfoc->encoder_speed_mechanical >= 0) ? 0 : 1;
         setpoint_q += hfoc->flash_data.controller.anticogging_array[anticog_dir][anticog_index];
     }
@@ -68,6 +68,6 @@ void Speed_Loop(FOC_HandleTypeDef *hfoc){
     }
 
     if(hfoc->flash_data.controller.position_PID_enabled == 1){
-        hfoc->dq_current_setpoint.q = PID_Update(&hfoc->pid_position, hfoc->angle_setpoint, hfoc->encoder_angle_mechanical);
+        hfoc->dq_current_setpoint.q = PID_Update(&hfoc->pid_position, hfoc->angle_setpoint, hfoc->encoder_angle_mechanical_unwrapped);
     }
 }

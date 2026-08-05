@@ -1,7 +1,7 @@
 #include "FOC_States.h"
 #include "FOC_Handle.h"
 #include "FOC_Loops.h"
-#include "FOC_USB.h"
+#include "FOC_USB_Debug.h"
 
 
 /*FOC_STATE_CURRENT_SENSOR_CALIBRATION*/
@@ -31,7 +31,7 @@ void FOC_StateIdentify(FOC_HandleTypeDef* hfoc){
         hfoc->flash_data.controller.current_PID_gains_valid = 0;
         FOC_NextState(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
-        USB_printf("Motor identification failed!\n");
+        Debug_SendTextResponse("Motor identification failed!\n");
         FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     } 
 }
@@ -51,7 +51,7 @@ void FOC_StatePIDAutotune(FOC_HandleTypeDef* hfoc){
         hfoc->flash_data.controller.current_PID_FF_enabled = 0;
         FOC_NextState(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
-        USB_printf("PID autotune failed!\n");
+        Debug_SendTextResponse("PID autotune failed!\n");
         FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }
 }
@@ -69,7 +69,7 @@ void FOC_StateAlignment(FOC_HandleTypeDef* hfoc){
         hfoc->flash_data.controller.anticogging_data_valid = 0;
         FOC_NextState(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
-        USB_printf("Alignment failed!\n");
+        Debug_SendTextResponse("Alignment failed!\n");
         FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }
 }
@@ -103,7 +103,7 @@ void FOC_StateAntiCogging(FOC_HandleTypeDef* hfoc){
         hfoc->flash_data.controller.anticogging_data_valid = 1;
         FOC_NextState(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
-        USB_printf("Anti-cogging measurement failed!\n");
+        Debug_SendTextResponse("Anti-cogging measurement failed!\n");
         FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }
 }

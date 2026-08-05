@@ -2,7 +2,7 @@
 
 #include "FOC_Loops.h"
 #include "FOC_Handle.h"
-#include "FOC_USB.h"
+#include "FOC_USB_Debug.h"
 #include "Cordic.h"
 
 #define ALIGNMENT_STEPS 10
@@ -23,7 +23,7 @@ FOC_LoopStatusTypeDef FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
     switch(step){
         case 0:
             if(HAL_GetTick() >= next_step_time){
-                USB_printf("Starting alignment with %dmV\n", (int)(magnitude * 1000));            
+                Debug_SendTextResponse("Starting alignment with %dmV\n", (int)(magnitude * 1000));            
 
                 phase = STARTING_PHASE;
                 step++;
@@ -64,16 +64,16 @@ FOC_LoopStatusTypeDef FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
 
                 if(retval != FOC_OK){
                     FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
-                    USB_printf("Error setting encoder zero\n");
+                    Debug_SendTextResponse("Error setting encoder zero\n");
                     step = 0;
                     return FOC_LOOP_ERROR;
                 }else{
-                    USB_printf("Encoder zero set successfully\n");
-                    USB_printf("Encoder angle mechanical offset: %dmRad\n", (int)(hfoc->flash_data.encoder.mechanical_offset * 1000));
+                    Debug_SendTextResponse("Encoder zero set successfully\n");
+                    Debug_SendTextResponse("Encoder angle mechanical offset: %dmRad\n", (int)(hfoc->flash_data.encoder.mechanical_offset * 1000));
                     step++;
                     next_step_time = HAL_GetTick() + 100; //wait before the next step
                 }
-                // USB_printf("Encoder zero set in %d us\n", (int)execution_time);
+                // Debug_SendTextResponse("Encoder zero set in %d us\n", (int)execution_time);
 
             }
             break;

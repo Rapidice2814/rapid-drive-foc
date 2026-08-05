@@ -1,7 +1,7 @@
 #include "FOC_Loops.h"
 #include "FOC_Handle.h"
 #include "FOC_ADC.h"
-#include "FOC_USB.h"
+#include "FOC_USB_Debug.h"
 
 #define CURRENT_SENSOR_CALIBRATION_STEPS 100
 
@@ -24,7 +24,7 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
     switch(step){
         case 0:
             if(HAL_GetTick() >= next_step_time){
-                USB_printf("Calibrating current sensor\n");
+                Debug_SendTextResponse("Calibrating current sensor\n");
 
                 step++;
                 next_step_time = HAL_GetTick() + 1;
@@ -71,7 +71,7 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
             break;
         case 3:
             if(HAL_GetTick() >= next_step_time){
-                USB_printf("Current sensor calibration complete!\n");
+                Debug_SendTextResponse("Current sensor calibration complete!\n");
                 
                 step++;
                 next_step_time = HAL_GetTick() + 10;

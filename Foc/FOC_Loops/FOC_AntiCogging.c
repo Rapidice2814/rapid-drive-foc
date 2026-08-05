@@ -2,7 +2,7 @@
 
 #include "FOC_Loops.h"
 #include "FOC_Handle.h"
-#include "FOC_USB.h"
+#include "FOC_USB_Debug.h"
 #include "Utils.h"
 #include "FOC_Flash.h"
 #include "FOC_Config.h"
@@ -53,7 +53,7 @@ FOC_LoopStatusTypeDef FOC_AntiCoggingMeasurement(FOC_HandleTypeDef *hfoc){
                     static uint8_t hold_counter = 0;
                     
                     if(substep < NUMBER_OF_ANTICOG_MEASUREMENTS){
-                        float error = hfoc->angle_setpoint - hfoc->encoder_angle_mechanical;
+                        float error = hfoc->angle_setpoint - hfoc->encoder_angle_mechanical_wrapped;
                         normalize_angle_pm_pi(&error);
 
                         if(fabsf(hfoc->encoder_speed_mechanical) < 0.001f && fabsf(error) < 0.005f){
@@ -70,8 +70,8 @@ FOC_LoopStatusTypeDef FOC_AntiCoggingMeasurement(FOC_HandleTypeDef *hfoc){
                                 hfoc->flash_data.controller.anticogging_array[direction][NUMBER_OF_ANTICOG_MEASUREMENTS-substep-1] = current;
                             }
 
-                            USB_printf("Measurement %d: Target:%dmRad, Actual:%dmRad, Current:%dmA, Delta:%d\n", 
-                                substep, (int)(hfoc->angle_setpoint * 1000), (int)(hfoc->encoder_angle_mechanical * 1000), 
+                            Debug_SendTextResponse("Measurement %d: Target:%dmRad, Actual:%dmRad, Current:%dmA, Delta:%d\n", 
+                                substep, (int)(hfoc->angle_setpoint * 1000), (int)(hfoc->encoder_angle_mechanical_wrapped * 1000), 
                                 (int)(current * 1000), (int)((error) * 1000));
                             substep++;
 
@@ -97,20 +97,20 @@ FOC_LoopStatusTypeDef FOC_AntiCoggingMeasurement(FOC_HandleTypeDef *hfoc){
                     static uint8_t dir = 0;
 
                     if(substep == 0){
-                        USB_printf("Current measurements for direction %d:\n", dir);
+                        Debug_SendTextResponse("Current measurements for direction %d:\n", dir);
                         substep++;
                         next_step_time = HAL_GetTick() + 10;
                     }else if(substep <= NUMBER_OF_ANTICOG_MEASUREMENTS){
-                        USB_printf("%d,", (int)(hfoc->flash_data.controller.anticogging_array[dir][substep-1] * 1000));
+                        Debug_SendTextResponse("%d,", (int)(hfoc->flash_data.controller.anticogging_array[dir][substep-1] * 1000));
                         substep++;
                         next_step_time = HAL_GetTick() + 2;
                     }else{
-                        USB_printf("\n");
+                        Debug_SendTextResponse("\n");
                         substep = 0;
                         if(dir == 0){
                             dir = 1;
                         }else{
-                            USB_printf("Measurement completed in %ds\n", (int)(HAL_GetTick() - start_time)/1000);
+                            Debug_SendTextResponse("Measurement completed in %ds\n", (int)(HAL_GetTick() - start_time)/1000);
                             dir = 0;
                             step++;
                             next_step_time = HAL_GetTick() + 1000;

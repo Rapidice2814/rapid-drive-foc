@@ -115,7 +115,7 @@ void FOC_Setup(){
     PID_Init(&hfoc.pid_current_q, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, &hfoc.flash_data.limits.max_dq_voltage, &hfoc.flash_data.controller.PID_gains_q, 0);
 
     PID_Init(&hfoc.pid_speed, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_speed, 0);
-    PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_position, 1);
+    PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_position, 0);
 
 
     /* USB Debug */
@@ -135,7 +135,7 @@ void FOC_Setup(){
     FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
     DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
 
-    USB_printf("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
+    Debug_SendTextResponse("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
 
 }
 
@@ -155,8 +155,7 @@ void FOC_Loop(){
         float ibus = CalculateBusCurrent(hfoc.adc_values.phase_current, hfoc.phase_voltage, hfoc.adc_values.vbus);
         hfoc.ibus = 0.99f * hfoc.ibus + 0.01f * ibus;
 
-        FOC_UpdateEncoderAngle(&hfoc);
-        FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY);
+        FOC_UpdateEncoder(&hfoc, CURRENT_LOOP_FREQUENCY);
 
         FOC_CheckErrors(&hfoc);
         
@@ -181,7 +180,7 @@ void FOC_Loop(){
     if(hfoc.execution_time.loop_max > 1200){ //max 125us for 8kHz loop
         HAL_GPIO_WritePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin, GPIO_PIN_SET);
         hfoc.execution_time.usb_debug_max = 0;
-        USB_printf("Execution Limit Exceeded: %dus\n", (int)hfoc.execution_time.loop_max);
+        Debug_SendTextResponse("Execution Limit Exceeded: %dus\n", (int)hfoc.execution_time.loop_max);
     } else {
         HAL_GPIO_WritePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin, GPIO_PIN_RESET);
     }

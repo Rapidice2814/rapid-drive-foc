@@ -3,6 +3,16 @@
 
 #include "main.h"
 
+/* Debugging */
+#define DEBUG_SOF1_BIN 0xAA
+#define DEBUG_SOF2_BIN 0x55
+
+#define MAX_LOGDATA_SAMPLE_COUNT 30
+#define MAX_LOGDATA_SIGNAL_COUNT 8
+
+#define DEBUG_SOF1_TEXT 0x3C //ASCII '<'
+#define DEBUG_SOF2_TEXT 0x3E //ASCII '>'
+
 
 /*Anticogging*/
 #define NUMBER_OF_ANTICOG_MEASUREMENTS 1000 //The amount of steps in the full rotation
