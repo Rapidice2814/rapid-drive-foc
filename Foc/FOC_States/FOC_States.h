@@ -8,26 +8,55 @@ typedef enum {
     FOC_STATETRANSITION_ERROR
 } FOC_StateTransitionTypeDef;
 
-typedef enum {
+/**
+ * @param state_enum: The enumerated value representing the state.
+ * @param transition_fn: The function that is executed when the state is entered.
+ * @param loop_fn: The function that is called repeatedly while the system is in this state
+ */
+#define FOC_STATE_TABLE(X) \
+    X(FOC_STATE_INIT,                       FOC_StateInit_Transition,                       FOC_StateInit) \
+    X(FOC_STATE_RESET,                      FOC_StateReset_Transition,                      FOC_StateReset) \
+    X(FOC_STATE_BOOTUP_SOUND,               FOC_StateBootupSound_Transition,                FOC_StateBootupSound) \
+    X(FOC_STATE_CURRENT_SENSOR_CALIBRATION, FOC_StateCurrentSensorCalibration_Transition,   FOC_StateCurrentSensorCalibration) \
+    X(FOC_STATE_IDENTIFY,                   FOC_StateIdentify_Transition,                   FOC_StateIdentify) \
+    X(FOC_STATE_ANTICOGGING,                FOC_StateAntiCogging_Transition,                FOC_StateAntiCogging) \
+    X(FOC_STATE_CHECKLIST,                  FOC_StateTransition_AlwaysOk,                   FOC_StateChecklist) \
+    X(FOC_STATE_PID_AUTOTUNE,               FOC_StatePIDAutotune_Transition,                FOC_StatePIDAutotune) \
+    X(FOC_STATE_ERROR,                      FOC_StateError_Transition,                      FOC_StateError) \
+    X(FOC_STATE_ALIGNMENT,                  FOC_StateAlignment_Transition,                  FOC_StateAlignment) \
+    X(FOC_STATE_ALIGNMENT_TEST,             FOC_StateAlignmentTest_Transition,              FOC_StateAlignmentTest) \
+    X(FOC_STATE_RUN,                        FOC_StateRun_Transition,                        FOC_StateRun) \
+    X(FOC_STATE_STOP,                       FOC_StateStop_Transition,                       FOC_StateStop) \
+    X(FOC_STATE_IDLE,                       FOC_StateIdle_Transition,                       FOC_StateIdle) \
+    X(FOC_STATE_FLASH_SAVE,                 FOC_StateFlashSave_Transition,                  FOC_StateFlashSave) \
+    X(FOC_STATE_FLASH_LOAD,                 FOC_StateFlashLoad_Transition,                  FOC_StateFlashLoad) \
+    X(FOC_STATE_OPENLOOP,                   FOC_StateOpenLoop_Transition,                   FOC_StateOpenLoop)
+
+typedef enum
+{
     FOC_STATE_NONE = 0,
-    FOC_STATE_INIT,
-    FOC_STATE_RESET,
-    FOC_STATE_BOOTUP_SOUND,
-    FOC_STATE_CURRENT_SENSOR_CALIBRATION,
-    FOC_STATE_IDENTIFY,
-    FOC_STATE_ANTICOGGING,
-    FOC_STATE_CHECKLIST,
-    FOC_STATE_PID_AUTOTUNE,
-    FOC_STATE_ERROR,
-    FOC_STATE_ALIGNMENT,
-    FOC_STATE_ALIGNMENT_TEST,
-    FOC_STATE_RUN,
-    FOC_STATE_STOP,
-    FOC_STATE_IDLE,
-    FOC_STATE_FLASH_SAVE,
-    FOC_STATE_FLASH_LOAD,
-    FOC_STATE_OPENLOOP
+
+#define FOC_STATE_ENUM(state, transition_function, run_function) \
+    state,
+
+    FOC_STATE_TABLE(FOC_STATE_ENUM)
+
+#undef FOC_STATE_ENUM
+
+    FOC_STATE_COUNT
 } FOC_StateTypeDef;
+
+static const char *const FOC_StateNames[FOC_STATE_COUNT] =
+{
+    [FOC_STATE_NONE] = "FOC_STATE_NONE",
+
+#define FOC_STATE_NAME(state, transition_function, run_function) \
+    [state] = #state,
+
+    FOC_STATE_TABLE(FOC_STATE_NAME)
+
+#undef FOC_STATE_NAME
+};
 
 typedef struct FOC_Handle FOC_HandleTypeDef;
 

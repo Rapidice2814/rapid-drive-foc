@@ -8,16 +8,16 @@
 #include "usbd_cdc_if.h"
 
 
-#define RX_QUEUE_SIZE 4
-#define TX_QUEUE_SIZE 4
+#define RX_QUEUE_SIZE 8
+#define TX_QUEUE_SIZE 8
 
 DECLARE_POOL(RxUsbBuf_t, RxQueue, RX_QUEUE_SIZE)
 DECLARE_POOL(TxUsbBuf_t, TxQueue, TX_QUEUE_SIZE)
 
 typedef struct{
     volatile uint8_t tx_busy_flag;
-    uint32_t tx_missed_packets;
-    uint32_t rx_missed_packets;
+    uint32_t tx_no_buffers; // Number of times a transmit buffer could not be allocated due to the pool being full
+    uint32_t rx_no_buffers; // Number of times a receive buffer could not be allocated due to the pool being full
     TxUsbBuf_t *tx_buffer;
 } DebugUSBHandleTypeDef;
 
@@ -101,10 +101,7 @@ void USB_ReceiveCallback(uint8_t* buf, uint32_t* len){
     memcpy(rxmsg->payload, buf, *len);
     rxmsg->length = (uint16_t)*len;
 
-    uint8_t ret = RxQueue_push(rxmsg);
-    if(!ret){
-        hdebugusb.rx_missed_packets++;
-    }
+    RxQueue_push(rxmsg);
 }
 
 
@@ -113,7 +110,9 @@ void USB_ReceiveCallback(uint8_t* buf, uint32_t* len){
  * @return A pointer to the reserved buffer, or 0 if no buffer is available.
  */
 TxUsbBuf_t* USB_AllocTxBuffer(){
-    return TxQueue_alloc();
+    TxUsbBuf_t* buf = TxQueue_alloc();
+    if(!buf) hdebugusb.tx_no_buffers++;
+    return buf;
 }
 
 /**
@@ -139,7 +138,9 @@ uint8_t USB_FreeTxBuffer(TxUsbBuf_t* buf){
  * @return A pointer to the allocated buffer, or 0 if no buffer is available.
  */
 RxUsbBuf_t* USB_AllocRxBuffer(){
-    return RxQueue_alloc();
+    RxUsbBuf_t* buf = RxQueue_alloc();
+    if(!buf) hdebugusb.rx_no_buffers++;
+    return buf;
 }
 
 /**
@@ -161,6 +162,8 @@ uint8_t USB_PushRxBuffer(RxUsbBuf_t* buf){
  */
 uint8_t USB_printf(const char* format, ...){
     TxUsbBuf_t* msg = TxQueue_alloc();
+    if(!msg) return 0;
+
     va_list args;
     int n;
 
@@ -179,8 +182,5 @@ uint8_t USB_printf(const char* format, ...){
 
     msg->length = (uint16_t)n;
     uint8_t ret = TxQueue_push(msg);
-    if(!ret){
-        hdebugusb.tx_missed_packets++;
-    }
     return ret;
 }

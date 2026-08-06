@@ -180,7 +180,7 @@ void FOC_Loop(){
     if(hfoc.execution_time.loop_max > 1200){ //max 125us for 8kHz loop
         HAL_GPIO_WritePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin, GPIO_PIN_SET);
         hfoc.execution_time.usb_debug_max = 0;
-        Debug_SendTextResponse("Execution Limit Exceeded: %dus\n", (int)hfoc.execution_time.loop_max);
+        Debug_SendTextResponse("Execution Limit Exceeded: %dus\n! Max: 1200us", (int)hfoc.execution_time.loop_max);
     } else {
         HAL_GPIO_WritePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin, GPIO_PIN_RESET);
     }

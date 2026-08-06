@@ -63,13 +63,13 @@ MSG_FLASH_LOAD: PC -> FOC
     Instructs the FOC firmware to load the configuration from flash memory.
     Can only be executed, when FOC is in IDLE mode.
 MSG_SET_STATE: PC -> FOC
-    Payload: Desired State (4 byte)
+    Payload: Desired State (1 byte)
     Sets the desired state of the FOC driver (e.g., RUN, OPENLOOP, FLASH_SAVE).
 MSG_GET_STATE: PC -> FOC
     Payload: None
     Requests the current state of the FOC driver.
 MSG_STATE_REPLY: FOC -> PC
-    Payload: Current State (4 byte)
+    Payload: Current State (1 byte)
     Reply to a MSG_GET_STATE request, containing the current state of the FOC driver.
 MSG_UNKNOWN_TYPE: FOC -> PC
     Payload: None
@@ -418,10 +418,22 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         //not implemented yet
         break;
     case MSG_SET_STATE:
-        //not implemented yet
+        if(payload_length != 1){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+
+        FOC_SetState(&hfoc, (FOC_StateTypeDef)payload[0], FOC_STATE_NONE);
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
     case MSG_GET_STATE:
-        //not implemented yet
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+
+        // response_payload[0] = (uint8_t)FOC_GetState(&hfoc);
+        Debug_SendBinaryResponse(MSG_STATE_REPLY, response_payload, 1);
         break;
     case MSG_TEXT_COMMAND:
         Debug_ExecuteTextCommand((const char*)payload, payload_length);
@@ -626,6 +638,7 @@ uint8_t Debug_SendTextResponse(const char* format, ...){
 }
 
 void USB_ProcessReceivedPacket(uint8_t* buf, uint16_t len){
+    UNUSED(len);
     if (buf[0] == DEBUG_SOF1_BIN || buf[1] == DEBUG_SOF2_BIN){
         MsgTypeTypeDef msg_type = (MsgTypeTypeDef)buf[2];
         uint16_t payload_length = (uint16_t)buf[3] | ((uint16_t)buf[4] << 8);

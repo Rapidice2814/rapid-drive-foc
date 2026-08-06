@@ -22,6 +22,10 @@ void FOC_StateCurrentSensorCalibration(FOC_HandleTypeDef* hfoc){
 
 FOC_StateTransitionTypeDef FOC_StateIdentify_Transition(FOC_HandleTypeDef* hfoc){
     UNUSED(hfoc);
+
+    WS2812b_SetAllColor(20, 15, 0);
+    WS2812b_Send();
+
     return FOC_STATETRANSITION_OK;
 }
 
@@ -58,6 +62,10 @@ void FOC_StatePIDAutotune(FOC_HandleTypeDef* hfoc){
 
 FOC_StateTransitionTypeDef FOC_StateAlignment_Transition(FOC_HandleTypeDef* hfoc){
     UNUSED(hfoc);
+
+    WS2812b_SetAllColor(20, 15, 0);
+    WS2812b_Send();
+
     return FOC_STATETRANSITION_OK;
 }
 
@@ -76,6 +84,10 @@ void FOC_StateAlignment(FOC_HandleTypeDef* hfoc){
 
 FOC_StateTransitionTypeDef FOC_StateAlignmentTest_Transition(FOC_HandleTypeDef* hfoc){
     UNUSED(hfoc);
+
+    WS2812b_SetAllColor(20, 15, 0);
+    WS2812b_Send();
+    
     return FOC_STATETRANSITION_OK;
 }
 
@@ -92,6 +104,10 @@ void FOC_StateAlignmentTest(FOC_HandleTypeDef* hfoc){
 
 FOC_StateTransitionTypeDef FOC_StateAntiCogging_Transition(FOC_HandleTypeDef* hfoc){
     UNUSED(hfoc);
+
+    WS2812b_SetAllColor(20, 15, 0);
+    WS2812b_Send();
+
     return FOC_STATETRANSITION_OK;
 }
 

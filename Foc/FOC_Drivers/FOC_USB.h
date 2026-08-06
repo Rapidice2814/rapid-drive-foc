@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define RX_USB_BUF_SIZE 64
+#define RX_USB_BUF_SIZE 128
 #define TX_USB_BUF_SIZE 1024
 
 typedef struct{

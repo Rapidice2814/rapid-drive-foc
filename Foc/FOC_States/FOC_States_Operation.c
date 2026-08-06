@@ -2,6 +2,7 @@
 #include "FOC_Handle.h"
 #include "FOC_Loops.h"
 #include "FOC_USB_Debug.h"
+#include "WS2812b_Driver.h"
 #include <math.h>
 
 /* FOC_STATE_RUN */
@@ -31,6 +32,9 @@ FOC_StateTransitionTypeDef FOC_StateRun_Transition(FOC_HandleTypeDef* hfoc){
     FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
     DRV8323_ExitHighImpedance(&hfoc->hdrv8323);
 
+    WS2812b_SetAllColor(0, 25, 0);
+    WS2812b_Send();
+
     return FOC_STATETRANSITION_OK;
 }
 
@@ -48,6 +52,10 @@ void FOC_StateRun(FOC_HandleTypeDef* hfoc){
 
 FOC_StateTransitionTypeDef FOC_StateStop_Transition(FOC_HandleTypeDef* hfoc){
     hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
+
+    WS2812b_SetAllColor(20, 15, 0);
+    WS2812b_Send();
+
     return FOC_STATETRANSITION_OK;
 }
 
@@ -81,6 +89,9 @@ FOC_StateTransitionTypeDef FOC_StateIdle_Transition(FOC_HandleTypeDef* hfoc){
     FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
     DRV8323_SetHighImpedance(&hfoc->hdrv8323);
 
+    WS2812b_SetAllColor(0, 15, 25);
+    WS2812b_Send();
+
     return FOC_STATETRANSITION_OK;
 }
 
@@ -92,6 +103,10 @@ void FOC_StateIdle(FOC_HandleTypeDef* hfoc){
 
 FOC_StateTransitionTypeDef FOC_StateOpenLoop_Transition(FOC_HandleTypeDef* hfoc){
     UNUSED(hfoc);
+
+    WS2812b_SetAllColor(15, 0, 25);
+    WS2812b_Send();
+
     return FOC_STATETRANSITION_OK;
 }
 
