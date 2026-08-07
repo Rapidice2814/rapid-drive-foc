@@ -13,6 +13,7 @@
 #include "FOC_Diagnostics.h"
 #include "FOC_USB.h"
 #include "Cordic.h"
+#include "Bootloader.h"
 
 extern FDCAN_HandleTypeDef hfdcan1;
 
@@ -47,6 +48,7 @@ volatile uint8_t debug_loop_flag = 0;
 
 
 void FOC_Setup(){
+
     FOC_Init(&hfoc); 
     // HAL_GetUIDw0();
     // HAL_GetUIDw1();
@@ -136,6 +138,7 @@ void FOC_Setup(){
     DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
 
     Debug_SendTextResponse("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
+    HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, GPIO_PIN_SET);
 
 }
 

@@ -2,9 +2,32 @@
 #include "FOC_Handle.h"
 #include "FOC_USB.h"
 #include "FOC_USB_Debug.h"
+#include "Bootloader.h"
 
 #include "BootupSounds.h"
 #include "BootupLights.h"
+
+/* FOC_STATE_BOOTLOADER */
+
+FOC_StateTransitionTypeDef FOC_StateBootloader_Transition(FOC_HandleTypeDef* hfoc){
+    if(hfoc->state != FOC_STATE_IDLE){
+        Debug_SendTextResponse("Can only enter FOC_STATE_BOOTLOADER from FOC_STATE_IDLE! Current state: %d\n", FOC_StateToString(hfoc->state));
+        return FOC_STATETRANSITION_DENIED;
+    }
+
+    WS2812b_SetAllColor(0, 0, 25);
+    WS2812b_Send();
+
+    return FOC_STATETRANSITION_OK;
+}
+
+void FOC_StateBootloader(FOC_HandleTypeDef* hfoc){
+    UNUSED(hfoc);
+    HAL_Delay(100);
+    JumpToBootloader(); 
+    
+    while(1); // MCU will reset and jump to the bootloader, so no need to set next state
+}
 
 /* FOC_STATE_INIT */
 

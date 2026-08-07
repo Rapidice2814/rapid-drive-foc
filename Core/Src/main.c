@@ -1031,7 +1031,7 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
-    HAL_GPIO_TogglePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin);
+    HAL_GPIO_TogglePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin);
     for (volatile uint32_t i = 0; i < 1000000; i++);
   }
   /* USER CODE END Error_Handler_Debug */

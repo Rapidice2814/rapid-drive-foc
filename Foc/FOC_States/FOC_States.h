@@ -30,6 +30,7 @@ typedef enum {
     X(FOC_STATE_IDLE,                       FOC_StateIdle_Transition,                       FOC_StateIdle) \
     X(FOC_STATE_FLASH_SAVE,                 FOC_StateFlashSave_Transition,                  FOC_StateFlashSave) \
     X(FOC_STATE_FLASH_LOAD,                 FOC_StateFlashLoad_Transition,                  FOC_StateFlashLoad) \
+    X(FOC_STATE_BOOTLOADER,                 FOC_StateBootloader_Transition,                 FOC_StateBootloader) \
     X(FOC_STATE_OPENLOOP,                   FOC_StateOpenLoop_Transition,                   FOC_StateOpenLoop)
 
 typedef enum
@@ -67,6 +68,8 @@ void FOC_StateLoop(FOC_HandleTypeDef *hfoc);
 
 
 /* Startup States */
+FOC_StateTransitionTypeDef FOC_StateBootloader_Transition(FOC_HandleTypeDef* hfoc);
+void FOC_StateBootloader(FOC_HandleTypeDef* hfoc);
 FOC_StateTransitionTypeDef FOC_StateInit_Transition(FOC_HandleTypeDef* hfoc);
 void FOC_StateInit(FOC_HandleTypeDef* hfoc);
 FOC_StateTransitionTypeDef FOC_StateReset_Transition(FOC_HandleTypeDef* hfoc);

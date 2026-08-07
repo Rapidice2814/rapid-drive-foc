@@ -59,6 +59,10 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
         return FLASH_OK;
     }
 
+    if(READ_BIT(FLASH->SR, FLASH_SR_BSY) !=0U){ // Wait for any ongoing flash operation to complete
+        return FLASH_ERROR;
+    } 
+
     __disable_irq();
     HAL_FLASH_Unlock();
 
@@ -144,3 +148,69 @@ FLASH_StatusTypeDef FOC_FLASH_SetDefault(FLASH_DataTypeDef *pdata){
     return FLASH_OK;
 
 }
+
+
+/**
+ * @brief  Sets the option bytes to default values. This only needs to be run once for every new device.
+ * @retval FLASH_StatusTypeDef: Status of the operation. Returns FLASH_OK if successful and FLASH_ERROR if there was an error.
+ * @note Explained in RM0440, section 3.4.2 "Option bytes programming sequence".
+ */
+FLASH_StatusTypeDef FOC_FLASH_SetSystemMemoryBoot(void)
+{
+    FLASH_OBProgramInitTypeDef ob = {0};
+
+    const uint32_t boot_mask = FLASH_OPTR_nBOOT0_Msk   | FLASH_OPTR_nBOOT1_Msk   | FLASH_OPTR_nSWBOOT0_Msk;
+
+    /*
+     * nBOOT0   = 0
+     * nBOOT1   = 1
+     * nSWBOOT0 = 0
+     */
+    const uint32_t desired_boot_config = FLASH_OPTR_nBOOT1_Msk;
+
+    HAL_FLASHEx_OBGetConfig(&ob);
+
+    if ((ob.USERConfig & boot_mask) == desired_boot_config) { // Check if the current boot configuration is already set to the desired configuration
+        return FLASH_OK;
+    }
+
+    if (READ_BIT(FLASH->SR, FLASH_SR_BSY) != 0U) {
+        return FLASH_ERROR;
+    }
+
+    if (HAL_FLASH_Unlock() != HAL_OK) {
+        return FLASH_ERROR;
+    }
+
+    if (HAL_FLASH_OB_Unlock() != HAL_OK) {
+        HAL_FLASH_Lock();
+        return FLASH_ERROR;
+    }
+
+    ob.OptionType = OPTIONBYTE_USER;
+    ob.USERType   = OB_USER_nBOOT0 |
+                    OB_USER_nBOOT1 |
+                    OB_USER_nSWBOOT0;
+
+    ob.USERConfig &= ~boot_mask;
+    ob.USERConfig |= desired_boot_config;
+
+    if (HAL_FLASHEx_OBProgram(&ob) != HAL_OK) {
+        HAL_FLASH_OB_Lock();
+        HAL_FLASH_Lock();
+        return FLASH_ERROR;
+    }
+
+    if (HAL_FLASH_OB_Launch() != HAL_OK) {
+        HAL_FLASH_OB_Lock();
+        HAL_FLASH_Lock();
+        return FLASH_ERROR;
+    }
+
+    //Usually unreachable because HAL_FLASH_OB_Launch() resets the MCU.
+    HAL_FLASH_OB_Lock();
+    HAL_FLASH_Lock();
+
+    return FLASH_OK;
+}
+

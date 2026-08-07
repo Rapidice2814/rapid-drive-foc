@@ -445,7 +445,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 }
 
 static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
-    for(int i = 0; i < length; i++){
+    for(int i = 0; i < 1; i++){
         if(packet[i] == 'D'){
             if(packet[i+1] == 'a'){
                 hfoc.flash_data.controller.anticogging_FF_enabled = !hfoc.flash_data.controller.anticogging_FF_enabled;
@@ -467,6 +467,9 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
         }
         if(packet[i] == 'F'){
             FOC_SetState(&hfoc, FOC_STATE_FLASH_SAVE, FOC_STATE_RUN);
+        }
+        if(packet[i] == 'B'){
+            FOC_SetState(&hfoc, FOC_STATE_BOOTLOADER, FOC_STATE_NONE);
         }
         if(packet[i] == 'M'){
             if(packet[i+1] == 's'){
@@ -644,5 +647,7 @@ void USB_ProcessReceivedPacket(uint8_t* buf, uint16_t len){
         uint16_t payload_length = (uint16_t)buf[3] | ((uint16_t)buf[4] << 8);
         uint8_t* payload = &buf[5];
         Debug_ExecuteBinaryCommand(msg_type, payload, payload_length);
-    } 
+    } else {
+        Debug_ExecuteTextCommand((const char*)buf, len);
+    }
 }

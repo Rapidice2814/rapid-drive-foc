@@ -2,6 +2,7 @@
 #include "FOC_Handle.h"
 #include "FOC_Loops.h"
 #include "FOC_USB_Debug.h"
+#include "WS2812b_Driver.h"
 
 
 /*FOC_STATE_CURRENT_SENSOR_CALIBRATION*/
