@@ -7,8 +7,7 @@ static inline FOC_StateTransitionTypeDef FOC_StateTransition_AlwaysOk(FOC_Handle
     return FOC_STATETRANSITION_OK;
 }
 
-const char *FOC_StateToString(FOC_StateTypeDef state)
-{
+const char *FOC_StateToString(FOC_StateTypeDef state){
     if ((unsigned)state < FOC_STATE_COUNT &&
         FOC_StateNames[state] != NULL)
     {

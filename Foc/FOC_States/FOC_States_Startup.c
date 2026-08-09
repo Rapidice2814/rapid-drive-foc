@@ -11,7 +11,7 @@
 
 FOC_StateTransitionTypeDef FOC_StateBootloader_Transition(FOC_HandleTypeDef* hfoc){
     if(hfoc->state != FOC_STATE_IDLE){
-        Debug_SendTextResponse("Can only enter FOC_STATE_BOOTLOADER from FOC_STATE_IDLE! Current state: %d\n", FOC_StateToString(hfoc->state));
+        Debug_SendTextResponse("Can only enter FOC_STATE_BOOTLOADER from FOC_STATE_IDLE! Current state: %s\n", FOC_StateToString(hfoc->state));
         return FOC_STATETRANSITION_DENIED;
     }
 

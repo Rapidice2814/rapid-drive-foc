@@ -61,6 +61,9 @@ static const char *const FOC_StateNames[FOC_STATE_COUNT] =
 
 typedef struct FOC_Handle FOC_HandleTypeDef;
 
+/* State String Conversion */
+const char *FOC_StateToString(FOC_StateTypeDef state);
+
 /* State Functions */
 FOC_StateTransitionTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDef state, FOC_StateTypeDef next_state);
 void FOC_NextState(FOC_HandleTypeDef *hfoc);

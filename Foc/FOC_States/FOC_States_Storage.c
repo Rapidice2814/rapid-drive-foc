@@ -7,7 +7,7 @@
 
 FOC_StateTransitionTypeDef FOC_StateFlashSave_Transition(FOC_HandleTypeDef* hfoc){
     if(hfoc->state != FOC_STATE_IDLE){
-        Debug_SendTextResponse("Can only enter FOC_STATE_FLASH_SAVE from FOC_STATE_IDLE! Current state: %d\n", FOC_StateToString(hfoc->state));
+        Debug_SendTextResponse("Can only enter FOC_STATE_FLASH_SAVE from FOC_STATE_IDLE! Current state: %s\n", FOC_StateToString(hfoc->state));
         return FOC_STATETRANSITION_DENIED; // can only save flash from IDLE state
     }
     return FOC_STATETRANSITION_OK;
@@ -26,7 +26,7 @@ void FOC_StateFlashSave(FOC_HandleTypeDef* hfoc){
 
 FOC_StateTransitionTypeDef FOC_StateFlashLoad_Transition(FOC_HandleTypeDef* hfoc){
     if(hfoc->state != FOC_STATE_IDLE){
-        Debug_SendTextResponse("Can only enter FOC_STATE_FLASH_LOAD from FOC_STATE_IDLE! Current state: %d\n", FOC_StateToString(hfoc->state));
+        Debug_SendTextResponse("Can only enter FOC_STATE_FLASH_LOAD from FOC_STATE_IDLE! Current state: %s\n", FOC_StateToString(hfoc->state));
         return FOC_STATETRANSITION_DENIED; // can only load flash from IDLE state
     }
     return FOC_STATETRANSITION_OK;
