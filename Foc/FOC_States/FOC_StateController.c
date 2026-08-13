@@ -17,6 +17,10 @@ const char *FOC_StateToString(FOC_StateTypeDef state){
     return "FOC_STATE_UNKNOWN";
 }
 
+FOC_StateTransitionTypeDef FOC_StateChecklist_Transition(FOC_HandleTypeDef* hfoc){
+    UNUSED(hfoc);
+    return FOC_STATETRANSITION_OK;
+}
 
 static void FOC_StateChecklist(FOC_HandleTypeDef* hfoc){
     static uint8_t checklist_step = 0;

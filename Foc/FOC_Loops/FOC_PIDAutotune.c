@@ -46,14 +46,15 @@ FOC_LoopStatusTypeDef FOC_PIDAutotune(FOC_HandleTypeDef *hfoc){
             if(HAL_GetTick() >= next_step_time){
                 if(FOC_TuneCurrentPID(hfoc) != FOC_OK){
                     Debug_SendTextResponse("Error tuning PID gains\n");
+                    step = 0;
                     return FOC_LOOP_ERROR;
                 } else{
                     Debug_SendTextResponse("PID gains tuned successfully\n");
                     Debug_SendTextResponse("Kp_d: %de-3, Ki_d: %d\n", (int)(hfoc->flash_data.controller.PID_gains_d.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_d.Ki));
                     Debug_SendTextResponse("Kp_q: %de-3, Ki_q: %d\n", (int)(hfoc->flash_data.controller.PID_gains_q.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_q.Ki));
+                    step = 0;
                     return FOC_LOOP_COMPLETED;
                 }
-                step = 0;
             }
             break;
     }

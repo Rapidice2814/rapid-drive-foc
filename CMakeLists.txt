@@ -83,6 +83,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Foc/Utils/Timing.c
     ${CMAKE_SOURCE_DIR}/Foc/Utils/NTC_Lookup.c
     ${CMAKE_SOURCE_DIR}/Foc/Utils/Bootloader.c
+    ${CMAKE_SOURCE_DIR}/Foc/Utils/Filters.c
 
 
 )

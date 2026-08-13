@@ -20,7 +20,7 @@ typedef enum {
     X(FOC_STATE_CURRENT_SENSOR_CALIBRATION, FOC_StateCurrentSensorCalibration_Transition,   FOC_StateCurrentSensorCalibration) \
     X(FOC_STATE_IDENTIFY,                   FOC_StateIdentify_Transition,                   FOC_StateIdentify) \
     X(FOC_STATE_ANTICOGGING,                FOC_StateAntiCogging_Transition,                FOC_StateAntiCogging) \
-    X(FOC_STATE_CHECKLIST,                  FOC_StateTransition_AlwaysOk,                   FOC_StateChecklist) \
+    X(FOC_STATE_CHECKLIST,                  FOC_StateChecklist_Transition,                  FOC_StateChecklist) \
     X(FOC_STATE_PID_AUTOTUNE,               FOC_StatePIDAutotune_Transition,                FOC_StatePIDAutotune) \
     X(FOC_STATE_ERROR,                      FOC_StateError_Transition,                      FOC_StateError) \
     X(FOC_STATE_ALIGNMENT,                  FOC_StateAlignment_Transition,                  FOC_StateAlignment) \
@@ -30,6 +30,7 @@ typedef enum {
     X(FOC_STATE_IDLE,                       FOC_StateIdle_Transition,                       FOC_StateIdle) \
     X(FOC_STATE_FLASH_SAVE,                 FOC_StateFlashSave_Transition,                  FOC_StateFlashSave) \
     X(FOC_STATE_FLASH_LOAD,                 FOC_StateFlashLoad_Transition,                  FOC_StateFlashLoad) \
+    X(FOC_STATE_FLASH_CLEAR,                FOC_StateFlashClear_Transition,                 FOC_StateFlashClear) \
     X(FOC_STATE_BOOTLOADER,                 FOC_StateBootloader_Transition,                 FOC_StateBootloader) \
     X(FOC_STATE_OPENLOOP,                   FOC_StateOpenLoop_Transition,                   FOC_StateOpenLoop)
 
@@ -109,6 +110,8 @@ FOC_StateTransitionTypeDef FOC_StateFlashSave_Transition(FOC_HandleTypeDef* hfoc
 void FOC_StateFlashSave(FOC_HandleTypeDef* hfoc);
 FOC_StateTransitionTypeDef FOC_StateFlashLoad_Transition(FOC_HandleTypeDef* hfoc);
 void FOC_StateFlashLoad(FOC_HandleTypeDef* hfoc);
+FOC_StateTransitionTypeDef FOC_StateFlashClear_Transition(FOC_HandleTypeDef* hfoc);
+void FOC_StateFlashClear(FOC_HandleTypeDef* hfoc);
 
 /* Fault State */
 FOC_StateTransitionTypeDef FOC_StateError_Transition(FOC_HandleTypeDef* hfoc);

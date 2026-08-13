@@ -10,10 +10,6 @@
 #define MAX_LOGDATA_SAMPLE_COUNT 30
 #define MAX_LOGDATA_SIGNAL_COUNT 8
 
-#define DEBUG_SOF1_TEXT 0x3C //ASCII '<'
-#define DEBUG_SOF2_TEXT 0x3E //ASCII '>'
-
-
 /*Anticogging*/
 #define NUMBER_OF_ANTICOG_MEASUREMENTS 1000 //The amount of steps in the full rotation
 #define ANTICOG_ANGLE_STEP (2.0f * M_PI / NUMBER_OF_ANTICOG_MEASUREMENTS)
@@ -55,8 +51,14 @@
 
 /*limits*/
 #define VOLTAGE_LIMIT 8.0f //[V], max motor voltage
-#define MAX_DQ_CURRENT 17.2f //[A]
+#define MAX_DQ_CURRENT 5.0f //[A]
 
+
+/* HFI Parameters */
+#define HFI_INJECTION_OMEGA (1000.0 * M_2PIF)
+#define HFI_INJECTION_AMPLITUDE 0.2f
+
+#define HFI_CURRENT_LPF_CUTOFF_FREQ 200.0f // [Hz], cutoff frequency of the low-pass filter for the HFI currents
 
 
 #endif // FOC_CONFIG_H

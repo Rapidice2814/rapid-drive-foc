@@ -40,15 +40,19 @@ uint32_t read_u32_le(const uint8_t *src)
 }
 
 /** 
- * @brief Counts the number of set bits in a 32-bit integer
- * @param n The integer to count bits from
+ * @brief Counts the number of set bits in an array of bytes
+ * @param data Pointer to the array of bytes
+ * @param length Length of the array
  * @return The number of set bits
  */
-uint8_t countbits(uint32_t n) {
+uint8_t countbits_array(const uint8_t *data, uint8_t length){
     uint8_t count = 0;
-    while (n) {
-        count += n & 1;
-        n >>= 1;
+    for (uint8_t i = 0; i < length; i++) {
+        uint8_t n = data[i];
+        while (n) {
+            count += n & 1;
+            n >>= 1;
+        }
     }
     return count;
 }

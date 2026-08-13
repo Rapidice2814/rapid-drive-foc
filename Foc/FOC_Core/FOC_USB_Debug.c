@@ -115,6 +115,8 @@ typedef enum {
     MSG_ERROR = 0xFF //FOC -> PC
 } MsgTypeTypeDef;
 
+
+#define SIGNAL_MASK_BYTES 8 // max 8*8 = 64 signals
 #define FOC_USB_DEBUG_SIGNAL_LIST(X)            \
     X(0, u32,   timestamp)                      \
     X(1, f,     adc_values.motor_temp)          \
@@ -128,23 +130,30 @@ typedef enum {
     X(9, f,     ab_current.beta)                \
     X(10, f,    dq_current.d)                   \
     X(11, f,    dq_current.q)                   \
-    X(12, f,    phase_voltage.a)                \
-    X(13, f,    phase_voltage.b)                \
-    X(14, f,    phase_voltage.c)                \
-    X(15, f,    ab_voltage.alpha)               \
-    X(16, f,    ab_voltage.beta)                \
-    X(17, f,    dq_voltage.d)                   \
-    X(18, f,    dq_voltage.q)                   \
-    X(19, f,    encoder_angle_mechanical_wrapped) \
-    X(20, f,    encoder_angle_mechanical_unwrapped) \
-    X(21, f,    encoder_speed_mechanical)       \
-    X(22, f,    encoder_angle_electrical)       \
-    X(23, f,    encoder_speed_electrical)       \
-    X(24, f,    dq_current_setpoint.d)          \
-    X(25, f,    dq_current_setpoint.q)          \
-    X(26, f,    angle_setpoint)                 \
-    X(27, f,    speed_setpoint)                 \
-    X(28, u32,  execution_time.loop_max)        \
+    X(12, f,    dq_current_filtered.d)          \
+    X(13, f,    dq_current_filtered.q)          \
+    X(14, f,    phase_voltage.a)                \
+    X(15, f,    phase_voltage.b)                \
+    X(16, f,    phase_voltage.c)                \
+    X(17, f,    ab_voltage.alpha)               \
+    X(18, f,    ab_voltage.beta)                \
+    X(19, f,    dq_voltage.d)                   \
+    X(20, f,    dq_voltage.q)                   \
+    X(21, f,    encoder_angle_mechanical_wrapped) \
+    X(22, f,    encoder_angle_mechanical_unwrapped) \
+    X(23, f,    encoder_speed_mechanical)       \
+    X(24, f,    encoder_angle_electrical)       \
+    X(25, f,    encoder_speed_electrical)       \
+    X(26, f,    dq_current_setpoint.d)          \
+    X(27, f,    dq_current_setpoint.q)          \
+    X(28, f,    angle_setpoint)                 \
+    X(29, f,    speed_setpoint)                 \
+    X(30, u32,  execution_time.loop_max)        \
+    X(31, f,  hfi.injection_phase)              \
+    X(32, f,  hfi.i_alpha_l_raw)                \
+    X(33, f,  hfi.i_beta_l_raw)                 \
+    X(34, f,  hfi.i_alpha_l_filtered)           \
+    X(35, f,  hfi.i_beta_l_filtered)            \
 
 #define FOC_PID_CONTROLLERS_LIST(X)             \
     X(0, pid_current_d)                         \
@@ -168,6 +177,10 @@ typedef enum {
     X(12, f, flash_data.motor.phase_resistance) \
     X(13, f, flash_data.motor.phase_inductance) \
     X(14, f, flash_data.motor.torque_constant) \
+    X(15, u32, flash_data.hfi.hfi_enabled) \
+    X(16, f, flash_data.hfi.injection_amplitude) \
+    X(17, f, flash_data.hfi.injection_omega) \
+    X(18, f, flash_data.controller.current_control_bandwidth) \
 
 
 
@@ -179,7 +192,7 @@ typedef union{
 
 typedef struct{
     uint8_t is_running;
-    uint32_t signal_mask;
+    uint8_t signal_mask[SIGNAL_MASK_BYTES];
     uint32_t timestamp;
     uint16_t sample_count;
     uint16_t signal_count;
@@ -191,7 +204,8 @@ extern FOC_HandleTypeDef hfoc;
 static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t len);
 static void Debug_ExecuteTextCommand(const char *packet, uint16_t length);
 
-static Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask);
+static Debug_StatusTypeDef Debug_UpdateMask(const uint8_t *new_mask);
+static Debug_StatusTypeDef Debug_ClearMask();
 static void Debug_StartLogging();
 static void Debug_StopLogging();
 
@@ -200,7 +214,7 @@ static LogDataHandleTypeDef hlogdata = {0};
 
 Debug_StatusTypeDef FOC_USB_Setup(){
     Debug_StopLogging();
-    Debug_UpdateMask(0);
+    Debug_ClearMask();
     return DEBUG_OK;
 }
 
@@ -234,17 +248,23 @@ Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(void){
     uint16_t write_index = (uint16_t)(13u + hlogdata.sample_count * hlogdata.signal_count * 4u);
     TypeConvU_t conv;
 
+    #define SIGNAL_MASK_BIT_IS_SET(bit) \
+        (((bit) < (SIGNAL_MASK_BYTES * 8u)) && \
+        ((hlogdata.signal_mask[(bit) / 8u] & (1u << ((bit) & 7u))) != 0u))
+
     #define CAPTURE_SIGNAL(bit, member, field)                                  \
-        do{                                                                      \
-            if((hlogdata.signal_mask & (1u << (bit))) != 0u){                   \
-                conv.member = hfoc.field;                                        \
+        do {                                                                    \
+            if (SIGNAL_MASK_BIT_IS_SET(bit)) {                                  \
+                conv.member = hfoc.field;                                       \
                 write_u32_le(&hlogdata.txbuf->payload[write_index + signal_index * 4u], conv.u32); \
-                signal_index++;                                                  \
-            }                                                                    \
-        }while(0);
+                signal_index++;                                                 \
+            }                                                                   \
+        } while (0);
 
     FOC_USB_DEBUG_SIGNAL_LIST(CAPTURE_SIGNAL);
     #undef CAPTURE_SIGNAL
+
+    #undef SIGNAL_MASK_BIT_IS_SET
 
     hlogdata.sample_count++;
     write_u16_le(&hlogdata.txbuf->payload[9], hlogdata.sample_count);
@@ -276,16 +296,28 @@ static void Debug_StopLogging(){
     hlogdata.is_running = 0;
 }
 
-static Debug_StatusTypeDef Debug_UpdateMask(uint32_t new_mask){
-    if(hlogdata.is_running) return DEBUG_ERROR;
+static Debug_StatusTypeDef Debug_UpdateMask(const uint8_t *new_mask){
+    if (hlogdata.is_running){
+        return DEBUG_ERROR;
+    }
 
-    uint8_t set_bits = countbits(new_mask);
-    if(set_bits > MAX_LOGDATA_SIGNAL_COUNT) return DEBUG_ERROR;
-    
-    hlogdata.signal_mask = new_mask;
+    uint8_t set_bits = countbits_array(new_mask, SIGNAL_MASK_BYTES);
+    if (set_bits > MAX_LOGDATA_SIGNAL_COUNT){
+        return DEBUG_ERROR;
+    }
+
+    for (uint8_t i = 0; i < SIGNAL_MASK_BYTES; i++){
+        hlogdata.signal_mask[i] = new_mask[i];
+    }
+
     hlogdata.signal_count = set_bits;
 
     return DEBUG_OK;
+}
+
+static Debug_StatusTypeDef Debug_ClearMask(){
+    const uint8_t zero_mask[SIGNAL_MASK_BYTES] = {0};
+    return Debug_UpdateMask(zero_mask);
 }
 
 static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t payload_length){
@@ -295,12 +327,12 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     switch ((MsgTypeTypeDef)(msg_type)){
     case MSG_SET_MASK:
-        if(payload_length != 4){
+        if(payload_length != SIGNAL_MASK_BYTES){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
             break;
         }
-        uint32_t new_mask;
-        memcpy(&new_mask, payload, 4);
+        uint8_t new_mask[SIGNAL_MASK_BYTES];
+        memcpy(new_mask, payload, SIGNAL_MASK_BYTES);
         if(Debug_UpdateMask(new_mask) != DEBUG_OK){
             Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
             break;
@@ -445,6 +477,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 }
 
 static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
+    UNUSED(length);
     for(int i = 0; i < 1; i++){
         if(packet[i] == 'D'){
             if(packet[i+1] == 'a'){
@@ -467,6 +500,9 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
         }
         if(packet[i] == 'F'){
             FOC_SetState(&hfoc, FOC_STATE_FLASH_SAVE, FOC_STATE_RUN);
+        }
+        if(packet[i] == 'L'){
+            FOC_SetState(&hfoc, FOC_STATE_FLASH_CLEAR, FOC_STATE_RUN);
         }
         if(packet[i] == 'B'){
             FOC_SetState(&hfoc, FOC_STATE_BOOTLOADER, FOC_STATE_NONE);

@@ -24,7 +24,17 @@ static const FLASH_DataTypeDef flash_data_default_values = {
     },
     
     .controller = {
-        .current_control_bandwidth = 3000.0f,
+        .current_control_bandwidth = 500.0f,
+        .PID_gains_speed = {
+            .Kp = 0.1f,
+            .Ki = 5.0f,
+            .Kd = 0.0f
+        },
+        .PID_gains_position = {
+            .Kp = 1.0f,
+            .Ki = 5.0f,
+            .Kd = 0.5f
+        },
     },
 
     .limits = {
@@ -41,12 +51,24 @@ static const FLASH_DataTypeDef flash_data_default_values = {
         .node_id = 0, // Set a default node ID to unassigned
         .heartbeat_msg_rate_ms = 100
     },
+
+    .hfi = {
+        .hfi_enabled = 0,
+        .injection_amplitude = HFI_INJECTION_AMPLITUDE,
+        .injection_omega = HFI_INJECTION_OMEGA
+    },
 };
 
 
     
 static FLASH_EraseInitTypeDef EraseInitStruct;
 
+
+/**
+ * @brief  Writes the FOC configuration data to flash memory.
+ * @param  pdata: Pointer to the data structure to be written to flash.
+ * @retval FLASH_StatusTypeDef: Status of the flash write operation.
+ */
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
     if(pdata == NULL){
         return FLASH_ERROR;
@@ -90,9 +112,37 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
 }
 
 /**
+ * @brief  Clears the FOC configuration data in flash memory by erasing the relevant pages.
+ * @retval FLASH_StatusTypeDef: Status of the flash clear operation.
+ */
+FLASH_StatusTypeDef FOC_FLASH_ClearData(){
+    if(READ_BIT(FLASH->SR, FLASH_SR_BSY) !=0U){ // Wait for any ongoing flash operation to complete
+        return FLASH_ERROR;
+    } 
+
+    __disable_irq();
+    HAL_FLASH_Unlock();
+
+    EraseInitStruct.TypeErase = FLASH_TYPEERASE_PAGES;
+    EraseInitStruct.Page = STORAGE_FLASH_PAGE;
+    EraseInitStruct.NbPages = NUMBER_OF_FLASH_PAGES;
+
+    uint32_t PAGEError = 0;
+    if (HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError) != HAL_OK){
+        return FLASH_ERROR;
+    }
+
+    HAL_FLASH_Lock();
+    __enable_irq();
+
+    return FLASH_OK;
+}
+
+
+/**
  * @brief  Reads the FOC configuration data from flash memory.
  * @param  pdata: Pointer to the data structure to be filled with the read data.
- * @retval FLASH_StatusTypeDef: Status of the flash read operation. Returns FLASH_OK if successful, FLASH_ERROR if there was an error, and FLASH_EMPTY if no valid data is found.
+ * @retval FLASH_StatusTypeDef: Status of the flash read operation.
  */
 FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
     if(pdata == NULL){
@@ -114,7 +164,7 @@ FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
 /**
  * @brief  Compares the FOC configuration data in flash memory with the provided data structure.
  * @param  pdata: Pointer to the data structure to be compared with the flash data.
- * @retval FLASH_StatusTypeDef: Status of the comparison. Returns FLASH_SAME if the data is the same, FLASH_DIFFERENT if the data is different, and FLASH_ERROR if there was an error (e.g., null pointer).
+ * @retval FLASH_StatusTypeDef: Status of the comparison.
  */
 FLASH_StatusTypeDef FOC_FLASH_CompareData(const FLASH_DataTypeDef *pdata){
     if(pdata == NULL){
@@ -136,7 +186,7 @@ FLASH_StatusTypeDef FOC_FLASH_CompareData(const FLASH_DataTypeDef *pdata){
 /**
  * @brief  Sets the FOC configuration data to default values.
  * @param  pdata: Pointer to the data structure to be filled with default values.
- * @retval FLASH_StatusTypeDef: Status of the operation. Returns FLASH_OK if successful and FLASH_ERROR if there was an error (e.g., null pointer).
+ * @retval FLASH_StatusTypeDef: Status of the operation.
  */
 FLASH_StatusTypeDef FOC_FLASH_SetDefault(FLASH_DataTypeDef *pdata){
     if(pdata == NULL){
@@ -152,7 +202,7 @@ FLASH_StatusTypeDef FOC_FLASH_SetDefault(FLASH_DataTypeDef *pdata){
 
 /**
  * @brief  Sets the option bytes to default values. This only needs to be run once for every new device.
- * @retval FLASH_StatusTypeDef: Status of the operation. Returns FLASH_OK if successful and FLASH_ERROR if there was an error.
+ * @retval FLASH_StatusTypeDef: Status of the operation.
  * @note Explained in RM0440, section 3.4.2 "Option bytes programming sequence".
  */
 FLASH_StatusTypeDef FOC_FLASH_SetSystemMemoryBoot(void)

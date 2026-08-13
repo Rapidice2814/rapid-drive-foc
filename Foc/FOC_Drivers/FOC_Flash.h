@@ -67,6 +67,12 @@ struct FLASH_DriverParameters {
     uint16_t heartbeat_msg_rate_ms; // [ms], the rate at which the heartbeat message is sent
 };
 
+struct FLASH_HFIParameters {
+    uint8_t hfi_enabled; // boolean, whether HFI is enabled or not
+    float injection_amplitude; // [V], the amplitude of the injected voltage
+    float injection_omega; // [rad/s], the frequency of the injected voltage
+};
+
 
 #define FLASH_DATA_STRUCT_TERMINATOR 0xDEADBEEF // this is used to detect if the struct is correctly read from flash
 
@@ -79,12 +85,16 @@ typedef struct {
     struct FLASH_ControllerParameters controller; // controller parameters
     struct FLASH_Limits limits; // limits
     struct FLASH_DriverParameters node; // driver parameters
+    struct FLASH_HFIParameters hfi; // HFI parameters
 
-    uint8_t filler[4]; // filler to make the struct size a multiple of 8 bytes. This is used to avoid issues with flash programming, which requires 8-byte alignment.
+    // uint8_t filler[4]; // filler to make the struct size a multiple of 8 bytes. This is used to avoid issues with flash programming, which requires 8-byte alignment.
 
     uint32_t struct_terminator; // Last part of the struct, should be set to FLASH_DATA_STRUCT_TERMINATOR. This is used to detect whether the struct is correctly read from flash.
 } FLASH_DataTypeDef;
 
+
+
+/* Flash API functions */
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata);
 FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata);
 FLASH_StatusTypeDef FOC_FLASH_CompareData(const FLASH_DataTypeDef *pdata);

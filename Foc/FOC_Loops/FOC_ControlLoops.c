@@ -35,11 +35,19 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
 
     hfoc->ab_current = Clarke_transform(hfoc->adc_values.phase_current);
     hfoc->dq_current = Park_transform(hfoc->ab_current, encoder_angle_electrical);
+
+    hfoc->dq_current_filtered.d = biquad_filter_update(&hfoc->dq_current_d_filter, hfoc->dq_current.d);
+    hfoc->dq_current_filtered.q = biquad_filter_update(&hfoc->dq_current_q_filter, hfoc->dq_current.q);
+
+    // hfoc->dq_voltage.d = PID_Update(&hfoc->pid_current_d, setpoint_d, hfoc->dq_current_filtered.d);
+    // hfoc->dq_voltage.q = PID_Update(&hfoc->pid_current_q, setpoint_q, hfoc->dq_current_filtered.q);
     
     hfoc->dq_voltage.d = PID_Update(&hfoc->pid_current_d, setpoint_d, hfoc->dq_current.d);
     hfoc->dq_voltage.q = PID_Update(&hfoc->pid_current_q, setpoint_q, hfoc->dq_current.q);
 
-    // hfoc->dq_voltage.d += FOC_HFI_GetInjectedVoltage();
+    if(hfoc->flash_data.hfi.hfi_enabled == 1){
+        hfoc->dq_voltage.d += FOC_HFI_GetInjectedVoltage(hfoc);
+    }
 
     if(hfoc->flash_data.controller.current_PID_FF_enabled == 1){
         if(hfoc->flash_data.motor.torque_constant != 0 && 

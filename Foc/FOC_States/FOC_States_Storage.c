@@ -40,3 +40,22 @@ void FOC_StateFlashLoad(FOC_HandleTypeDef* hfoc){
     Debug_SendTextResponse("Flash data loaded!\n");
     FOC_NextState(hfoc);
 }
+
+/* FOC_STATE_FLASH_CLEAR */
+
+FOC_StateTransitionTypeDef FOC_StateFlashClear_Transition(FOC_HandleTypeDef* hfoc){
+    if(hfoc->state != FOC_STATE_IDLE){
+        Debug_SendTextResponse("Can only enter FOC_STATE_FLASH_CLEAR from FOC_STATE_IDLE! Current state: %s\n", FOC_StateToString(hfoc->state));
+        return FOC_STATETRANSITION_DENIED; // can only clear flash from IDLE state
+    }
+    return FOC_STATETRANSITION_OK;
+}
+
+void FOC_StateFlashClear(FOC_HandleTypeDef* hfoc){
+    Debug_SendTextResponse("Clearing flash data ...\n");
+    if(FOC_FLASH_ClearData() != FLASH_OK){
+        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
+    }
+    Debug_SendTextResponse("Flash data cleared!\n");
+    FOC_NextState(hfoc);
+}

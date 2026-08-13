@@ -69,7 +69,7 @@ void FOC_StateStop(FOC_HandleTypeDef* hfoc){
 
 FOC_StateTransitionTypeDef FOC_StateIdle_Transition(FOC_HandleTypeDef* hfoc){
     if(hfoc->state != FOC_STATE_STOP){
-        Debug_SendTextResponse("Can only enter IDLE state from STOP state! Current state: %d\n", hfoc->state);
+        Debug_SendTextResponse("Can only enter IDLE state from STOP state! Current state: %s\n", FOC_StateToString(hfoc->state));
         return FOC_STATETRANSITION_DENIED; // can only enter IDLE state from STOP state
     }
     if(fabsf(hfoc->encoder_speed_mechanical) > 0.1f){

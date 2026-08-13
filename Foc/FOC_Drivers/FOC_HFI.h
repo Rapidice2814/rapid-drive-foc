@@ -2,12 +2,23 @@
 #define FOC_HFI_H
 
 #include "Utils.h"
+#include "Filters.h"
 
-#define HFI_INJECTION_OMEGA (1000.0 * M_2PIF)
-#define HFI_INJECTION_AMPLITUDE 0.2f
+typedef struct FOC_Handle FOC_HandleTypeDef;
 
-float FOC_HFI_GetInjectedVoltage();
+typedef struct {
+    float injection_phase;
+    float i_alpha_l_raw;
+    float i_beta_l_raw;
+    float i_alpha_l_filtered;
+    float i_beta_l_filtered;
+    BiquadFilter i_alpha_l_filter;
+    BiquadFilter i_beta_l_filter;
+} HFITypeDef;
 
+void FOC_HFI_Init(FOC_HandleTypeDef *hfoc);
+float FOC_HFI_GetInjectedVoltage(FOC_HandleTypeDef *hfoc);
+float FOC_HFI_GetAngleEstimate(FOC_HandleTypeDef *hfoc);
 
 
 

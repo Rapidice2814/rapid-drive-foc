@@ -140,6 +140,7 @@ void FOC_Setup(){
     Debug_SendTextResponse("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
     HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, GPIO_PIN_SET);
 
+    FOC_HFI_Init(&hfoc);
 }
 
 

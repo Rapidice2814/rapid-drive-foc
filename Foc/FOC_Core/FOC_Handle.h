@@ -11,6 +11,7 @@
 #include "FOC_Utils.h"
 #include "FOC_ADC.h"
 #include "Timing.h"
+#include "FOC_HFI.h"
 
 typedef struct FOC_Handle {
     /* FOC State */
@@ -52,10 +53,15 @@ typedef struct FOC_Handle {
     
     ABCurrentsTypeDef ab_current;   //alpha and beta currents [A]
     DQCurrentsTypeDef dq_current;          //d and q currents [A]
+    DQCurrentsTypeDef dq_current_filtered; //filtered d and q currents [A]
     DQVoltagesTypeDef dq_voltage;          //d and q voltages [V]
     ABVoltagesTypeDef ab_voltage;   //alpha and beta voltages [V]
 
     PhaseVoltagesTypeDef phase_voltage; //phase voltages [V]
+
+    /* Filters */
+    BiquadFilter dq_current_d_filter;
+    BiquadFilter dq_current_q_filter;
 
     /* PID Controllers */
     PIDControllerTypeDef pid_current_d;            //d current controller
@@ -66,6 +72,9 @@ typedef struct FOC_Handle {
     DQCurrentsTypeDef dq_current_setpoint; //d and q current setpoints [A]
     float angle_setpoint; //mechanical position setpoint [rad]
     float speed_setpoint; //mechanical speed setpoint [rad/s]
+
+    /* HFI */
+    HFITypeDef hfi;
 
     /* PWM */
     uint32_t max_ccr; //max pwm value

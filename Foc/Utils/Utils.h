@@ -4,14 +4,15 @@
 #include <stdint.h>
 
 
-#define M_2PIF 6.28318530717958647692f
-#define M_PIF 3.14159265358979323846f
-#define M_PI_2F 1.57079632679489661923f
-#define M_PI_3F 1.04719755119659774615f
-#define M_SQRT3_2F 0.86602540378f
-#define M_SQRT3F 1.73205080757f
-#define M_1_SQRT3F 0.57735026919f
-#define M_2_SQRT3F 1.15470053838f
+#define M_2PIF 6.28318530717958647692f // 2 * pi
+#define M_PIF 3.14159265358979323846f // pi
+#define M_PI_2F 1.57079632679489661923f // pi / 2
+#define M_PI_3F 1.04719755119659774615f // pi / 3
+#define M_SQRT3_2F 0.86602540378f // sqrt(3) / 2
+#define M_SQRT3F 1.73205080757f // sqrt(3)
+#define M_1_SQRT3F 0.57735026919f // 1 / sqrt(3)
+#define M_2_SQRT3F 1.15470053838f // 2 / sqrt(3)
+#define M_1_SQRT2F 0.70710678118f // 1 / sqrt(2)
 
 
 void normalize_angle_0_2pi(float *angle);
@@ -21,7 +22,7 @@ float constrainf(float value, float min, float max);
 void write_u16_le(uint8_t *dst, uint16_t v);
 void write_u32_le(uint8_t *dst, uint32_t v);
 uint32_t read_u32_le(const uint8_t *src);
-uint8_t countbits(uint32_t n);
+uint8_t countbits_array(const uint8_t *data, uint8_t length);
 
 
 
