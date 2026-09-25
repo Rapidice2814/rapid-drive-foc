@@ -66,6 +66,7 @@ typedef struct FOC_Handle FOC_HandleTypeDef;
 const char *FOC_StateToString(FOC_StateTypeDef state);
 
 /* State Functions */
+FOC_StateTypeDef FOC_GetState(FOC_HandleTypeDef *hfoc);
 FOC_StateTransitionTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDef state, FOC_StateTypeDef next_state);
 void FOC_NextState(FOC_HandleTypeDef *hfoc);
 void FOC_StateLoop(FOC_HandleTypeDef *hfoc);

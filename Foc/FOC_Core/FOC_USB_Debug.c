@@ -20,6 +20,11 @@ The PC should interpret the values based on the signal definitions in FOC_USB_DE
 All the USB packets follow the same structure: 
     SOF (2 bytes) | Msg Type (1 byte) | Payload Length (2 bytes) | Payload (N bytes)
 Depending on the Msg Type, the payload can have different formats:
+MSG_GET_VERSION: PC -> FOC
+    Payload: None
+MSG_VERSION_REPLY: FOC -> PC
+    Payload: Major Version (1 byte) | Minor Version (1 byte) | Patch Version (1 byte)
+    The 
 MSG_LOG_DATA: FOC -> PC
     Payload: Timestamp (4 bytes) | Sample Count (2 bytes) | Signal Count (2 bytes) | Data Buffer (Sample Count * Signal Count * 4 bytes)
     The data buffer contains the captured signal values in the order defined by the signal mask. Each value is a 4-byte float or integer depending on the signal type.
@@ -61,6 +66,10 @@ MSG_FLASH_SAVE: PC -> FOC
 MSG_FLASH_LOAD: PC -> FOC
     Payload: None
     Instructs the FOC firmware to load the configuration from flash memory.
+    Can only be executed, when FOC is in IDLE mode.
+MSG_FLASH_CLEAR: PC -> FOC
+    Payload: None
+    Instructs the FOC firmware to clear the configuration in flash memory.
     Can only be executed, when FOC is in IDLE mode.
 MSG_SET_STATE: PC -> FOC
     Payload: Desired State (1 byte)
@@ -106,6 +115,8 @@ typedef enum {
     MSG_STATE_REPLY = 0x10, //FOC -> PC
     MSG_TEXT_COMMAND = 0x11, // PC -> FOC
     MSG_TEXT_REPLY = 0x12, // FOC -> PC
+    MSG_ENTER_BOOTLOADER = 0x13, // PC -> FOC
+    MSG_FLASH_CLEAR = 0x14, // PC -> FOC
 
     MSG_UNKNOWN_TYPE = 0xFA, //FOC -> PC
     MSG_INVALID_PAYLOAD = 0xFB, //FOC -> PC
@@ -326,6 +337,18 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
     uint8_t response_payload[13];
 
     switch ((MsgTypeTypeDef)(msg_type)){
+        
+    case MSG_GET_VERSION:
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        response_payload[0] = FOC_VERSION_MAJOR;
+        response_payload[1] = FOC_VERSION_MINOR;
+        response_payload[2] = FOC_VERSION_PATCH;
+        Debug_SendBinaryResponse(MSG_VERSION_REPLY, response_payload, 3);
+        break;
+
     case MSG_SET_MASK:
         if(payload_length != SIGNAL_MASK_BYTES){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
@@ -444,18 +467,47 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         Debug_SendBinaryResponse(MSG_VAR_REPLY, response_payload, 5);
         break;
     case MSG_FLASH_SAVE:
-        //not implemented yet
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        if(FOC_SetState(&hfoc, FOC_STATE_FLASH_SAVE, FOC_STATE_RUN) != FOC_STATETRANSITION_OK){
+            Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
+            break;
+        }
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
     case MSG_FLASH_LOAD:
-        //not implemented yet
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        if(FOC_SetState(&hfoc, FOC_STATE_FLASH_LOAD, FOC_STATE_RUN) != FOC_STATETRANSITION_OK){
+            Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
+            break;
+        }
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+    case MSG_FLASH_CLEAR:
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        if(FOC_SetState(&hfoc, FOC_STATE_FLASH_CLEAR, FOC_STATE_RUN) != FOC_STATETRANSITION_OK){
+            Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
+            break;
+        }
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
     case MSG_SET_STATE:
         if(payload_length != 1){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
             break;
         }
-
-        FOC_SetState(&hfoc, (FOC_StateTypeDef)payload[0], FOC_STATE_NONE);
+        if(FOC_SetState(&hfoc, (FOC_StateTypeDef)payload[0], FOC_STATE_NONE) != FOC_STATETRANSITION_OK){
+            Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
+            break;
+        }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
     case MSG_GET_STATE:
@@ -463,12 +515,23 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
             break;
         }
-
-        // response_payload[0] = (uint8_t)FOC_GetState(&hfoc);
+        response_payload[0] = (uint8_t)FOC_GetState(&hfoc);
         Debug_SendBinaryResponse(MSG_STATE_REPLY, response_payload, 1);
         break;
     case MSG_TEXT_COMMAND:
         Debug_ExecuteTextCommand((const char*)payload, payload_length);
+        break;
+    case MSG_ENTER_BOOTLOADER:
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        if(FOC_SetState(&hfoc, FOC_STATE_BOOTLOADER, FOC_STATE_NONE
+        ) != FOC_STATETRANSITION_OK){
+            Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
+            break;
+        }
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
     default:
         Debug_SendBinaryResponse(MSG_UNKNOWN_TYPE, NULL, 0);
@@ -511,14 +574,17 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
             if(packet[i+1] == 's'){
                 hfoc.flash_data.controller.speed_PID_enabled = 1;
                 hfoc.flash_data.controller.position_PID_enabled = 0;
+                hfoc.speed_setpoint = 0.0f;
                 Debug_SendTextResponse("Enabled speed PID, disabled position PID\n");
             } else if(packet[i+1] == 'p'){
                 hfoc.flash_data.controller.position_PID_enabled = 1;
                 hfoc.flash_data.controller.speed_PID_enabled = 0;
+                hfoc.angle_setpoint = 0.0f;
                 Debug_SendTextResponse("Enabled position PID, disabled speed PID\n");
             } else if(packet[i+1] == 'o'){
                 hfoc.flash_data.controller.speed_PID_enabled = 0;
                 hfoc.flash_data.controller.position_PID_enabled = 0;
+                hfoc.dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
                 Debug_SendTextResponse("Disabled both speed and position PID\n");
             }
         }

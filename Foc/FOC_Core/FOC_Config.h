@@ -3,6 +3,10 @@
 
 #include "main.h"
 
+#define FOC_VERSION_MAJOR 0
+#define FOC_VERSION_MINOR 1
+#define FOC_VERSION_PATCH 1
+
 /* Debugging */
 #define DEBUG_SOF1_BIN 0xAA
 #define DEBUG_SOF2_BIN 0x55

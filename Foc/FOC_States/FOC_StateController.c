@@ -50,9 +50,9 @@ static void FOC_StateChecklist(FOC_HandleTypeDef* hfoc){
     checklist_step++;
 }
 
-
-
-
+FOC_StateTypeDef FOC_GetState(FOC_HandleTypeDef *hfoc){
+    return hfoc->state;
+}
 
 FOC_StateTransitionTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDef state, FOC_StateTypeDef next_state){
     if(next_state != FOC_STATE_NONE){
