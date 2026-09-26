@@ -185,11 +185,12 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
     __HAL_RCC_GPIOA_CLK_ENABLE();
     /**ADC2 GPIO Configuration
     PA4     ------> ADC2_IN17
+    PA5     ------> ADC2_IN13
     */
-    GPIO_InitStruct.Pin = Thermistor_Pin;
+    GPIO_InitStruct.Pin = Thermistor1_Pin|Thermistor2_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(Thermistor_GPIO_Port, &GPIO_InitStruct);
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     /* ADC2 DMA Init */
     /* ADC2 Init */
@@ -275,8 +276,9 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* hadc)
 
     /**ADC2 GPIO Configuration
     PA4     ------> ADC2_IN17
+    PA5     ------> ADC2_IN13
     */
-    HAL_GPIO_DeInit(Thermistor_GPIO_Port, Thermistor_Pin);
+    HAL_GPIO_DeInit(GPIOA, Thermistor1_Pin|Thermistor2_Pin);
 
     /* ADC2 DMA DeInit */
     HAL_DMA_DeInit(hadc->DMA_Handle);

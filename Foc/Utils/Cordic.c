@@ -1,4 +1,5 @@
 #include "Cordic.h"
+#include "main.h"
 
 #define CORDIC_2exp31divPI       683565275.57643158978229477811035f
 #define CORDIC_2exp31            0x1p31f

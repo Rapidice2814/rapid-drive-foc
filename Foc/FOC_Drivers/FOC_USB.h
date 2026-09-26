@@ -1,9 +1,9 @@
 #ifndef FOC_USB_H
 #define FOC_USB_H
 
-#include "main.h"
+#include <stdint.h>
 
-#define RX_USB_BUF_SIZE 64
+#define RX_USB_BUF_SIZE 128
 #define TX_USB_BUF_SIZE 1024
 
 typedef struct{
@@ -25,8 +25,10 @@ void USB_ReceiveCallback(uint8_t* buf, uint32_t* len);
 
 TxUsbBuf_t* USB_AllocTxBuffer();
 uint8_t USB_PushTxBuffer(TxUsbBuf_t* buf);
+uint8_t USB_FreeTxBuffer(TxUsbBuf_t* buf);
 RxUsbBuf_t* USB_AllocRxBuffer();
 uint8_t USB_PushRxBuffer(RxUsbBuf_t* buf);
+
 
 uint8_t USB_printf(const char* format, ...) __attribute__((format(printf, 1, 2)));
 

@@ -1,5 +1,7 @@
-#include "FOC_Flash.h"
 #include <string.h>
+#include <assert.h>
+
+#include "FOC_Flash.h"
 
 #define STORAGE_FLASH_PAGE 56
 #define NUMBER_OF_FLASH_PAGES 8
@@ -10,77 +12,80 @@
 // The actual data is read and written directly from flash using the FOC_FLASH_ReadData and FOC_FLASH_WriteData functions, so this variable is not used directly in the code.
 __attribute((section(".permanent"))) FLASH_DataTypeDef flash_data_storage; 
 
+static_assert(sizeof(FLASH_DataTypeDef) % 8 == 0, "struct not aligned to 8 bytes"); // Ensure that the struct size is a multiple of 8 bytes, as required by the flash programming algorithm.
+static_assert(sizeof(FLASH_DataTypeDef) <= FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAGES, "struct size exceeds flash storage size");
+
 
 // static const FLASH_DataTypeDef flash_data_default_values = {0};
 static const FLASH_DataTypeDef flash_data_default_values = {
-    .contains_data = 0,
-
     .motor = {
         .torque_constant = MOTOR_TORQUE_CONSTANT,
-        .torque_constant_valid = 1,
         .pole_pairs = MOTOR_POLE_PAIRS,
-        .pole_pairs_valid = 1
     },
     
     .controller = {
+        .current_control_bandwidth = 500.0f,
         .PID_gains_speed = {
             .Kp = 0.1f,
-            .Ki = 10.0f,
+            .Ki = 5.0f,
             .Kd = 0.0f
         },
         .PID_gains_position = {
-            .Kp = 5.0f,
-            .Ki = 10.0f,
-            .Kd = 0.0f
+            .Kp = 1.0f,
+            .Ki = 5.0f,
+            .Kd = 0.5f
         },
-        .current_control_bandwidth = 3000.0f,
-        .current_PID_FF_enabled = 0,
     },
 
     .limits = {
         .vbus_overvoltage_trip_level = 27.0f,
         .vbus_undervoltage_trip_level = 20.0f,
-        .max_bus_current = 0.0f,
-        .max_voltage = VOLTAGE_LIMIT,
+        .ibus_overcurrent_trip_level = 0.0f,
+        .mosfet_temp_trip_level = MOSFET_MAX_TEMP,
+        .motor_temp_trip_level = MOTOR_MAX_TEMP,
         .max_dq_voltage = VOLTAGE_LIMIT * M_1_SQRT3F,
-        .max_dq_current = VOLTAGE_LIMIT * M_1_SQRT3F
+        .max_dq_current = MAX_DQ_CURRENT
     },
 
     .node = {
         .node_id = 0, // Set a default node ID to unassigned
         .heartbeat_msg_rate_ms = 100
     },
-    
-    .struct_terminator = 0
+
+    .hfi = {
+        .hfi_enabled = 0,
+        .injection_amplitude = HFI_INJECTION_AMPLITUDE,
+        .injection_omega = HFI_INJECTION_OMEGA
+    },
 };
 
 
     
 static FLASH_EraseInitTypeDef EraseInitStruct;
 
+
 /**
  * @brief  Writes the FOC configuration data to flash memory.
- * @param  pdata: Pointer to the data to be written to flash.
- * @retval FLASH_StatusTypeDef: Status of the flash write operation. Returns FLASH_OK if successful, FLASH_ERROR if there was an error, and FLASH_EMPTY if the input data is empty.
+ * @param  pdata: Pointer to the data structure to be written to flash.
+ * @retval FLASH_StatusTypeDef: Status of the flash write operation.
  */
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
     if(pdata == NULL){
         return FLASH_ERROR;
     }
 
-    if(sizeof(FLASH_DataTypeDef) > FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAGES){
-        return FLASH_ERROR;
-    }
-
     pdata->contains_data = 1;
     pdata->struct_terminator = FLASH_DATA_STRUCT_TERMINATOR;
 
-    FLASH_DataTypeDef current_data;
-    FOC_FLASH_ReadData(&current_data);
-    if(memcmp(&current_data, pdata, sizeof(FLASH_DataTypeDef)) == 0){ // if data is the same, no need to write
+    if(FOC_FLASH_CompareData(pdata) == FLASH_SAME){
         return FLASH_OK;
     }
 
+    if(READ_BIT(FLASH->SR, FLASH_SR_BSY) !=0U){ // Wait for any ongoing flash operation to complete
+        return FLASH_ERROR;
+    } 
+
+    __disable_irq();
     HAL_FLASH_Unlock();
 
     EraseInitStruct.TypeErase = FLASH_TYPEERASE_PAGES;
@@ -101,43 +106,87 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
         } 
     }
     HAL_FLASH_Lock();
+    __enable_irq();
+
     return FLASH_OK;
 }
 
 /**
+ * @brief  Clears the FOC configuration data in flash memory by erasing the relevant pages.
+ * @retval FLASH_StatusTypeDef: Status of the flash clear operation.
+ */
+FLASH_StatusTypeDef FOC_FLASH_ClearData(){
+    if(READ_BIT(FLASH->SR, FLASH_SR_BSY) !=0U){ // Wait for any ongoing flash operation to complete
+        return FLASH_ERROR;
+    } 
+
+    __disable_irq();
+    HAL_FLASH_Unlock();
+
+    EraseInitStruct.TypeErase = FLASH_TYPEERASE_PAGES;
+    EraseInitStruct.Page = STORAGE_FLASH_PAGE;
+    EraseInitStruct.NbPages = NUMBER_OF_FLASH_PAGES;
+
+    uint32_t PAGEError = 0;
+    if (HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError) != HAL_OK){
+        return FLASH_ERROR;
+    }
+
+    HAL_FLASH_Lock();
+    __enable_irq();
+
+    return FLASH_OK;
+}
+
+
+/**
  * @brief  Reads the FOC configuration data from flash memory.
  * @param  pdata: Pointer to the data structure to be filled with the read data.
- * @retval FLASH_StatusTypeDef: Status of the flash read operation. Returns FLASH_OK if successful, FLASH_ERROR if there was an error, and FLASH_EMPTY if no valid data is found.
+ * @retval FLASH_StatusTypeDef: Status of the flash read operation.
  */
 FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
     if(pdata == NULL){
         return FLASH_ERROR;
     }
-
-    if(sizeof(FLASH_DataTypeDef) > FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAGES){
-        return FLASH_ERROR;
-    }
-
-    FLASH_DataTypeDef temp_flash_data;
     
-    for(uint32_t i = 0; i < sizeof(FLASH_DataTypeDef); i += sizeof(uint64_t)){
-        uint64_t data64 = *(uint64_t*)(STORAGE_FLASH_BASE + i);
-        memcpy((uint8_t*)(&temp_flash_data) + i, &data64, sizeof(uint64_t));
+    for(uint32_t i = 0; i < sizeof(FLASH_DataTypeDef) / sizeof(uint64_t); i++){
+        uint64_t data64 = *(uint64_t*)(STORAGE_FLASH_BASE + i * sizeof(uint64_t));
+        ((uint64_t*)pdata)[i] = data64;
     }
 
-    if(temp_flash_data.contains_data == 1 && temp_flash_data.struct_terminator == FLASH_DATA_STRUCT_TERMINATOR){
-        memcpy(pdata, &temp_flash_data, sizeof(FLASH_DataTypeDef));
+    if(pdata->contains_data == 1 && pdata->struct_terminator == FLASH_DATA_STRUCT_TERMINATOR){
+        return FLASH_OK;
     } else {
         return FLASH_EMPTY;
     }
-    
-    return FLASH_OK;
+}
+
+/**
+ * @brief  Compares the FOC configuration data in flash memory with the provided data structure.
+ * @param  pdata: Pointer to the data structure to be compared with the flash data.
+ * @retval FLASH_StatusTypeDef: Status of the comparison.
+ */
+FLASH_StatusTypeDef FOC_FLASH_CompareData(const FLASH_DataTypeDef *pdata){
+    if(pdata == NULL){
+        return FLASH_ERROR;
+    }
+
+    for(uint32_t i = 0; i < sizeof(FLASH_DataTypeDef) / sizeof(uint64_t); i++){
+        uint64_t data64 = *(uint64_t*)(STORAGE_FLASH_BASE + i * sizeof(uint64_t));
+        uint64_t ram_data = ((const uint64_t*)pdata)[i];
+
+        if(data64 != ram_data){
+            return FLASH_DIFFERENT;
+        }
+    }
+
+    return FLASH_SAME;
 }
 
 /**
  * @brief  Sets the FOC configuration data to default values.
  * @param  pdata: Pointer to the data structure to be filled with default values.
- * @retval FLASH_StatusTypeDef: Status of the operation. Returns FLASH_OK if successful and FLASH_ERROR if there was an error (e.g., null pointer).
+ * @retval FLASH_StatusTypeDef: Status of the operation.
  */
 FLASH_StatusTypeDef FOC_FLASH_SetDefault(FLASH_DataTypeDef *pdata){
     if(pdata == NULL){
@@ -149,3 +198,69 @@ FLASH_StatusTypeDef FOC_FLASH_SetDefault(FLASH_DataTypeDef *pdata){
     return FLASH_OK;
 
 }
+
+
+/**
+ * @brief  Sets the option bytes to default values. This only needs to be run once for every new device.
+ * @retval FLASH_StatusTypeDef: Status of the operation.
+ * @note Explained in RM0440, section 3.4.2 "Option bytes programming sequence".
+ */
+FLASH_StatusTypeDef FOC_FLASH_SetSystemMemoryBoot(void)
+{
+    FLASH_OBProgramInitTypeDef ob = {0};
+
+    const uint32_t boot_mask = FLASH_OPTR_nBOOT0_Msk   | FLASH_OPTR_nBOOT1_Msk   | FLASH_OPTR_nSWBOOT0_Msk;
+
+    /*
+     * nBOOT0   = 0
+     * nBOOT1   = 1
+     * nSWBOOT0 = 0
+     */
+    const uint32_t desired_boot_config = FLASH_OPTR_nBOOT1_Msk;
+
+    HAL_FLASHEx_OBGetConfig(&ob);
+
+    if ((ob.USERConfig & boot_mask) == desired_boot_config) { // Check if the current boot configuration is already set to the desired configuration
+        return FLASH_OK;
+    }
+
+    if (READ_BIT(FLASH->SR, FLASH_SR_BSY) != 0U) {
+        return FLASH_ERROR;
+    }
+
+    if (HAL_FLASH_Unlock() != HAL_OK) {
+        return FLASH_ERROR;
+    }
+
+    if (HAL_FLASH_OB_Unlock() != HAL_OK) {
+        HAL_FLASH_Lock();
+        return FLASH_ERROR;
+    }
+
+    ob.OptionType = OPTIONBYTE_USER;
+    ob.USERType   = OB_USER_nBOOT0 |
+                    OB_USER_nBOOT1 |
+                    OB_USER_nSWBOOT0;
+
+    ob.USERConfig &= ~boot_mask;
+    ob.USERConfig |= desired_boot_config;
+
+    if (HAL_FLASHEx_OBProgram(&ob) != HAL_OK) {
+        HAL_FLASH_OB_Lock();
+        HAL_FLASH_Lock();
+        return FLASH_ERROR;
+    }
+
+    if (HAL_FLASH_OB_Launch() != HAL_OK) {
+        HAL_FLASH_OB_Lock();
+        HAL_FLASH_Lock();
+        return FLASH_ERROR;
+    }
+
+    //Usually unreachable because HAL_FLASH_OB_Launch() resets the MCU.
+    HAL_FLASH_OB_Lock();
+    HAL_FLASH_Lock();
+
+    return FLASH_OK;
+}
+

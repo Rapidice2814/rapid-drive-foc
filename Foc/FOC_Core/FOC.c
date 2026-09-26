@@ -3,21 +3,17 @@
 #include <string.h>
 
 #include "FOC.h"
-#include "FOC_Utils.h"
-#include "DRV8323_Driver.h"
+#include "FOC_Handle.h"
 #include "Utils.h"
-#include "PID.h"
-#include "FOC_Flash.h"
 #include "WS2812b_Driver.h"
 #include "FOC_Loops.h"
 #include "FOC_USB_Debug.h"
 #include "FOC_Config.h"
 #include "FOC_CAN.h"
-#include "FOC_ADC.h"
 #include "FOC_Diagnostics.h"
-#include "FOC_Statecontroller.h"
+#include "FOC_USB.h"
 #include "Cordic.h"
-#include "Timing.h"
+#include "Bootloader.h"
 
 extern FDCAN_HandleTypeDef hfdcan1;
 
@@ -52,6 +48,7 @@ volatile uint8_t debug_loop_flag = 0;
 
 
 void FOC_Setup(){
+
     FOC_Init(&hfoc); 
     // HAL_GetUIDw0();
     // HAL_GetUIDw1();
@@ -73,14 +70,6 @@ void FOC_Setup(){
         Error_Handler();
     }
 
-    if(FOC_SetEncoderPointer(&hfoc, &htim3.Instance->CNT) != FOC_OK){
-        Error_Handler();
-    }
-
-    if(FOC_SetPWMCCRPointers(&hfoc, &htim1.Instance->CCR3, &htim1.Instance->CCR2, &htim1.Instance->CCR1, PWM_CLOCK_DIVIDER) != FOC_OK){
-        Error_Handler();
-    }
-
     if(DRV8323_Init(&hfoc.hdrv8323) != DRV8323_OK){
         while(1){
             HAL_GPIO_TogglePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin);
@@ -93,6 +82,14 @@ void FOC_Setup(){
             HAL_GPIO_TogglePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin);
             HAL_Delay(100);
         };
+    }
+
+    if(FOC_SetEncoderPointer(&hfoc, &htim3.Instance->CNT) != FOC_OK){
+        Error_Handler();
+    }
+
+    if(FOC_SetPWMCCRPointers(&hfoc, &htim1.Instance->CCR3, &htim1.Instance->CCR2, &htim1.Instance->CCR1, PWM_CLOCK_DIVIDER) != FOC_OK){
+        Error_Handler();
     }
 
 
@@ -120,14 +117,12 @@ void FOC_Setup(){
     PID_Init(&hfoc.pid_current_q, (1.0f/CURRENT_LOOP_FREQUENCY), 0.01f, &hfoc.flash_data.limits.max_dq_voltage, &hfoc.flash_data.controller.PID_gains_q, 0);
 
     PID_Init(&hfoc.pid_speed, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_speed, 0);
-    PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_position, 1);
+    PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_position, 0);
 
 
     /* USB Debug */
     FOC_USB_Setup();
     
-    /* Generate the NTC lookup table */
-    GenerateNtcLut(); 
 
     uint32_t rand32 = 0;
     if (HAL_RNG_GenerateRandomNumber(&hrng, &rand32) != HAL_OK)    {
@@ -142,8 +137,10 @@ void FOC_Setup(){
     FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
     DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
 
-    USB_printf("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
+    Debug_SendTextResponse("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
+    HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, GPIO_PIN_SET);
 
+    FOC_HFI_Init(&hfoc);
 }
 
 
@@ -162,8 +159,7 @@ void FOC_Loop(){
         float ibus = CalculateBusCurrent(hfoc.adc_values.phase_current, hfoc.phase_voltage, hfoc.adc_values.vbus);
         hfoc.ibus = 0.99f * hfoc.ibus + 0.01f * ibus;
 
-        FOC_UpdateEncoderAngle(&hfoc);
-        FOC_UpdateEncoderSpeed(&hfoc, CURRENT_LOOP_FREQUENCY);
+        FOC_UpdateEncoder(&hfoc, CURRENT_LOOP_FREQUENCY);
 
         FOC_CheckErrors(&hfoc);
         
@@ -188,7 +184,7 @@ void FOC_Loop(){
     if(hfoc.execution_time.loop_max > 1200){ //max 125us for 8kHz loop
         HAL_GPIO_WritePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin, GPIO_PIN_SET);
         hfoc.execution_time.usb_debug_max = 0;
-        USB_printf("Execution Limit Exceeded: %dus\n", (int)hfoc.execution_time.loop_max);
+        Debug_SendTextResponse("Execution Limit Exceeded: %dus\n! Max: 1200us", (int)hfoc.execution_time.loop_max);
     } else {
         HAL_GPIO_WritePin(DEBUG_LED1_GPIO_Port, DEBUG_LED1_Pin, GPIO_PIN_RESET);
     }

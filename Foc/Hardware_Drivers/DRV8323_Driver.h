@@ -136,6 +136,7 @@ typedef struct {
 	uint8_t pins_set;
 	uint8_t driver_enabled;
 	uint8_t setup_complete;
+	uint8_t high_impedance;
 
 }DRV8323_HandleTypeDef;
 

@@ -137,6 +137,7 @@ DRV8323_StatusTypeDef DRV8323_SetHighImpedance(DRV8323_HandleTypeDef *hdrv8323){
 	if(hdrv8323->pins_set == 0) return DRV8323_ERROR; //if the pins are not set, return error
 
 	HAL_GPIO_WritePin(hdrv8323->inl_port, hdrv8323->inl_pin, 0);
+	hdrv8323->high_impedance = 1;
 	return DRV8323_OK;
 }
 
@@ -149,6 +150,7 @@ DRV8323_StatusTypeDef DRV8323_ExitHighImpedance(DRV8323_HandleTypeDef *hdrv8323)
 	if(hdrv8323->pins_set == 0) return DRV8323_ERROR; //if the pins are not set, return error
 
 	HAL_GPIO_WritePin(hdrv8323->inl_port, hdrv8323->inl_pin, 1);
+	hdrv8323->high_impedance = 0;
 	return DRV8323_OK;
 }
 

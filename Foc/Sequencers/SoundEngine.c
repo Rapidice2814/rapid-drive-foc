@@ -1,6 +1,9 @@
 #include "SoundEngine.h"
-#include <math.h>
+#include "FOC_Utils.h"
 #include "Cordic.h"
+#include "Utils.h"
+
+#include <math.h>
 
 static void play_frequency(FOC_HandleTypeDef *hfoc, float frequency, float magnitude, float loop_frequency);
 

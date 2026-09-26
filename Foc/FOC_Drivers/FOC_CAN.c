@@ -1,4 +1,5 @@
 #include "FOC_CAN.h"
+#include "FOC_Handle.h"
 #include <math.h>
 #include <string.h>
 
@@ -44,6 +45,18 @@ void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id){
 
     hfoc->flash_data.node.node_id = node_id;
     
+}
+
+uint8_t FOC_GetNodeId(FOC_HandleTypeDef *hfoc){
+    return hfoc->flash_data.node.node_id;
+}
+
+void FOC_SetHeartbeatRate(FOC_HandleTypeDef *hfoc, uint16_t rate_ms){
+    hfoc->flash_data.node.heartbeat_msg_rate_ms = rate_ms;
+}
+
+uint16_t FOC_GetHeartbeatRate(FOC_HandleTypeDef *hfoc){
+    return hfoc->flash_data.node.heartbeat_msg_rate_ms;
 }
 
 
@@ -92,7 +105,6 @@ void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CommandTypeDef command){
     
     if (HAL_FDCAN_AddMessageToTxFifoQ(hfoc->phfdcan, &TxHeader, TxData) != HAL_OK) {
         // Error_Handler();
-        hfoc->state = FOC_STATE_ERROR;
     }
 }
 
@@ -161,14 +173,11 @@ void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
     }
 }
 
-
-static uint32_t last_heartbeat_time_ms = 0;
-
 void FOC_TransmitCyclicCANMessage(FOC_HandleTypeDef *hfoc){
     if(hfoc->flash_data.node.node_id == 0) return;
 
-    if ((hfoc->flash_data.node.heartbeat_msg_rate_ms != 0) && (HAL_GetTick() - last_heartbeat_time_ms >= hfoc->flash_data.node.heartbeat_msg_rate_ms)) {
-        last_heartbeat_time_ms = HAL_GetTick();
+    if ((hfoc->flash_data.node.heartbeat_msg_rate_ms != 0) && (HAL_GetTick() - hfoc->can_last_heartbeat_ms >= hfoc->flash_data.node.heartbeat_msg_rate_ms)) {
+        hfoc->can_last_heartbeat_ms = HAL_GetTick();
         FOC_TransmitCANMessage(hfoc, CMD_HEARTBEAT);
     }
 }

@@ -28,11 +28,36 @@
             "problemMatcher": []
         },
         {
-            "label": "Build + Flash",
+            "label": "Build + Flash (SWD)",
             "dependsOrder": "sequence",
             "dependsOn": [
                 "CMake: clean rebuild",
                 "CubeProg: Flash project (SWD)"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "type": "shell",
+            "label": "CubeProg: Flash project (USB DFU)",
+            "command": "STM32_Programmer_CLI",
+            "args": [
+                "--connect",
+                "port=usb1",
+                "--download",
+                "${command:cmake.launchTargetPath}",
+                "--start"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build + Flash (USB DFU)",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "CMake: clean rebuild",
+                "CubeProg: Flash project (USB DFU)"
             ],
             "problemMatcher": []
         },

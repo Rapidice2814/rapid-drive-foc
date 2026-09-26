@@ -6,11 +6,13 @@ static uint32_t ws2812b_channel;
 #define WS2812B_PWM_LENGTH ((WS2812B_NUMBER_OF_LEDS * 24) + 50)
 static uint16_t ws2812b_pwm_data[WS2812B_PWM_LENGTH] = {0};
 static volatile uint8_t ws2812b_pulse_busy = 0;
+static volatile uint8_t ws2812b_initialized = 0;
 
 
 void WS2812b_Setup(TIM_HandleTypeDef *htim, uint32_t channel) {
     ws2812b_timer_ptr = htim;
     ws2812b_channel = channel;
+    ws2812b_initialized = 1;
 } 
 
 void WS2812b_SetColor(uint8_t led, uint8_t r, uint8_t g, uint8_t b) {
@@ -34,11 +36,22 @@ void WS2812b_SetColor(uint8_t led, uint8_t r, uint8_t g, uint8_t b) {
         
 }
 
+void WS2812b_SetAllColor(uint8_t r, uint8_t g, uint8_t b) {
+    for (int led = 0; led < WS2812B_NUMBER_OF_LEDS; led++) {
+        WS2812b_SetColor(led, r, g, b);
+    }
+}
+
 void WS2812b_Send(){
+    if(!ws2812b_initialized){
+        return;
+    }
+
     if(ws2812b_pulse_busy){
         return;
     }
     ws2812b_pulse_busy = 1;
+    
     HAL_TIM_PWM_Start_DMA(ws2812b_timer_ptr, ws2812b_channel, (uint32_t *)ws2812b_pwm_data, WS2812B_PWM_LENGTH);
 }
 

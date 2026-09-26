@@ -1,7 +1,9 @@
+#include <math.h>
 
 #include "FOC_Loops.h"
-#include <math.h>
+#include "FOC_Handle.h"
 #include "Cordic.h"
+#include "FOC_USB_Debug.h"
 
 /**
   * @brief Spins the motor and checks the encoder values. Used to check the encoder and the motor direction, and the accuracy of the encoder. 
@@ -102,20 +104,20 @@ FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitu
 
                 FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
 
-                USB_printf("Alignment test:\nAbs Diff CW:%d, CCW:%d\nDirection:%d\n", (int)(abs_diff_cw * 1000), (int)(abs_diff_ccw * 1000), hfoc->flash_data.motor.direction);
+                Debug_SendTextResponse("Alignment test:\nAbs Diff CW:%d, CCW:%d\nDirection:%d\n", (int)(abs_diff_cw * 1000), (int)(abs_diff_ccw * 1000), hfoc->flash_data.motor.direction);
                 if(abs_diff_cw < 0.3f && abs_diff_ccw < 0.3f){
-                    USB_printf("Alignment test passed!\n");
+                    Debug_SendTextResponse("Alignment test passed!\n");
                     step++;
                     next_step_time = HAL_GetTick() + 100;
                 } else{
-                    USB_printf("Alignment test failed!\n");
+                    Debug_SendTextResponse("Alignment test failed!\n");
                     if(attempt < 3){
                         attempt++;
                         step = 0;
                         next_step_time = HAL_GetTick() + 1;
                     } else{
+                        Debug_SendTextResponse("Alignment test failed after %d attempts!\n", attempt);
                         attempt = 0;
-                        USB_printf("Alignment test failed after %d attempts!\n", attempt);
                         return FOC_LOOP_ERROR;
                     }
                 }
