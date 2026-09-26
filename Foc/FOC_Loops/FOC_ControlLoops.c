@@ -3,6 +3,7 @@
 #include <math.h>
 #include "Utils.h"
 #include "FOC_Config.h"
+#include "FOC_USB_Debug.h"
 
 #include "FOC_HFI.h"
 
@@ -71,11 +72,39 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
 
 void Speed_Loop(FOC_HandleTypeDef *hfoc){
     
-    if(hfoc->flash_data.controller.speed_PID_enabled == 1){
+    if(hfoc->flash_data.controller.control_mode == CONTROL_MODE_SPEED){
         hfoc->dq_current_setpoint.q = PID_Update(&hfoc->pid_speed, hfoc->speed_setpoint, hfoc->encoder_speed_mechanical);
     }
 
-    if(hfoc->flash_data.controller.position_PID_enabled == 1){
+    if(hfoc->flash_data.controller.control_mode == CONTROL_MODE_POSITION){
         hfoc->dq_current_setpoint.q = PID_Update(&hfoc->pid_position, hfoc->angle_setpoint, hfoc->encoder_angle_mechanical_unwrapped);
     }
+}
+
+uint8_t FOC_SetControlMode(FOC_HandleTypeDef *hfoc, ControlModeTypeDef mode){
+    switch(mode){
+        case CONTROL_MODE_OPENLOOP:
+            hfoc->flash_data.controller.control_mode = CONTROL_MODE_OPENLOOP;
+            hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
+            Debug_SendTextResponse("Disabled both speed and position PID\n");
+            break;
+        case CONTROL_MODE_SPEED:
+            hfoc->flash_data.controller.control_mode = CONTROL_MODE_SPEED;
+            hfoc->speed_setpoint = 0.0f;
+            Debug_SendTextResponse("Enabled speed PID, disabled position PID\n");
+            break;
+        case CONTROL_MODE_POSITION:
+            hfoc->flash_data.controller.control_mode = CONTROL_MODE_POSITION;
+            hfoc->angle_setpoint = 0.0f;
+            Debug_SendTextResponse("Enabled position PID, disabled speed PID\n");
+            break;
+        default:
+            Debug_SendTextResponse("Invalid control mode: %d\n", mode);
+            return 1; // invalid mode
+    }
+    return 0;
+}
+
+ControlModeTypeDef FOC_GetControlMode(FOC_HandleTypeDef *hfoc){
+    return hfoc->flash_data.controller.control_mode;
 }

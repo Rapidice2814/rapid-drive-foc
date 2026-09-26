@@ -31,8 +31,7 @@ FOC_LoopStatusTypeDef FOC_AntiCoggingMeasurement(FOC_HandleTypeDef *hfoc){
         switch(step){
             case 0:
                 start_time = HAL_GetTick();
-                hfoc->flash_data.controller.position_PID_enabled = 1;
-                hfoc->flash_data.controller.speed_PID_enabled = 0;
+                FOC_SetControlMode(hfoc, CONTROL_MODE_POSITION);
 
                 old_pid_gains = hfoc->flash_data.controller.PID_gains_position; //change the PID gains temporarily
                 hfoc->flash_data.controller.PID_gains_position.Kp = 10.0f;
@@ -122,7 +121,7 @@ FOC_LoopStatusTypeDef FOC_AntiCoggingMeasurement(FOC_HandleTypeDef *hfoc){
                 if(HAL_GetTick() >= next_step_time){
                     step = 0;
                     hfoc->flash_data.controller.PID_gains_position = old_pid_gains; //restore the PID gains
-                    hfoc->flash_data.controller.position_PID_enabled = 0;
+                    FOC_SetControlMode(hfoc, CONTROL_MODE_OPENLOOP);
                     return FOC_LOOP_COMPLETED;
                 }
                 break;

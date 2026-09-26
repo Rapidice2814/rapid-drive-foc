@@ -16,13 +16,16 @@ FOC_StateTransitionTypeDef FOC_StateRun_Transition(FOC_HandleTypeDef* hfoc){
         Debug_SendTextResponse("Cannot enter RUN state because encoder is not aligned!\n");
         return FOC_STATETRANSITION_DENIED; // can only enter RUN state if encoder is aligned
     }
+    if(hfoc->active_errors != 0){
+        Debug_SendTextResponse("Cannot enter RUN state because there are active errors! Active errors: 0x%08lX\n", hfoc->active_errors);
+        return FOC_STATETRANSITION_DENIED; // can only enter RUN state if there are no active errors
+    }
+    if(hfoc->latched_errors != 0){
+        Debug_SendTextResponse("Cannot enter RUN state because there are latched errors! Latched errors: 0x%08lX\n", hfoc->latched_errors);
+        return FOC_STATETRANSITION_DENIED; // can only enter RUN state if there are no latched errors
+    }
 
-    hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
-    hfoc->speed_setpoint = 0.0f;
-    hfoc->angle_setpoint = 0.0f;
-
-    hfoc->flash_data.controller.speed_PID_enabled = 0;
-    hfoc->flash_data.controller.position_PID_enabled = 0;
+    FOC_SetControlMode(hfoc, CONTROL_MODE_OPENLOOP);
 
     PID_Reset(&hfoc->pid_current_d);
     PID_Reset(&hfoc->pid_current_q);

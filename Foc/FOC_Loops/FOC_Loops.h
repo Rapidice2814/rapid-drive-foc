@@ -9,6 +9,12 @@ typedef enum{
     FOC_LOOP_ERROR
 }FOC_LoopStatusTypeDef;
 
+typedef enum {
+    CONTROL_MODE_OPENLOOP = 0,
+    CONTROL_MODE_POSITION,
+    CONTROL_MODE_SPEED
+} ControlModeTypeDef;
+
 typedef struct FOC_Handle FOC_HandleTypeDef;
 
 FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc);
@@ -21,5 +27,8 @@ FOC_LoopStatusTypeDef FOC_AntiCoggingMeasurement(FOC_HandleTypeDef *hfoc);
 
 void Current_Loop(FOC_HandleTypeDef *hfoc);
 void Speed_Loop(FOC_HandleTypeDef *hfoc);
+
+uint8_t FOC_SetControlMode(FOC_HandleTypeDef *hfoc, ControlModeTypeDef mode);
+ControlModeTypeDef FOC_GetControlMode(FOC_HandleTypeDef *hfoc);
 
 #endif // FOC_LOOPS_H

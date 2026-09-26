@@ -5,6 +5,7 @@
 #include "Utils.h"
 #include "PID.h"
 #include "FOC_Config.h"
+#include "FOC_Loops.h"
 
 typedef enum {
     FLASH_OK = 0,
@@ -34,8 +35,7 @@ struct FLASH_ControllerParameters {
     PIDValuesTypeDef PID_gains_speed; // speed PID gains
     PIDValuesTypeDef PID_gains_position; // position PID gains
 
-    uint8_t speed_PID_enabled; //boolean
-    uint8_t position_PID_enabled; //boolean
+    ControlModeTypeDef control_mode;
 
     uint8_t anticogging_FF_enabled; //boolean
     uint8_t anticogging_data_valid; //boolean

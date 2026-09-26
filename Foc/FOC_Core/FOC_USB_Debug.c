@@ -117,6 +117,15 @@ MSG_GET_CAN_HEARTBEAT: PC -> FOC
 MSG_CAN_HEARTBEAT_REPLY: FOC -> PC
     Payload: Heartbeat Rate (2 bytes)
     Reply to a MSG_GET_CAN_HEARTBEAT request, containing the current heartbeat rate for CAN messages from the FOC firmware.
+MSG_SET_CONTROL_MODE: PC -> FOC
+    Payload: Control Mode (1 byte)
+    Sets the control mode of the FOC driver (e.g., OPENLOOP, SPEED, POSITION).
+MSG_GET_CONTROL_MODE: PC -> FOC
+    Payload: None
+    Requests the current control mode of the FOC driver.
+MSG_CONTROL_MODE_REPLY: FOC -> PC
+    Payload: Control Mode (1 byte)
+    Reply to a MSG_GET_CONTROL_MODE request, containing the current control mode of the FOC driver.
 
 
 MSG_UNKNOWN_TYPE: FOC -> PC
@@ -169,6 +178,9 @@ typedef enum {
     MSG_SET_CAN_HEARTBEAT = 0x1F, // PC -> FOC
     MSG_GET_CAN_HEARTBEAT = 0x20, // PC -> FOC
     MSG_CAN_HEARTBEAT_REPLY = 0x21, // FOC -> PC
+    MSG_SET_CONTROL_MODE = 0x22, // PC -> FOC
+    MSG_GET_CONTROL_MODE = 0x23, // PC -> FOC
+    MSG_CONTROL_MODE_REPLY = 0x24, // FOC -> PC
 
     MSG_UNKNOWN_TYPE = 0xFA, //FOC -> PC
     MSG_INVALID_PAYLOAD = 0xFB, //FOC -> PC
@@ -600,8 +612,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
             break;
         }
-        if(FOC_SetState(&hfoc, FOC_STATE_BOOTLOADER, FOC_STATE_NONE
-        ) != FOC_STATETRANSITION_OK){
+        if(FOC_SetState(&hfoc, FOC_STATE_BOOTLOADER, FOC_STATE_NONE) != FOC_STATETRANSITION_OK){
             Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
             break;
         }
@@ -672,6 +683,29 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         write_u16_le(&response_payload[0], current_heartbeat_rate);
         Debug_SendBinaryResponse(MSG_CAN_HEARTBEAT_REPLY, response_payload, 2);
         break;
+    
+    case MSG_SET_CONTROL_MODE:
+        if(payload_length != 1){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        ControlModeTypeDef new_mode = (ControlModeTypeDef)payload[0];
+        if(FOC_SetControlMode(&hfoc, new_mode) != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+    
+    case MSG_GET_CONTROL_MODE:
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        response_payload[0] = (uint8_t)FOC_GetControlMode(&hfoc);
+        Debug_SendBinaryResponse(MSG_CONTROL_MODE_REPLY, response_payload, 1);
+        break;
+    
 
     default:
         Debug_SendBinaryResponse(MSG_UNKNOWN_TYPE, NULL, 0);
@@ -712,20 +746,11 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
         }
         if(packet[i] == 'M'){
             if(packet[i+1] == 's'){
-                hfoc.flash_data.controller.speed_PID_enabled = 1;
-                hfoc.flash_data.controller.position_PID_enabled = 0;
-                hfoc.speed_setpoint = 0.0f;
-                Debug_SendTextResponse("Enabled speed PID, disabled position PID\n");
+                FOC_SetControlMode(&hfoc, CONTROL_MODE_SPEED);
             } else if(packet[i+1] == 'p'){
-                hfoc.flash_data.controller.position_PID_enabled = 1;
-                hfoc.flash_data.controller.speed_PID_enabled = 0;
-                hfoc.angle_setpoint = 0.0f;
-                Debug_SendTextResponse("Enabled position PID, disabled speed PID\n");
+                FOC_SetControlMode(&hfoc, CONTROL_MODE_POSITION);
             } else if(packet[i+1] == 'o'){
-                hfoc.flash_data.controller.speed_PID_enabled = 0;
-                hfoc.flash_data.controller.position_PID_enabled = 0;
-                hfoc.dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};
-                Debug_SendTextResponse("Disabled both speed and position PID\n");
+                FOC_SetControlMode(&hfoc, CONTROL_MODE_OPENLOOP);
             }
         }
         if(packet[i] == 'K'){
