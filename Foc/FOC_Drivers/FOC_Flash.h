@@ -97,6 +97,7 @@ typedef struct {
 /* Flash API functions */
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata);
 FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata);
+FLASH_StatusTypeDef FOC_FLASH_ClearData();
 FLASH_StatusTypeDef FOC_FLASH_CompareData(const FLASH_DataTypeDef *pdata);
 FLASH_StatusTypeDef FOC_FLASH_SetDefault(FLASH_DataTypeDef *pdata);
 

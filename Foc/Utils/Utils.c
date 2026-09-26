@@ -14,6 +14,15 @@ void write_u16_le(uint8_t *dst, uint16_t v){
 }
 
 /** 
+ * @brief Reads a 16-bit value in little-endian format from a byte array
+ * @param src The source byte array
+ * @return The 16-bit value
+ */
+uint16_t read_u16_le(const uint8_t *src){
+    return ((uint16_t)src[0]) | ((uint16_t)src[1] << 8);
+}
+
+/** 
  * @brief Writes a 32-bit value in little-endian format to a byte array
  * @param dst The destination byte array
  * @param v The 32-bit value to write

@@ -8,6 +8,7 @@
 #include "FOC_USB.h"
 #include "Timing.h"
 #include "FOC_Config.h"
+#include "FOC_CAN.h"
 
 uint32_t usb_debug_times[5] = {0};
 
@@ -29,11 +30,14 @@ MSG_LOG_DATA: FOC -> PC
     Payload: Timestamp (4 bytes) | Sample Count (2 bytes) | Signal Count (2 bytes) | Data Buffer (Sample Count * Signal Count * 4 bytes)
     The data buffer contains the captured signal values in the order defined by the signal mask. Each value is a 4-byte float or integer depending on the signal type.
 MSG_SET_MASK: PC -> FOC
-    Payload: Signal Mask (4 bytes)
+    Payload: Signal Mask (SIGNAL_MASK_BYTES bytes)
     The signal mask is a 32-bit value where each bit corresponds to a specific signal. 
     FOC_USB_DEBUG_SIGNAL_LIST defines the mapping (and type) of bits to signals in the FOC_HandleTypeDef structure.
     At most MAX_LOGDATA_SIGNAL_COUNT bits can be set in the mask, which determines how many signals will be captured and included in the log data packets.
     Mask can only be updated when logging is stopped.
+MSG_GET_MASK: PC -> FOC
+    Payload: None
+    Requests the current signal mask from the FOC firmware.
 MSG_START_LOG: PC -> FOC
     Payload: None
     Enables the logging of data based on the current signal mask. The FOC_USB_Debug_CaptureSamples function will start capturing samples and filling the log data payload.
@@ -80,6 +84,41 @@ MSG_GET_STATE: PC -> FOC
 MSG_STATE_REPLY: FOC -> PC
     Payload: Current State (1 byte)
     Reply to a MSG_GET_STATE request, containing the current state of the FOC driver.
+MSG_SET_NODE_ID: PC -> FOC
+    Payload: Node ID (1 byte)
+    Sets the node ID of the FOC driver for CAN communication. Only values 1-15 are valid, with 0 reserved for unassigned.
+MSG_GET_NODE_ID: PC -> FOC
+    Payload: None
+    Requests the current node ID of the FOC driver.
+MSG_NODE_ID_REPLY: FOC -> PC
+    Payload: Node ID (1 byte)
+    Reply to a MSG_GET_NODE_ID request, containing the current node ID of the FOC driver.
+MSG_GET_ACTIVE_ERRORS: PC -> FOC
+    Payload: None
+    Requests the current active errors of the FOC driver.
+MSG_ACTIVE_ERRORS_REPLY: FOC -> PC
+    Payload: Active Errors (4 bytes)
+    Reply to a MSG_GET_ACTIVE_ERRORS request, containing the current active errors of the FOC driver.
+MSG_GET_LATCHED_ERRORS: PC -> FOC
+    Payload: None
+    Requests the current latched errors of the FOC driver.
+MSG_LATCHED_ERRORS_REPLY: FOC -> PC
+    Payload: Latched Errors (4 bytes)
+    Reply to a MSG_GET_LATCHED_ERRORS request, containing the current latched errors of the FOC driver.
+MSG_CLEAR_LATCHED_ERRORS: PC -> FOC
+    Payload: None
+    Instructs the FOC firmware to clear the latched errors. Can only be executed, when FOC is in IDLE mode.
+MSG_SET_CAN_HEARTBEAT: PC -> FOC
+    Payload: Heartbeat Rate (2 bytes)
+    Sets the rate at which the FOC firmware sends heartbeat messages over CAN. A value of 0 disables the heartbeat messages.
+MSG_GET_CAN_HEARTBEAT: PC -> FOC
+    Payload: None
+    Requests the current heartbeat rate for CAN messages from the FOC firmware.
+MSG_CAN_HEARTBEAT_REPLY: FOC -> PC
+    Payload: Heartbeat Rate (2 bytes)
+    Reply to a MSG_GET_CAN_HEARTBEAT request, containing the current heartbeat rate for CAN messages from the FOC firmware.
+
+
 MSG_UNKNOWN_TYPE: FOC -> PC
     Payload: None
     Sent by the FOC firmware when it receives a message with an unrecognized Msg Type. Can be used for debugging and error handling on the PC side.
@@ -98,25 +137,38 @@ MSG_ERROR: FOC -> PC
 typedef enum {
     MSG_GET_VERSION = 0x00, //PC -> FOC
     MSG_VERSION_REPLY = 0x01, //FOC -> PC
-    MSG_LOG_DATA = 0x02, //FOC -> PC
-    MSG_SET_MASK = 0x03, //PC -> FOC
-    MSG_START_LOG = 0x04, //PC -> FOC
-    MSG_STOP_LOG = 0x05, //PC -> FOC
-    MSG_SET_PID = 0x06, //PC -> FOC
-    MSG_GET_PID = 0x07, //PC -> FOC
-    MSG_PID_REPLY = 0x08, //FOC -> PC
-    MSG_SET_VAR = 0x09, //PC -> FOC
-    MSG_GET_VAR = 0x0A, //PC -> FOC
-    MSG_VAR_REPLY = 0x0B, //FOC -> PC
-    MSG_FLASH_SAVE = 0x0C, //PC -> FOC
-    MSG_FLASH_LOAD = 0x0D, //PC -> FOC
-    MSG_SET_STATE = 0x0E, //PC -> FOC
-    MSG_GET_STATE = 0x0F, //PC -> FOC
-    MSG_STATE_REPLY = 0x10, //FOC -> PC
-    MSG_TEXT_COMMAND = 0x11, // PC -> FOC
-    MSG_TEXT_REPLY = 0x12, // FOC -> PC
-    MSG_ENTER_BOOTLOADER = 0x13, // PC -> FOC
-    MSG_FLASH_CLEAR = 0x14, // PC -> FOC
+    MSG_ENTER_BOOTLOADER = 0x02, // PC -> FOC
+    MSG_LOG_DATA = 0x03, //FOC -> PC
+    MSG_SET_MASK = 0x04, //PC -> FOC
+    MSG_GET_MASK = 0x05, // PC -> FOC
+    MSG_MASK_REPLY = 0x06, // FOC -> PC
+    MSG_START_LOG = 0x07, //PC -> FOC
+    MSG_STOP_LOG = 0x08, //PC -> FOC
+    MSG_SET_PID = 0x09, //PC -> FOC
+    MSG_GET_PID = 0x0A, //PC -> FOC
+    MSG_PID_REPLY = 0x0B, //FOC -> PC
+    MSG_SET_VAR = 0x0C, //PC -> FOC
+    MSG_GET_VAR = 0x0D, //PC -> FOC
+    MSG_VAR_REPLY = 0x0E, //FOC -> PC
+    MSG_FLASH_SAVE = 0x0F, //PC -> FOC
+    MSG_FLASH_LOAD = 0x10, //PC -> FOC
+    MSG_FLASH_CLEAR = 0x11, // PC -> FOC
+    MSG_SET_STATE = 0x12, //PC -> FOC
+    MSG_GET_STATE = 0x13, //PC -> FOC
+    MSG_STATE_REPLY = 0x14, //FOC -> PC
+    MSG_TEXT_COMMAND = 0x15, // PC -> FOC
+    MSG_TEXT_REPLY = 0x16, // FOC -> PC
+    MSG_SET_NODE_ID = 0x17, // PC -> FOC
+    MSG_GET_NODE_ID = 0x18, // PC -> FOC
+    MSG_NODE_ID_REPLY = 0x19, // FOC -> PC
+    MSG_GET_ACTIVE_ERRORS = 0x1A, // PC -> FOC
+    MSG_ACTIVE_ERRORS_REPLY = 0x1B, // FOC -> PC
+    MSG_GET_LATCHED_ERRORS = 0x1C, // PC -> FOC
+    MSG_LATCHED_ERRORS_REPLY = 0x1D, // FOC -> PC
+    MSG_CLEAR_LATCHED_ERRORS = 0x1E, // PC -> FOC
+    MSG_SET_CAN_HEARTBEAT = 0x1F, // PC -> FOC
+    MSG_GET_CAN_HEARTBEAT = 0x20, // PC -> FOC
+    MSG_CAN_HEARTBEAT_REPLY = 0x21, // FOC -> PC
 
     MSG_UNKNOWN_TYPE = 0xFA, //FOC -> PC
     MSG_INVALID_PAYLOAD = 0xFB, //FOC -> PC
@@ -216,6 +268,7 @@ static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payloa
 static void Debug_ExecuteTextCommand(const char *packet, uint16_t length);
 
 static Debug_StatusTypeDef Debug_UpdateMask(const uint8_t *new_mask);
+static uint8_t* Debug_GetMask();
 static Debug_StatusTypeDef Debug_ClearMask();
 static void Debug_StartLogging();
 static void Debug_StopLogging();
@@ -326,6 +379,10 @@ static Debug_StatusTypeDef Debug_UpdateMask(const uint8_t *new_mask){
     return DEBUG_OK;
 }
 
+static uint8_t* Debug_GetMask(){
+    return hlogdata.signal_mask;
+}
+
 static Debug_StatusTypeDef Debug_ClearMask(){
     const uint8_t zero_mask[SIGNAL_MASK_BYTES] = {0};
     return Debug_UpdateMask(zero_mask);
@@ -362,7 +419,16 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
-    
+
+    case MSG_GET_MASK:
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        uint8_t* current_mask = Debug_GetMask();
+        Debug_SendBinaryResponse(MSG_MASK_REPLY, current_mask, SIGNAL_MASK_BYTES);
+        break;
+
     case MSG_START_LOG:
         Debug_StartLogging();
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
@@ -394,6 +460,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
+
     case MSG_GET_PID:
         if(payload_length != 1){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
@@ -416,6 +483,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         memcpy(&response_payload[1], &current_gains, sizeof(current_gains));
         Debug_SendBinaryResponse(MSG_PID_REPLY, response_payload, 13);
         break;
+
     case MSG_SET_VAR:
         if(payload_length != 5){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
@@ -440,6 +508,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
+
     case MSG_GET_VAR:
         if(payload_length != 1){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
@@ -466,6 +535,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
         Debug_SendBinaryResponse(MSG_VAR_REPLY, response_payload, 5);
         break;
+
     case MSG_FLASH_SAVE:
         if(payload_length != 0){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
@@ -477,6 +547,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
+
     case MSG_FLASH_LOAD:
         if(payload_length != 0){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
@@ -488,6 +559,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
+
     case MSG_FLASH_CLEAR:
         if(payload_length != 0){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
@@ -499,6 +571,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
+
     case MSG_SET_STATE:
         if(payload_length != 1){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
@@ -510,6 +583,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
+
     case MSG_GET_STATE:
         if(payload_length != 0){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
@@ -533,6 +607,72 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
+    
+    case MSG_SET_NODE_ID:
+        if(payload_length != 1){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        FOC_SetNodeId(&hfoc, payload[0]);
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+
+    case MSG_GET_NODE_ID:
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        response_payload[0] = FOC_GetNodeId(&hfoc);
+        Debug_SendBinaryResponse(MSG_NODE_ID_REPLY, response_payload, 1);
+        break;
+
+    case MSG_GET_ACTIVE_ERRORS:
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        write_u32_le(&response_payload[0], hfoc.active_errors);
+        Debug_SendBinaryResponse(MSG_ACTIVE_ERRORS_REPLY, response_payload, 4);
+        break;
+    
+    case MSG_GET_LATCHED_ERRORS:
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        write_u32_le(&response_payload[0], hfoc.latched_errors);
+        Debug_SendBinaryResponse(MSG_LATCHED_ERRORS_REPLY, response_payload, 4);
+        break;
+
+    case MSG_CLEAR_LATCHED_ERRORS:
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        hfoc.latched_errors = 0;
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+
+    case MSG_SET_CAN_HEARTBEAT:
+        if(payload_length != 2){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        uint16_t heartbeat_rate = read_u16_le(&payload[0]);
+        FOC_SetHeartbeatRate(&hfoc, heartbeat_rate);
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+
+    case MSG_GET_CAN_HEARTBEAT:
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        uint16_t current_heartbeat_rate = FOC_GetHeartbeatRate(&hfoc);
+        write_u16_le(&response_payload[0], current_heartbeat_rate);
+        Debug_SendBinaryResponse(MSG_CAN_HEARTBEAT_REPLY, response_payload, 2);
+        break;
+
     default:
         Debug_SendBinaryResponse(MSG_UNKNOWN_TYPE, NULL, 0);
         break;

@@ -33,6 +33,9 @@ typedef enum {
 typedef struct FOC_Handle FOC_HandleTypeDef;
 
 void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id);
+uint8_t FOC_GetNodeId(FOC_HandleTypeDef *hfoc);
+void FOC_SetHeartbeatRate(FOC_HandleTypeDef *hfoc, uint16_t rate_ms);
+uint16_t FOC_GetHeartbeatRate(FOC_HandleTypeDef *hfoc);
 void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc);
 void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CommandTypeDef command);
 void FOC_TransmitCyclicCANMessage(FOC_HandleTypeDef *hfoc);

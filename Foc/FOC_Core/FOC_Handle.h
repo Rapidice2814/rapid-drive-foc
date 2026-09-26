@@ -26,7 +26,7 @@ typedef struct FOC_Handle {
     uint8_t motor_disable_flag;
 
     /* Error registers */
-    uint32_t current_errors;
+    uint32_t active_errors;
     uint32_t latched_errors;
 
     /* General */
@@ -87,6 +87,7 @@ typedef struct FOC_Handle {
 
     /* CAN */
     FDCAN_HandleTypeDef *phfdcan;
+    uint32_t can_last_heartbeat_ms;
 
     /* Timing */
     uint32_t timestamp; //timestamp increments every FOC loop, used for debugging and logging

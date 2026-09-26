@@ -33,7 +33,6 @@ void FOC_CheckErrors(FOC_HandleTypeDef *hfoc){
     uint32_t active_errors = 0;
 
     if(DRV8323_CheckFault(&hfoc->hdrv8323)) active_errors |= FOC_ERROR_DRIVER_FAULT;
-
     
     if(hfoc->adc_values.motor_temp > hfoc->flash_data.limits.motor_temp_trip_level) active_errors |= FOC_ERROR_MOTOR_OT;
     if(hfoc->adc_values.motor_temp < 0.0f) active_errors |= FOC_ERROR_MOTOR_UT;
@@ -43,6 +42,8 @@ void FOC_CheckErrors(FOC_HandleTypeDef *hfoc){
 
     if(hfoc->adc_values.vbus > hfoc->flash_data.limits.vbus_overvoltage_trip_level) active_errors |= FOC_ERROR_VBUS_OV;
     if(hfoc->adc_values.vbus < hfoc->flash_data.limits.vbus_undervoltage_trip_level) active_errors |= FOC_ERROR_VBUS_UV;
+
+    hfoc->active_errors = active_errors;
 
     if(active_errors){
         FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
