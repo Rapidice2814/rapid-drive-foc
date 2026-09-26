@@ -214,9 +214,16 @@ FOC_StatusTypeDef FOC_UpdateEncoder(FOC_HandleTypeDef *hfoc, float frequency){
 
     hfoc->encoder_angle_mechanical_wrapped = raw_angle_mechanical;
     float delta = raw_angle_mechanical - hfoc->encoder_angle_mechanical_wrapped_prev;
-    normalize_angle_pm_pi(&delta);
 
-    hfoc->encoder_angle_mechanical_unwrapped += delta;
+    if (delta > M_PIF) {
+        hfoc->encoder_full_rotations--;
+        delta -= M_2PIF;
+    } else if (delta < -M_PIF) {
+        hfoc->encoder_full_rotations++;
+        delta += M_2PIF;
+    }
+
+    hfoc->encoder_angle_mechanical_unwrapped = (float)hfoc->encoder_full_rotations * M_2PIF + raw_angle_mechanical;
     hfoc->encoder_angle_mechanical_wrapped_prev = raw_angle_mechanical;
 
     // uint16_t as5047p_angle = 0;

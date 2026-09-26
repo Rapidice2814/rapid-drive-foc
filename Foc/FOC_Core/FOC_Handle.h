@@ -39,13 +39,14 @@ typedef struct FOC_Handle {
     AS5047P_HandleTypeDef has5047p;         //encoder handle
     volatile uint32_t *pencoder_count;      //pointer to the encoder counter
 
-    float encoder_angle_mechanical_wrapped;         //angle in radians
-    float encoder_angle_mechanical_unwrapped;       //angle in radians
-    float encoder_angle_mechanical_wrapped_prev; //previous angle in radians
-    float encoder_speed_mechanical;         //mechanical speed in rad/s
+    float encoder_angle_mechanical_wrapped;         //angle [rad]
+    float encoder_angle_mechanical_unwrapped;       //angle [rad]
+    float encoder_angle_mechanical_wrapped_prev;    //previous angle [rad]
+    int32_t encoder_full_rotations;                 //number of full rotations, used to calculate the unwrapped angle [-]
+    float encoder_speed_mechanical;                 //mechanical speed [rad/s]
     
-    float encoder_angle_electrical;           //angle in radians
-    float encoder_speed_electrical;           //electrical speed in rad/s
+    float encoder_angle_electrical;           //angle [rad]
+    float encoder_speed_electrical;           //electrical speed [rad/s]
 
 
     /* Currents and Voltages*/
