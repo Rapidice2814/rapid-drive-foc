@@ -23,6 +23,8 @@ void write_u16_le(uint8_t *dst, uint16_t v);
 uint16_t read_u16_le(const uint8_t *src);
 void write_u32_le(uint8_t *dst, uint32_t v);
 uint32_t read_u32_le(const uint8_t *src);
+void write_float_le(uint8_t *dst, float v);
+float read_float_le(const uint8_t *src);
 uint8_t countbits_array(const uint8_t *data, uint8_t length);
 
 

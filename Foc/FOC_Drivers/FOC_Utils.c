@@ -242,6 +242,20 @@ FOC_StatusTypeDef FOC_UpdateEncoder(FOC_HandleTypeDef *hfoc, float frequency){
     return FOC_OK;
 }
 
+/**
+  * @brief Gets the current tick value from the FOC structure.
+  * @param Handle to the FOC structure
+  * @retval uint32_t Current tick value
+  * @note The tick value is incremented at the frequency of the CURRENT_LOOP_FREQUENCY
+  */
+uint32_t FOC_GetTick(FOC_HandleTypeDef *hfoc){
+    return hfoc->tick;
+}
+
+void FOC_IncrementTick(FOC_HandleTypeDef *hfoc){
+    hfoc->tick++;
+}
+
 
 
 

@@ -64,7 +64,8 @@ struct FLASH_Limits {
 
 struct FLASH_DriverParameters {
     uint8_t node_id; // ID of the driver, 4-bit, 1-15, with 0 reserved for unassigned
-    uint16_t heartbeat_msg_rate_ms; // [ms], the rate at which the heartbeat message is sent
+    uint16_t heartbeat_msg_rate; // [cycles], how often the FOC driver sends a heartbeat message over CAN. 0 disables the heartbeat messages.
+    uint16_t encoder_msg_rate; // [cycles], how often the FOC driver sends the encoder pos/speed over CAN. 0 disables the encoder messages.
 };
 
 struct FLASH_HFIParameters {
@@ -87,7 +88,7 @@ typedef struct {
     struct FLASH_DriverParameters node; // driver parameters
     struct FLASH_HFIParameters hfi; // HFI parameters
 
-    // uint8_t filler[4]; // filler to make the struct size a multiple of 8 bytes. This is used to avoid issues with flash programming, which requires 8-byte alignment.
+    uint8_t filler[4]; // filler to make the struct size a multiple of 8 bytes. This is used to avoid issues with flash programming, which requires 8-byte alignment.
 
     uint32_t struct_terminator; // Last part of the struct, should be set to FLASH_DATA_STRUCT_TERMINATOR. This is used to detect whether the struct is correctly read from flash.
 } FLASH_DataTypeDef;

@@ -108,10 +108,10 @@ MSG_LATCHED_ERRORS_REPLY: FOC -> PC
 MSG_CLEAR_LATCHED_ERRORS: PC -> FOC
     Payload: None
     Instructs the FOC firmware to clear the latched errors. Can only be executed, when FOC is in IDLE mode.
-MSG_SET_CAN_HEARTBEAT: PC -> FOC
+MSG_SET_CAN_HEARTBEAT_RATE: PC -> FOC
     Payload: Heartbeat Rate (2 bytes)
     Sets the rate at which the FOC firmware sends heartbeat messages over CAN. A value of 0 disables the heartbeat messages.
-MSG_GET_CAN_HEARTBEAT: PC -> FOC
+MSG_GET_CAN_HEARTBEAT_RATE: PC -> FOC
     Payload: None
     Requests the current heartbeat rate for CAN messages from the FOC firmware.
 MSG_CAN_HEARTBEAT_REPLY: FOC -> PC
@@ -175,12 +175,15 @@ typedef enum {
     MSG_GET_LATCHED_ERRORS = 0x1C, // PC -> FOC
     MSG_LATCHED_ERRORS_REPLY = 0x1D, // FOC -> PC
     MSG_CLEAR_LATCHED_ERRORS = 0x1E, // PC -> FOC
-    MSG_SET_CAN_HEARTBEAT = 0x1F, // PC -> FOC
-    MSG_GET_CAN_HEARTBEAT = 0x20, // PC -> FOC
+    MSG_SET_CAN_HEARTBEAT_RATE = 0x1F, // PC -> FOC
+    MSG_GET_CAN_HEARTBEAT_RATE = 0x20, // PC -> FOC
     MSG_CAN_HEARTBEAT_REPLY = 0x21, // FOC -> PC
     MSG_SET_CONTROL_MODE = 0x22, // PC -> FOC
     MSG_GET_CONTROL_MODE = 0x23, // PC -> FOC
     MSG_CONTROL_MODE_REPLY = 0x24, // FOC -> PC
+    MSG_SET_CAN_ENCODER_RATE = 0x25, // PC -> FOC
+    MSG_GET_CAN_ENCODER_RATE = 0x26, // PC -> FOC
+    MSG_CAN_ENCODER_RATE_REPLY = 0x27, // FOC -> PC
 
     MSG_UNKNOWN_TYPE = 0xFA, //FOC -> PC
     MSG_INVALID_PAYLOAD = 0xFB, //FOC -> PC
@@ -193,7 +196,7 @@ typedef enum {
 
 #define SIGNAL_MASK_BYTES 8 // max 8*8 = 64 signals
 #define FOC_USB_DEBUG_SIGNAL_LIST(X)            \
-    X(0, u32,   timestamp)                      \
+    X(0, u32,   tick)                      \
     X(1, f,     adc_values.motor_temp)          \
     X(2, f,     adc_values.mosfet_temp)         \
     X(3, f,     adc_values.vbus)                \
@@ -664,7 +667,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
 
-    case MSG_SET_CAN_HEARTBEAT:
+    case MSG_SET_CAN_HEARTBEAT_RATE:
         if(payload_length != 2){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
             break;
@@ -674,7 +677,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
 
-    case MSG_GET_CAN_HEARTBEAT:
+    case MSG_GET_CAN_HEARTBEAT_RATE:
         if(payload_length != 0){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
             break;
@@ -682,6 +685,26 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         uint16_t current_heartbeat_rate = FOC_GetHeartbeatRate(&hfoc);
         write_u16_le(&response_payload[0], current_heartbeat_rate);
         Debug_SendBinaryResponse(MSG_CAN_HEARTBEAT_REPLY, response_payload, 2);
+        break;
+    
+    case MSG_SET_CAN_ENCODER_RATE:
+        if(payload_length != 2){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        uint16_t encoder_rate = read_u16_le(&payload[0]);
+        FOC_SetEncoderRate(&hfoc, encoder_rate);
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+    
+    case MSG_GET_CAN_ENCODER_RATE:
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        uint16_t current_encoder_rate = FOC_GetEncoderRate(&hfoc);
+        write_u16_le(&response_payload[0], current_encoder_rate);
+        Debug_SendBinaryResponse(MSG_CAN_ENCODER_RATE_REPLY, response_payload, 2);
         break;
     
     case MSG_SET_CONTROL_MODE:

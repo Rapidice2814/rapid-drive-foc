@@ -21,15 +21,18 @@ typedef enum {
     CMD_SET_TORQUE = 0x03,
     CMD_SET_CURRENT = 0x04,
     CMD_SET_SPEED = 0x05,
-    CMD_SET_POSITION = 0x06
+    CMD_SET_POSITION = 0x06,
+    CMD_ENCODER = 0x07,
 } CommandTypeDef;
 
 typedef struct FOC_Handle FOC_HandleTypeDef;
 
 void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id);
 uint8_t FOC_GetNodeId(FOC_HandleTypeDef *hfoc);
-void FOC_SetHeartbeatRate(FOC_HandleTypeDef *hfoc, uint16_t rate_ms);
+void FOC_SetHeartbeatRate(FOC_HandleTypeDef *hfoc, uint16_t rate);
 uint16_t FOC_GetHeartbeatRate(FOC_HandleTypeDef *hfoc);
+void FOC_SetEncoderRate(FOC_HandleTypeDef *hfoc, uint16_t rate);
+uint16_t FOC_GetEncoderRate(FOC_HandleTypeDef *hfoc);
 void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc);
 void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CommandTypeDef command);
 void FOC_TransmitCyclicCANMessage(FOC_HandleTypeDef *hfoc);

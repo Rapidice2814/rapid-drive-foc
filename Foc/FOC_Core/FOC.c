@@ -176,7 +176,7 @@ void FOC_Loop(){
         hfoc.execution_time.loop_max = 0;
         calculate_execution_time(&hfoc.execution_time.usb_debug_max, usb_debug_start_time);
         
-        hfoc.timestamp++;
+        FOC_IncrementTick(&hfoc);
     }
 
     calculate_execution_time(&hfoc.execution_time.loop_max, start_time);

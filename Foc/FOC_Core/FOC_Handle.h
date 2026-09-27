@@ -15,9 +15,6 @@
 
 typedef struct FOC_Handle {
 
-    /* Unique ID */
-    uint32_t uid[3]; //unique ID of the microcontroller, used for identification
-
     /* FOC State */
     FOC_StateTypeDef state; // Current state of the FOC driver
     FOC_StateTypeDef previous_state;
@@ -25,8 +22,6 @@ typedef struct FOC_Handle {
 
     /* Flags */
     uint8_t adc_calibrated;
-
-    /* More flags */
     uint8_t motor_disable_flag;
 
     /* Error registers */
@@ -34,6 +29,8 @@ typedef struct FOC_Handle {
     uint32_t latched_errors;
 
     /* General */
+    uint32_t uid[3]; //unique ID of the microcontroller, used for identification
+    uint32_t tick;
     FLASH_DataTypeDef flash_data; // flash data structure
 
     /* ADC values */
@@ -95,7 +92,6 @@ typedef struct FOC_Handle {
     uint32_t can_last_heartbeat_ms;
 
     /* Timing */
-    uint32_t timestamp; //timestamp increments every FOC loop, used for debugging and logging
     ExecutionTimeTypeDef execution_time;
 
 } FOC_HandleTypeDef;

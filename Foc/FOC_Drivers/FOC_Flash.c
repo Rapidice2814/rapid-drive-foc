@@ -46,12 +46,6 @@ static const FLASH_DataTypeDef flash_data_default_values = {
         .max_dq_voltage = VOLTAGE_LIMIT * M_1_SQRT3F,
         .max_dq_current = MAX_DQ_CURRENT
     },
-
-    .node = {
-        .node_id = 0, // Set a default node ID to unassigned
-        .heartbeat_msg_rate_ms = 100
-    },
-
     .hfi = {
         .hfi_enabled = 0,
         .injection_amplitude = HFI_INJECTION_AMPLITUDE,
