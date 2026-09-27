@@ -15,19 +15,13 @@
 
 
 typedef enum {
-    CMD_ESTOP,
-    CMD_VERSION,
-    CMD_ADDRESS,
-    CMD_STATE,
-    CMD_SET_TORQUE,
-    CMD_SET_SPEED,
-    CMD_SET_POSITION,
-    CMD_LIMITS,
-    CMD_REQUEST,
-    CMD_PING,
-    CMD_HEARTBEAT,
-    CMD_ERROR,
-    CMD_STATUS
+    CMD_ESTOP = 0x00,
+    CMD_VERSION = 0x01,
+    CMD_HEARTBEAT = 0x02,
+    CMD_SET_TORQUE = 0x03,
+    CMD_SET_CURRENT = 0x04,
+    CMD_SET_SPEED = 0x05,
+    CMD_SET_POSITION = 0x06
 } CommandTypeDef;
 
 typedef struct FOC_Handle FOC_HandleTypeDef;

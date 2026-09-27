@@ -48,6 +48,29 @@ uint32_t read_u32_le(const uint8_t *src)
            ((uint32_t)src[3] << 24);
 }
 
+void write_float_le(uint8_t *dst, float v){
+    union {
+        float f;
+        uint32_t u;
+    } conv;
+    conv.f = v;
+    write_u32_le(dst, conv.u);
+}
+
+/** 
+ * @brief Reads a float value in little-endian format from a byte array
+ * @param src The source byte array
+ * @return The float value
+ */
+float read_float_le(const uint8_t *src){
+    union {
+        float f;
+        uint32_t u;
+    } conv;
+    conv.u = read_u32_le(src);
+    return conv.f;
+}
+
 /** 
  * @brief Counts the number of set bits in an array of bytes
  * @param data Pointer to the array of bytes

@@ -50,9 +50,10 @@ volatile uint8_t debug_loop_flag = 0;
 void FOC_Setup(){
 
     FOC_Init(&hfoc); 
-    // HAL_GetUIDw0();
-    // HAL_GetUIDw1();
-    // HAL_GetUIDw2();
+
+    hfoc.uid[0] = HAL_GetUIDw0();
+    hfoc.uid[1] = HAL_GetUIDw1();
+    hfoc.uid[2] = HAL_GetUIDw2();
 
     if(FOC_FLASH_ReadData(&hfoc.flash_data) != FLASH_OK){
         FOC_FLASH_SetDefault(&hfoc.flash_data);
@@ -132,7 +133,7 @@ void FOC_Setup(){
 
     hfoc.phfdcan = &hfdcan1; //set the CAN handle pointer
     FOC_SetNodeId(&hfoc, 1);
-    // FOC_TransmitCANMessage(&hfoc, CMD_HEARTBEAT);
+    FOC_TransmitCANMessage(&hfoc, CMD_HEARTBEAT);
 
     FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
     DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
@@ -148,8 +149,8 @@ void FOC_Loop(){
     uint32_t start_time = get_current_time();
 
 
-    // FOC_TransmitCyclicCANMessage(&hfoc);
-    // FOC_ProcessCANMessage(&hfoc);
+    FOC_TransmitCyclicCANMessage(&hfoc);
+    FOC_ProcessCANMessage(&hfoc);
     
     uint32_t adc_start_time = get_current_time();
 

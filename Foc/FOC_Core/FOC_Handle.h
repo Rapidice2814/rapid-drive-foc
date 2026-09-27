@@ -14,6 +14,10 @@
 #include "FOC_HFI.h"
 
 typedef struct FOC_Handle {
+
+    /* Unique ID */
+    uint32_t uid[3]; //unique ID of the microcontroller, used for identification
+
     /* FOC State */
     FOC_StateTypeDef state; // Current state of the FOC driver
     FOC_StateTypeDef previous_state;
