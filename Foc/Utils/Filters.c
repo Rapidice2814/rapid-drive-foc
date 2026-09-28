@@ -13,8 +13,8 @@
  * @retval None
  */
 void biquad_filter_init(BiquadFilter *filter, BiquadType type, float cutoff_or_center_hz, float sampling_frequency_hz, float q){
-    if (filter == 0 || sampling_frequency_hz <= 0.0f || cutoff_or_center_hz <= 0.0f || cutoff_or_center_hz >= 0.5f * sampling_frequency_hz || q <= 0.0f){
-        if (filter != 0){
+    if(filter == 0 || sampling_frequency_hz <= 0.0f || cutoff_or_center_hz <= 0.0f || cutoff_or_center_hz >= 0.5f * sampling_frequency_hz || q <= 0.0f){
+        if(filter != 0){
             filter->is_initialized = 0U;
         }
         return;
@@ -83,7 +83,7 @@ void biquad_filter_init(BiquadFilter *filter, BiquadType type, float cutoff_or_c
  * @retval None
  */
 void biquad_filter_reset(BiquadFilter *filter, float state){
-    if (filter == 0){
+    if(filter == 0){
         return;
     }
 
@@ -100,7 +100,7 @@ void biquad_filter_reset(BiquadFilter *filter, float state){
  * @return The filtered output sample
  */
 float biquad_filter_update(BiquadFilter *filter, float input){
-    if (filter == 0 || !filter->is_initialized){
+    if(filter == 0 || !filter->is_initialized){
         return input;
     }
 

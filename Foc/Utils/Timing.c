@@ -15,7 +15,7 @@ uint32_t get_current_time(){
 
 void calculate_execution_time(uint32_t *max_time, uint32_t start_time){
     uint32_t execution_time = get_current_time() - start_time;
-    if (execution_time > *max_time) {
+    if(execution_time > *max_time) {
         *max_time = execution_time;
     }
 }

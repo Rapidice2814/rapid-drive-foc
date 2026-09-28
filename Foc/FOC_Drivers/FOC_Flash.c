@@ -87,7 +87,7 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
     EraseInitStruct.NbPages = NUMBER_OF_FLASH_PAGES;
 
     uint32_t PAGEError = 0;
-    if (HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError) != HAL_OK){
+    if(HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError) != HAL_OK){
         return FLASH_ERROR;
     }
 
@@ -122,7 +122,7 @@ FLASH_StatusTypeDef FOC_FLASH_ClearData(){
     EraseInitStruct.NbPages = NUMBER_OF_FLASH_PAGES;
 
     uint32_t PAGEError = 0;
-    if (HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError) != HAL_OK){
+    if(HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError) != HAL_OK){
         return FLASH_ERROR;
     }
 
@@ -214,19 +214,19 @@ FLASH_StatusTypeDef FOC_FLASH_SetSystemMemoryBoot(void)
 
     HAL_FLASHEx_OBGetConfig(&ob);
 
-    if ((ob.USERConfig & boot_mask) == desired_boot_config) { // Check if the current boot configuration is already set to the desired configuration
+    if((ob.USERConfig & boot_mask) == desired_boot_config) { // Check if the current boot configuration is already set to the desired configuration
         return FLASH_OK;
     }
 
-    if (READ_BIT(FLASH->SR, FLASH_SR_BSY) != 0U) {
+    if(READ_BIT(FLASH->SR, FLASH_SR_BSY) != 0U) {
         return FLASH_ERROR;
     }
 
-    if (HAL_FLASH_Unlock() != HAL_OK) {
+    if(HAL_FLASH_Unlock() != HAL_OK) {
         return FLASH_ERROR;
     }
 
-    if (HAL_FLASH_OB_Unlock() != HAL_OK) {
+    if(HAL_FLASH_OB_Unlock() != HAL_OK) {
         HAL_FLASH_Lock();
         return FLASH_ERROR;
     }
@@ -239,13 +239,13 @@ FLASH_StatusTypeDef FOC_FLASH_SetSystemMemoryBoot(void)
     ob.USERConfig &= ~boot_mask;
     ob.USERConfig |= desired_boot_config;
 
-    if (HAL_FLASHEx_OBProgram(&ob) != HAL_OK) {
+    if(HAL_FLASHEx_OBProgram(&ob) != HAL_OK) {
         HAL_FLASH_OB_Lock();
         HAL_FLASH_Lock();
         return FLASH_ERROR;
     }
 
-    if (HAL_FLASH_OB_Launch() != HAL_OK) {
+    if(HAL_FLASH_OB_Launch() != HAL_OK) {
         HAL_FLASH_OB_Lock();
         HAL_FLASH_Lock();
         return FLASH_ERROR;

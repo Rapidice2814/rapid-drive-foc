@@ -42,17 +42,17 @@ float compute_error(float *predArr, float *measArr, int n) {
   * @retval the percentage difference
   */
 float percentDifferenceMaxMin(float* data, int size) {
-    if (size <= 1) return 0.0f;
+    if(size <= 1) return 0.0f;
 
     float min = data[0];
     float max = data[0];
 
     for (int i = 1; i < size; i++) {
-        if (data[i] < min) min = data[i];
-        if (data[i] > max) max = data[i];
+        if(data[i] < min) min = data[i];
+        if(data[i] > max) max = data[i];
     }
 
-    if (max == 0.0f) return 0.0f; // avoid divide by zero
+    if(max == 0.0f) return 0.0f; // avoid divide by zero
 
     float diff = max - min;
     float percentDiff = (diff / max) * 100.0f;

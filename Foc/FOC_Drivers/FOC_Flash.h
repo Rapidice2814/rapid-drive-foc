@@ -6,6 +6,7 @@
 #include "PID.h"
 #include "FOC_Config.h"
 #include "FOC_Loops.h"
+#include "FOC_CAN.h"
 
 typedef enum {
     FLASH_OK = 0,
@@ -64,8 +65,7 @@ struct FLASH_Limits {
 
 struct FLASH_DriverParameters {
     uint8_t node_id; // ID of the driver, 4-bit, 1-15, with 0 reserved for unassigned
-    uint16_t heartbeat_msg_rate; // [cycles], how often the FOC driver sends a heartbeat message over CAN. 0 disables the heartbeat messages.
-    uint16_t encoder_msg_rate; // [cycles], how often the FOC driver sends the encoder pos/speed over CAN. 0 disables the encoder messages.
+    uint32_t can_msg_period_ticks[CAN_CYCLIC_COUNT]; // [ticks], how often the FOC driver sends messages over CAN. 0 disables the message. The order of the messages is defined in FOC_CAN.h
 };
 
 struct FLASH_HFIParameters {

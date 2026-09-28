@@ -118,8 +118,8 @@ void normalize_angle_pm_pi(float *angle){
   * @retval The constrained value
   */
 float constrainf(float value, float min, float max) {
-    if (value < min) return min;
-    if (value > max) return max;
+    if(value < min) return min;
+    if(value > max) return max;
     return value;
 }
 

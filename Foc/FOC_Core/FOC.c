@@ -55,6 +55,10 @@ void FOC_Setup(){
     hfoc.uid[1] = HAL_GetUIDw1();
     hfoc.uid[2] = HAL_GetUIDw2();
 
+    if(HAL_RNG_GenerateRandomNumber(&hrng, &hfoc.random_number) != HAL_OK)    {
+        Error_Handler();
+    }
+
     if(FOC_FLASH_ReadData(&hfoc.flash_data) != FLASH_OK){
         FOC_FLASH_SetDefault(&hfoc.flash_data);
     }
@@ -123,21 +127,13 @@ void FOC_Setup(){
 
     /* USB Debug */
     FOC_USB_Setup();
-    
-
-    uint32_t rand32 = 0;
-    if (HAL_RNG_GenerateRandomNumber(&hrng, &rand32) != HAL_OK)    {
-        Error_Handler();
-    }
-    uint8_t rand8 = (uint8_t)(rand32 & 0xFF);
 
     hfoc.phfdcan = &hfdcan1; //set the CAN handle pointer
-    FOC_SetNodeId(&hfoc, 1);
-    FOC_TransmitCANMessage(&hfoc, CMD_HEARTBEAT);
 
     FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
     DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
 
+    uint8_t rand8 = (uint8_t)(hfoc.random_number & 0xFF);
     Debug_SendTextResponse("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
     HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, GPIO_PIN_SET);
 

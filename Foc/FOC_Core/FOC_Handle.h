@@ -30,6 +30,7 @@ typedef struct FOC_Handle {
 
     /* General */
     uint32_t uid[3]; //unique ID of the microcontroller, used for identification
+    uint32_t random_number; //random number, generated at startup
     uint32_t tick;
     FLASH_DataTypeDef flash_data; // flash data structure
 
@@ -89,7 +90,7 @@ typedef struct FOC_Handle {
 
     /* CAN */
     FDCAN_HandleTypeDef *phfdcan;
-    uint32_t can_last_heartbeat_ms;
+    uint32_t can_msg_last_tick[CAN_CYCLIC_COUNT]; // [ticks], last time a CAN message was sent. Used to determine when to send the next message.
 
     /* Timing */
     ExecutionTimeTypeDef execution_time;
