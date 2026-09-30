@@ -107,13 +107,13 @@ MSG_CLEAR_LATCHED_ERRORS: PC -> FOC
     Payload: None
     Instructs the FOC firmware to clear the latched errors.
 MSG_SET_CAN_CYCLIC_RATE: PC -> FOC
-    Payload: CAN_CyclicTypeDef (1 byte) | Cyclic Rate (4 bytes)
+    Payload: CAN_CyclicIndexTypeDef (1 byte) | Cyclic Rate (4 bytes)
     Sets the rate at which the FOC firmware sends cyclic messages over CAN. A value of 0 disables the cyclic messages.
 MSG_GET_CAN_CYCLIC_RATE: PC -> FOC
-    Payload: CAN_CyclicTypeDef (1 byte)
+    Payload: CAN_CyclicIndexTypeDef (1 byte)
     Requests the current cyclic rate for CAN messages from the FOC firmware.
 MSG_CAN_CYCLIC_REPLY: FOC -> PC
-    Payload: CAN_CyclicTypeDef (1 byte) | Cyclic Rate (4 bytes)
+    Payload: CAN_CyclicIndexTypeDef (1 byte) | Cyclic Rate (4 bytes)
     Reply to a MSG_GET_CAN_CYCLIC_RATE request, containing the current cyclic rate for CAN messages from the FOC firmware.
 MSG_SET_CONTROL_MODE: PC -> FOC
     Payload: Control Mode (1 byte)(ControlModeTypeDef)

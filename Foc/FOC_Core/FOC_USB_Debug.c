@@ -9,6 +9,7 @@
 #include "Timing.h"
 #include "FOC_Config.h"
 #include "FOC_CAN.h"
+#include "FOC_Diagnostics.h"
 
 uint32_t usb_debug_times[5] = {0};
 
@@ -423,7 +424,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
             break;
         }
         uint32_t new_rate = read_u32_le(&payload[1]);
-        FOC_SetCyclicRate(&hfoc, (CAN_CyclicTypeDef)payload[0], new_rate);
+        FOC_SetCyclicRate(&hfoc, (CAN_CyclicIndexTypeDef)payload[0], new_rate);
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
 
@@ -432,9 +433,10 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
             break;
         }
-        uint32_t current_rate = FOC_GetCyclicRate(&hfoc, (CAN_CyclicTypeDef)payload[0]);
-        write_u32_le(&response_payload[0], current_rate);
-        Debug_SendBinaryResponse(MSG_CAN_CYCLIC_REPLY, response_payload, 4);
+        response_payload[0] = payload[0];
+        uint32_t current_rate = FOC_GetCyclicRate(&hfoc, (CAN_CyclicIndexTypeDef)payload[0]);
+        write_u32_le(&response_payload[1], current_rate);
+        Debug_SendBinaryResponse(MSG_CAN_CYCLIC_REPLY, response_payload, 5);
         break;
     
     case MSG_SET_CONTROL_MODE:

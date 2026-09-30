@@ -56,6 +56,7 @@ uint32_t FOC_GetCyclicRate(FOC_HandleTypeDef *hfoc, CAN_CyclicIndexTypeDef index
     return hfoc->flash_data.node.can_msg_period_ticks[index];
 }
 
+uint32_t missed_can_messages = 0;
 
 void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command){
     FDCAN_TxHeaderTypeDef TxHeader;
@@ -82,11 +83,11 @@ void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command)
             //unimplemented
             break;
         case CAN_STATE_REPLY:
-            TxData[0] = (uint8_t)FOC_GetState(&hfoc);
+            TxData[0] = (uint8_t)FOC_GetState(hfoc);
             TxHeader.DataLength = FDCAN_DLC_BYTES_1;
             break;
         case CAN_CONTROL_MODE_REPLY:
-            TxData[0] = (uint8_t)FOC_GetControlMode(&hfoc);
+            TxData[0] = (uint8_t)FOC_GetControlMode(hfoc);
             TxHeader.DataLength = FDCAN_DLC_BYTES_1;
             break;
         case CAN_HEARTBEAT_REPLY:
@@ -141,16 +142,17 @@ void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command)
     }
 
     if(HAL_FDCAN_GetTxFifoFreeLevel(hfoc->phfdcan) == 0){
+        missed_can_messages++;
         return;
     }
     
-    if(HAL_FDCAN_AddMessageToTxFifoQ(hfoc->phfdcan, &TxHeader, TxData) != HAL_OK) {
+    if(HAL_FDCAN_AddMessageToTxFifoQ(hfoc->phfdcan, &TxHeader, TxData) != HAL_OK){
         Error_Handler();
     }
 }
 
 static uint8_t reply_in_broadcast_mode(CAN_CommandTypeDef command){
-    switch (command) {
+    switch (command){
         case CAN_ESTOP:
         case CAN_GET_ADDRESS:
         case CAN_SET_ADDRESS:
@@ -165,7 +167,7 @@ void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
     FDCAN_RxHeaderTypeDef RxHeader;
     uint8_t RxData[64];
     if(HAL_FDCAN_GetRxFifoFillLevel(hfoc->phfdcan, FDCAN_RX_FIFO0) > 0){
-        HAL_GPIO_TogglePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin); //toggle debug led to indicate a message was received
+        // HAL_GPIO_TogglePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin); //toggle debug led to indicate a message was received
         if(HAL_FDCAN_GetRxMessage(hfoc->phfdcan, FDCAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK){
             Error_Handler();
         }
@@ -247,7 +249,7 @@ void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
 
             case CAN_SET_STATE:
                 if(RxHeader.DataLength != FDCAN_DLC_BYTES_1) return;
-                if(FOC_SetState(&hfoc, (FOC_StateTypeDef)RxData[0], FOC_STATE_NONE) != FOC_STATETRANSITION_OK){
+                if(FOC_SetState(hfoc, (FOC_StateTypeDef)RxData[0], FOC_STATE_NONE) != FOC_STATETRANSITION_OK){
                     FOC_TransmitCANMessage(hfoc, CAN_ERROR);
                 }
                 FOC_TransmitCANMessage(hfoc, CAN_ACK);

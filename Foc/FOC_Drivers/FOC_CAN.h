@@ -138,9 +138,9 @@ CAN_ERROR: FOC -> PC
 #define CAN_BROADCAST_NODE_ID 0x00
 
 #define ID_MASK 0x0F             // 4-bit ID mask
-#define COMMAND_MASK (0x7F << 4) // 6-bit command mask
+#define COMMAND_MASK (0x7F << 4) // 7-bit command mask
 
-#define GET_CAN_ID(node_id, command) ((node_id & ID_MASK) | ((command << 4) & COMMAND_MASK)) // Constructs the CAN identifier, 4-bit ID, 1-bit direction, 6-bit command
+#define GET_CAN_ID(node_id, command) ((node_id & ID_MASK) | ((command << 4) & COMMAND_MASK)) // Constructs the CAN identifier, 4-bit ID, 7-bit command
 #define GET_ID_FROM_CAN_ID(can_id) (can_id & ID_MASK)                                        // Extracts the ID from the CAN identifier
 #define GET_COMMAND_FROM_CAN_ID(can_id) ((can_id & COMMAND_MASK) >> 4)                       // Extracts the command from the CAN identifier
 
