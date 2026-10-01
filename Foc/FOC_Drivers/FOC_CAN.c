@@ -5,6 +5,11 @@
 #include <math.h>
 #include <string.h>
 
+/**
+ * @brief Sets the node ID for the FOC handle and configures the CAN filters accordingly.
+ * @param hfoc: Pointer to the FOC handle
+ * @param node_id: The node ID to be set (4-bit, 0-15)
+ */
 void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id){
     if(hfoc->phfdcan == NULL) return;
     
@@ -44,20 +49,42 @@ void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id){
     
 }
 
+/**
+ * @brief Retrieves the node ID from the FOC handle.
+ * @param hfoc: Pointer to the FOC handle
+ */
 uint8_t FOC_GetNodeId(FOC_HandleTypeDef *hfoc){
     return hfoc->flash_data.node.node_id;
 }
 
+/**
+ * @brief Sets the cyclic rate for a specific CAN message index in the FOC handle.
+ * @param hfoc: Pointer to the FOC handle
+ * @param index: CAN_CyclicIndexTypeDef index for which the cyclic rate is to be set
+ * @param rate: The cyclic rate to be set in ticks
+ */
 void FOC_SetCyclicRate(FOC_HandleTypeDef *hfoc, CAN_CyclicIndexTypeDef index, uint32_t rate){
     hfoc->flash_data.node.can_msg_period_ticks[index] = rate;
 }
 
+/**
+ * @brief Retrieves the cyclic rate for a specific CAN message index from the FOC handle.
+ * @param hfoc: Pointer to the FOC handle
+ * @param index: CAN_CyclicIndexTypeDef index for which the cyclic rate is to be retrieved
+ * @return The cyclic rate in ticks
+ */
 uint32_t FOC_GetCyclicRate(FOC_HandleTypeDef *hfoc, CAN_CyclicIndexTypeDef index){
     return hfoc->flash_data.node.can_msg_period_ticks[index];
 }
 
 uint32_t missed_can_messages = 0;
 
+/**
+ * @brief Transmits a CAN message with the specified command and data.
+ * @param hfoc: Pointer to the FOC handle
+ * @param command: The CAN command to be transmitted
+ * @note This function constructs the CAN message based on the command and sends it using the FDCAN peripheral. The data length and content are determined by the command type.
+ */
 void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command){
     FDCAN_TxHeaderTypeDef TxHeader;
     TxHeader.IdType = FDCAN_STANDARD_ID;
@@ -80,7 +107,9 @@ void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command)
             TxHeader.DataLength = FDCAN_DLC_BYTES_3;
             break;
         case CAN_ADDRESS_REPLY:
-            //unimplemented
+            TxData[0] = (uint8_t)(hfoc->flash_data.node.node_id);
+            memcpy(&TxData[1], &hfoc->uid, 6);
+            TxHeader.DataLength = FDCAN_DLC_BYTES_7;
             break;
         case CAN_STATE_REPLY:
             TxData[0] = (uint8_t)FOC_GetState(hfoc);
@@ -162,7 +191,11 @@ static uint8_t reply_in_broadcast_mode(CAN_CommandTypeDef command){
     }
 }
 
-
+/**
+ * @brief Processes incoming CAN messages and executes the corresponding actions based on the command received.
+ * @param hfoc: Pointer to the FOC handle
+ * @note This function should be called periodically in the main loop or a timer interrupt to process incoming CAN messages.
+ */
 void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
     FDCAN_RxHeaderTypeDef RxHeader;
     uint8_t RxData[64];
@@ -192,16 +225,21 @@ void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
                 //unimplemented
                 break;
             case CAN_GET_ADDRESS:
-                //unimplemented
+                FOC_QueueCANMessage(hfoc, CAN_ADDRESS_REPLY, hfoc->random_number % 800 + 1); // Queue the address reply message to be sent after a delay of 1-800 ticks
                 break;
             case CAN_SET_ADDRESS:
-                //unimplemented
+                if((memcmp(&RxData[1], &hfoc->uid, 6) == 0) || memcmp(&RxData[1], "\0\0\0\0\0\0", 6) == 0){ // If the UID matches or is 0, set the node ID to the received value
+                    FOC_SetNodeId(hfoc, RxData[0]);
+                } else if(RxData[0] == hfoc->flash_data.node.node_id){
+                    FOC_SetNodeId(hfoc, 0);
+                }
                 break;
             case CAN_GET_STATE:
                 FOC_TransmitCANMessage(hfoc, CAN_STATE_REPLY);
                 break;
             case CAN_SET_CONTROL_MODE:
-                //unimplemented
+                ControlModeTypeDef new_mode = (ControlModeTypeDef)RxData[0];
+                FOC_SetControlMode(hfoc, new_mode);
                 break;
             case CAN_GET_CONTROL_MODE:
                 if(RxHeader.DataLength != FDCAN_DLC_BYTES_0) return;
@@ -278,6 +316,11 @@ void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
     }
 }
 
+/**
+ * @brief Transmits cyclic CAN messages based on the configured rates in the FOC handle.
+ * @param hfoc: Pointer to the FOC handle
+ * @note This function should be called periodically in the main loop or a timer interrupt to ensure timely transmission of cyclic messages.
+ */
 void FOC_TransmitCyclicCANMessage(FOC_HandleTypeDef *hfoc){
     if(hfoc == NULL || hfoc->phfdcan == NULL || hfoc->flash_data.node.node_id == CAN_BROADCAST_NODE_ID){ 
         return;
@@ -337,11 +380,50 @@ void FOC_TransmitCyclicCANMessage(FOC_HandleTypeDef *hfoc){
     }
 }
 
+/**
+ * @brief Queues a CAN message to be transmitted after a specified delay.
+ * @param hfoc: Pointer to the FOC handle
+ * @param command: The CAN command to be queued
+ * @param delay_ticks: The delay in ticks before the message is transmitted
+ */
+void FOC_QueueCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command, uint32_t delay_ticks){
+    if(hfoc == NULL || hfoc->phfdcan == NULL){ 
+        return;
+    }
 
+    const uint32_t current_tick = FOC_GetTick(hfoc);
+    const uint32_t target_tick = current_tick + delay_ticks;
 
-void CAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs){
-    (void)hfdcan; //unused
-    if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET){
+    hfoc->queued_can_message_command = command;
+    hfoc->queued_can_message_target_tick = target_tick;
+}
 
+void FOC_TransmitQueuedCANMessage(FOC_HandleTypeDef *hfoc){
+    if(hfoc == NULL || hfoc->phfdcan == NULL){ 
+        return;
+    }
+
+    const uint32_t current_tick = FOC_GetTick(hfoc);
+    if(queued_can_message_command != 0 && (uint32_t)(current_tick - queued_can_message_target_tick) < 0x80000000u){
+        FOC_TransmitCANMessage(hfoc, (CAN_CommandTypeDef)queued_can_message_command);
+        queued_can_message_command = 0;
+        queued_can_message_target_tick = 0;
     }
 }
+
+/**
+ * @brief Main loop function for handling CAN communication. This function should be called periodically in the main loop.
+ * @param hfoc: Pointer to the FOC handle
+ */
+void FOC_CAN_Loop(FOC_HandleTypeDef *hfoc){
+    FOC_TransmitCyclicCANMessage(hfoc);
+    FOC_ProcessCANMessage(hfoc);
+    FOC_TransmitQueuedCANMessage(hfoc);
+}
+
+// void CAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs){
+//     (void)hfdcan; //unused
+//     if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET){
+
+//     }
+// }

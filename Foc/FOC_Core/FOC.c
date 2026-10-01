@@ -51,9 +51,13 @@ void FOC_Setup(){
 
     FOC_Init(&hfoc); 
 
-    hfoc.uid[0] = HAL_GetUIDw0();
-    hfoc.uid[1] = HAL_GetUIDw1();
-    hfoc.uid[2] = HAL_GetUIDw2();
+    uint32_t uid_words[3] = {
+        HAL_GetUIDw0(),
+        HAL_GetUIDw1(),
+        HAL_GetUIDw2()
+    };
+
+    fnv1a64(uid_words, sizeof uid_words, hfoc.uid, 6);
 
     if(HAL_RNG_GenerateRandomNumber(&hrng, &hfoc.random_number) != HAL_OK)    {
         Error_Handler();
@@ -144,9 +148,7 @@ void FOC_Setup(){
 void FOC_Loop(){
     uint32_t start_time = get_current_time();
 
-
-    FOC_TransmitCyclicCANMessage(&hfoc);
-    FOC_ProcessCANMessage(&hfoc);
+    FOC_CAN_Loop(&hfoc);
     
     uint32_t adc_start_time = get_current_time();
 

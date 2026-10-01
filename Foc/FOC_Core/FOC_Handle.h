@@ -29,7 +29,7 @@ typedef struct FOC_Handle {
     uint32_t latched_errors;
 
     /* General */
-    uint32_t uid[3]; //unique ID of the microcontroller, used for identification
+    uint8_t uid[6]; //48-bit ID of the microcontroller
     uint32_t random_number; //random number, generated at startup
     uint32_t tick;
     FLASH_DataTypeDef flash_data; // flash data structure
@@ -91,6 +91,8 @@ typedef struct FOC_Handle {
     /* CAN */
     FDCAN_HandleTypeDef *phfdcan;
     uint32_t can_msg_last_tick[CAN_CYCLIC_COUNT]; // [ticks], last time a CAN message was sent. Used to determine when to send the next message.
+    CAN_CommandTypeDef queued_can_message_command; // The command of the queued CAN message to be sent after a delay
+    uint32_t queued_can_message_target_tick; // [ticks], the target tick at which the queued CAN message should be sent. Used to implement delayed sending of CAN messages.
 
     /* Timing */
     ExecutionTimeTypeDef execution_time;

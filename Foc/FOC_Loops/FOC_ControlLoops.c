@@ -81,7 +81,15 @@ void Speed_Loop(FOC_HandleTypeDef *hfoc){
     }
 }
 
+/**
+ * @brief Sets the control mode of the FOC.
+ * @param hfoc: Pointer to the FOC handle
+ * @param mode: The new control mode
+ * @return 0 if successful, 1 if an error occurred
+ */
 uint8_t FOC_SetControlMode(FOC_HandleTypeDef *hfoc, ControlModeTypeDef mode){
+    if(hfoc->flash_data.controller.control_mode == mode) return 0; // no change needed
+
     switch(mode){
         case CONTROL_MODE_OPENLOOP:
             hfoc->flash_data.controller.control_mode = CONTROL_MODE_OPENLOOP;
@@ -105,6 +113,11 @@ uint8_t FOC_SetControlMode(FOC_HandleTypeDef *hfoc, ControlModeTypeDef mode){
     return 0;
 }
 
+/**
+ * @brief Retrieves the current control mode of the FOC.
+ * @param hfoc: Pointer to the FOC handle
+ * @return ControlModeTypeDef, the current control mode
+ */
 ControlModeTypeDef FOC_GetControlMode(FOC_HandleTypeDef *hfoc){
     return hfoc->flash_data.controller.control_mode;
 }

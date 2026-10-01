@@ -26,6 +26,7 @@ uint32_t read_u32_le(const uint8_t *src);
 void write_float_le(uint8_t *dst, float v);
 float read_float_le(const uint8_t *src);
 uint8_t countbits_array(const uint8_t *data, uint8_t length);
+uint8_t fnv1a64(const void *data, size_t data_len, int8_t *out, size_t out_len);
 
 
 

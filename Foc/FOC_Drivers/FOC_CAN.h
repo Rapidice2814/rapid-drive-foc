@@ -24,11 +24,15 @@ CAN_ENTER_BOOTLOADER: PC -> FOC
     Payload: None
     Instructs the FOC firmware to enter the bootloader mode for firmware updates.
 CAN_SET_ADDRESS: PC -> FOC
-    UNIMPLEMENTED
+    Payload: New Node ID (1 byte), UID (6 bytes)
+    Sets the node ID of the FOC firmware to the specified value if the provided UID matches the microcontroller's UID. UID = 0 always matches.
+    If the UID does not match, but the node ID matches the current node ID, the node ID will be set to 0 (unassigned).
 CAN_GET_ADDRESS: PC -> FOC
-    UNIMPLEMENTED
+    Payload: None
+    Requests the current node ID and UID from the FOC firmware.
 CAN_ADDRESS_REPLY: FOC -> PC
-    UNIMPLEMENTED
+    Payload: Current Node ID (1 byte), UID (6 bytes)
+    Reply to a CAN_GET_ADDRESS request, containing the current node ID and UID of the FOC firmware.
 CAN_SET_STATE: PC -> FOC
     Payload: Desired State (1 byte)(FOC_StateTypeDef)
     Sets the desired state of the FOC driver to enum FOC_StateTypeDef.
@@ -221,7 +225,6 @@ void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id);
 uint8_t FOC_GetNodeId(FOC_HandleTypeDef *hfoc);
 void FOC_SetCyclicRate(FOC_HandleTypeDef *hfoc, CAN_CyclicIndexTypeDef index, uint32_t rate);
 uint32_t FOC_GetCyclicRate(FOC_HandleTypeDef *hfoc, CAN_CyclicIndexTypeDef index);
-void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc);
-void FOC_TransmitCyclicCANMessage(FOC_HandleTypeDef *hfoc);
+void FOC_CAN_Loop(FOC_HandleTypeDef *hfoc);
 void CAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs);
 #endif /* FOC_CAN_H */
