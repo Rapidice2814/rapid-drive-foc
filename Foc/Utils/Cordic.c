@@ -29,7 +29,7 @@ void Cordic_CalculateSinCos(float theta, float *cos, float *sin){
             thetaScaled += CORDIC_2exp32;
         while (thetaScaled > CORDIC_2exp31m1)
             thetaScaled -= CORDIC_2exp32;
-        if (thetaScaled < -CORDIC_2exp31)
+        if(thetaScaled < -CORDIC_2exp31)
             cordic_input = 0x80000000;
         else
             cordic_input = (int32_t)(thetaScaled);

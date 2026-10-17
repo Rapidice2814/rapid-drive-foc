@@ -48,6 +48,29 @@ uint32_t read_u32_le(const uint8_t *src)
            ((uint32_t)src[3] << 24);
 }
 
+void write_float_le(uint8_t *dst, float v){
+    union {
+        float f;
+        uint32_t u;
+    } conv;
+    conv.f = v;
+    write_u32_le(dst, conv.u);
+}
+
+/** 
+ * @brief Reads a float value in little-endian format from a byte array
+ * @param src The source byte array
+ * @return The float value
+ */
+float read_float_le(const uint8_t *src){
+    union {
+        float f;
+        uint32_t u;
+    } conv;
+    conv.u = read_u32_le(src);
+    return conv.f;
+}
+
 /** 
  * @brief Counts the number of set bits in an array of bytes
  * @param data Pointer to the array of bytes
@@ -56,16 +79,15 @@ uint32_t read_u32_le(const uint8_t *src)
  */
 uint8_t countbits_array(const uint8_t *data, uint8_t length){
     uint8_t count = 0;
-    for (uint8_t i = 0; i < length; i++) {
+    for (uint8_t i = 0; i < length; i++){
         uint8_t n = data[i];
-        while (n) {
+        while (n){
             count += n & 1;
             n >>= 1;
         }
     }
     return count;
 }
-
 
 /** 
  * @brief Normalizes an angle to the range [0, 2*PI]
@@ -94,10 +116,38 @@ void normalize_angle_pm_pi(float *angle){
   * @param max The maximum value
   * @retval The constrained value
   */
-float constrainf(float value, float min, float max) {
-    if (value < min) return min;
-    if (value > max) return max;
+float constrainf(float value, float min, float max){
+    if(value < min) return min;
+    if(value > max) return max;
     return value;
 }
 
+/**
+  * @brief Implements the FNV-1a hash function for 64-bit values
+  * @param data The input data
+  * @param data_len The length of the input data
+  * @param out The output buffer
+  * @param out_len The length of the output buffer
+  * @retval 0 on success, 1 on failure
+  */
+uint8_t fnv1a64(const void *data, uint8_t data_len, uint8_t *out, uint8_t out_len){
+    if (out_len > 8 || (data_len != 0 && data == NULL) ||
+        (out_len != 0 && out == NULL)){
+        return 1;
+    }
+
+    const uint8_t *bytes = (const uint8_t *)data;
+    uint64_t hash = UINT64_C(14695981039346656037);
+
+    for (size_t i = 0; i < data_len; ++i){
+        hash ^= bytes[i];
+        hash *= UINT64_C(1099511628211);
+    }
+
+    for (size_t i = 0; i < out_len; ++i){
+        out[i] = (uint8_t)(hash >> (8U * (out_len - 1U - i)));
+    }
+
+    return 0;
+}
 

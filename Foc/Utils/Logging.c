@@ -57,14 +57,14 @@ void Log_printf(const char* format, ...){
     uint32_t format_size = strlen(format);
     uint32_t format_buffer_size = sizeof(format_buffer) / sizeof(format_buffer[0]);
     uint32_t format_buffer_space_available = (format_read_index - format_write_index + format_buffer_size- 1) % format_buffer_size;
-    if (format_size > format_buffer_space_available){
+    if(format_size > format_buffer_space_available){
         return;
     } 
 
     uint32_t arg_count = 0;
     const char *p = format;
     while (*p) {
-        if (*p == '%' && *(p + 1) == 'd') {
+        if(*p == '%' && *(p + 1) == 'd') {
             arg_count++;
             p++; // Skip 'd'
         }
@@ -73,7 +73,7 @@ void Log_printf(const char* format, ...){
 
     uint32_t arg_buffer_size = sizeof(argument_buffer) / sizeof(argument_buffer[0]);
     uint32_t arg_buffer_space_available = (arg_read_index - arg_write_index + arg_buffer_size-1) % arg_buffer_size;
-    if (arg_count > arg_buffer_space_available){
+    if(arg_count > arg_buffer_space_available){
         return;
     } 
 
@@ -126,7 +126,7 @@ static void Log_Transmit(){
     uint32_t format_buffer_size = sizeof(format_buffer) / sizeof(format_buffer[0]);
     uint32_t arg_buffer_size = sizeof(argument_buffer) / sizeof(argument_buffer[0]);
 
-    if (format_write_index == format_read_index) return; // No new data to process
+    if(format_write_index == format_read_index) return; // No new data to process
 
     for(uint32_t loop_counter = 0;format_read_index != format_write_index;format_read_index = (format_read_index + 1) % format_buffer_size, loop_counter++){
     

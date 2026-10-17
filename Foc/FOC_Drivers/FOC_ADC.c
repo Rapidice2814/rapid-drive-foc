@@ -70,7 +70,7 @@ FOC_ADC_StatusTypeDef FOC_ADC_Measure(FOC_ADC_ValuesTypeDef *hadc_values){
             acc_vbus += raw_v;
 
             //TODO: check if saturated
-            if (abs(raw_a) > 2000 || abs(raw_b) > 2000 || abs(raw_c) > 2000) {
+            if(abs(raw_a) > 2000 || abs(raw_b) > 2000 || abs(raw_c) > 2000) {
                 __NOP();
             }
         }

@@ -26,6 +26,7 @@ FOC_StateTransitionTypeDef FOC_StateRun_Transition(FOC_HandleTypeDef* hfoc){
     }
 
     FOC_SetControlMode(hfoc, CONTROL_MODE_OPENLOOP);
+    hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f}; // FOC_SetControlMode does nothing if the mode is unchanged
 
     PID_Reset(&hfoc->pid_current_d);
     PID_Reset(&hfoc->pid_current_q);

@@ -50,9 +50,18 @@ volatile uint8_t debug_loop_flag = 0;
 void FOC_Setup(){
 
     FOC_Init(&hfoc); 
-    // HAL_GetUIDw0();
-    // HAL_GetUIDw1();
-    // HAL_GetUIDw2();
+
+    uint32_t uid_words[3] = {
+        HAL_GetUIDw0(),
+        HAL_GetUIDw1(),
+        HAL_GetUIDw2()
+    };
+
+    fnv1a64(uid_words, sizeof uid_words, hfoc.uid, 6);
+
+    if(HAL_RNG_GenerateRandomNumber(&hrng, &hfoc.random_number) != HAL_OK)    {
+        Error_Handler();
+    }
 
     if(FOC_FLASH_ReadData(&hfoc.flash_data) != FLASH_OK){
         FOC_FLASH_SetDefault(&hfoc.flash_data);
@@ -122,21 +131,14 @@ void FOC_Setup(){
 
     /* USB Debug */
     FOC_USB_Setup();
-    
-
-    uint32_t rand32 = 0;
-    if (HAL_RNG_GenerateRandomNumber(&hrng, &rand32) != HAL_OK)    {
-        Error_Handler();
-    }
-    uint8_t rand8 = (uint8_t)(rand32 & 0xFF);
 
     hfoc.phfdcan = &hfdcan1; //set the CAN handle pointer
-    FOC_SetNodeId(&hfoc, 1);
-    // FOC_TransmitCANMessage(&hfoc, CMD_HEARTBEAT);
+    FOC_SetNodeId(&hfoc, hfoc.flash_data.node.node_id & ID_MASK); //configures the filters and starts FDCAN, node 0 still receives broadcasts (e.g. CAN_SET_ADDRESS)
 
     FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
     DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
 
+    uint8_t rand8 = (uint8_t)(hfoc.random_number & 0xFF);
     Debug_SendTextResponse("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
     HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, GPIO_PIN_SET);
 
@@ -147,9 +149,7 @@ void FOC_Setup(){
 void FOC_Loop(){
     uint32_t start_time = get_current_time();
 
-
-    // FOC_TransmitCyclicCANMessage(&hfoc);
-    // FOC_ProcessCANMessage(&hfoc);
+    FOC_CAN_Loop(&hfoc);
     
     uint32_t adc_start_time = get_current_time();
 
@@ -175,7 +175,7 @@ void FOC_Loop(){
         hfoc.execution_time.loop_max = 0;
         calculate_execution_time(&hfoc.execution_time.usb_debug_max, usb_debug_start_time);
         
-        hfoc.timestamp++;
+        FOC_IncrementTick(&hfoc);
     }
 
     calculate_execution_time(&hfoc.execution_time.loop_max, start_time);
