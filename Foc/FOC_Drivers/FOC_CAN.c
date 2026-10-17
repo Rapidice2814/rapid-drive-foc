@@ -8,9 +8,11 @@
 void FOC_QueueCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command, uint32_t delay_ticks);
 
 /**
- * @brief Sets the node ID for the FOC handle and configures the CAN filters accordingly.
- * @param hfoc: Pointer to the FOC handle
- * @param node_id: The node ID to be set (4-bit, 0-15)
+ * @brief Sets the stored node ID and configures broadcast and addressed receive filters.
+ * @param hfoc FOC handle containing the FDCAN peripheral and node settings.
+ * @param node_id Requested node ID; callers must supply a four-bit value (0 to 15).
+ * @note Returns unchanged without a peripheral. Filter IDs are masked to four bits,
+ *       but the supplied byte is stored without range validation.
  */
 void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id){
     if(hfoc->phfdcan == NULL) return;
@@ -52,28 +54,29 @@ void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id){
 }
 
 /**
- * @brief Retrieves the node ID from the FOC handle.
- * @param hfoc: Pointer to the FOC handle
+ * @brief Returns the node ID currently stored in the FOC configuration.
+ * @param hfoc FOC handle to inspect.
+ * @return Configured node-ID byte; zero is broadcast/unassigned.
  */
 uint8_t FOC_GetNodeId(FOC_HandleTypeDef *hfoc){
     return hfoc->flash_data.node.node_id;
 }
 
 /**
- * @brief Sets the cyclic rate for a specific CAN message index in the FOC handle.
- * @param hfoc: Pointer to the FOC handle
- * @param index: CAN_CyclicIndexTypeDef index for which the cyclic rate is to be set
- * @param rate: The cyclic rate to be set in ticks
+ * @brief Sets the period of one cyclic CAN reply.
+ * @param hfoc FOC handle containing the cyclic-message settings.
+ * @param index Valid CAN_CyclicIndexTypeDef; the caller must check the range.
+ * @param rate Period in FOC ticks, or zero to disable the reply.
  */
 void FOC_SetCyclicRate(FOC_HandleTypeDef *hfoc, CAN_CyclicIndexTypeDef index, uint32_t rate){
     hfoc->flash_data.node.can_msg_period_ticks[index] = rate;
 }
 
 /**
- * @brief Retrieves the cyclic rate for a specific CAN message index from the FOC handle.
- * @param hfoc: Pointer to the FOC handle
- * @param index: CAN_CyclicIndexTypeDef index for which the cyclic rate is to be retrieved
- * @return The cyclic rate in ticks
+ * @brief Returns the configured period of one cyclic CAN reply.
+ * @param hfoc FOC handle to inspect.
+ * @param index Valid CAN_CyclicIndexTypeDef; the caller must check the range.
+ * @return Period in FOC ticks, or zero when disabled.
  */
 uint32_t FOC_GetCyclicRate(FOC_HandleTypeDef *hfoc, CAN_CyclicIndexTypeDef index){
     return hfoc->flash_data.node.can_msg_period_ticks[index];
@@ -82,10 +85,12 @@ uint32_t FOC_GetCyclicRate(FOC_HandleTypeDef *hfoc, CAN_CyclicIndexTypeDef index
 uint32_t missed_can_messages = 0;
 
 /**
- * @brief Transmits a CAN message with the specified command and data.
- * @param hfoc: Pointer to the FOC handle
- * @param command: The CAN command to be transmitted
- * @note This function constructs the CAN message based on the command and sends it using the FDCAN peripheral. The data length and content are determined by the command type.
+ * @brief Builds and submits a supported reply as an 11-bit-ID CAN FD frame.
+ * @param hfoc FOC handle supplying the peripheral, source node, and reply values.
+ * @param command Reply command selecting the payload layout.
+ * @note Unsupported commands, including CAN_ACK and CAN_ERROR, send nothing. A full
+ *       transmit FIFO drops the reply and increments missed_can_messages.
+ * @see docs/can-protocol.md
  */
 void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command){
     FDCAN_TxHeaderTypeDef TxHeader;
@@ -182,6 +187,12 @@ void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command)
     }
 }
 
+/**
+ * @brief Checks whether a command is accepted at broadcast node zero.
+ * @param command Received CAN command.
+ * @return 1 for ESTOP, GET_ADDRESS, or SET_ADDRESS; otherwise 0.
+ * @note This controls command acceptance, not whether a response is guaranteed.
+ */
 static uint8_t reply_in_broadcast_mode(CAN_CommandTypeDef command){
     switch (command){
         case CAN_ESTOP:
@@ -194,9 +205,11 @@ static uint8_t reply_in_broadcast_mode(CAN_CommandTypeDef command){
 }
 
 /**
- * @brief Processes incoming CAN messages and executes the corresponding actions based on the command received.
- * @param hfoc: Pointer to the FOC handle
- * @note This function should be called periodically in the main loop or a timer interrupt to process incoming CAN messages.
+ * @brief Processes at most one pending standard-ID frame from receive FIFO zero.
+ * @param hfoc FOC handle used to apply commands and generate replies.
+ * @note Called by the regular CAN service loop. Payload checks and responses vary
+ *       by command; unimplemented operations are listed in the protocol reference.
+ * @see docs/can-protocol.md
  */
 void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
     FDCAN_RxHeaderTypeDef RxHeader;
@@ -318,9 +331,10 @@ void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
 }
 
 /**
- * @brief Transmits cyclic CAN messages based on the configured rates in the FOC handle.
- * @param hfoc: Pointer to the FOC handle
- * @note This function should be called periodically in the main loop or a timer interrupt to ensure timely transmission of cyclic messages.
+ * @brief Submits cyclic replies whose configured FOC-tick periods have elapsed.
+ * @param hfoc FOC handle containing periods, last-send ticks, and the peripheral.
+ * @note Disabled periods and node zero produce no cyclic traffic. Attempt timestamps
+ *       advance even if a full transmit FIFO causes the reply to be dropped.
  */
 void FOC_TransmitCyclicCANMessage(FOC_HandleTypeDef *hfoc){
     if(hfoc == NULL || hfoc->phfdcan == NULL || hfoc->flash_data.node.node_id == CAN_BROADCAST_NODE_ID){ 
@@ -382,10 +396,11 @@ void FOC_TransmitCyclicCANMessage(FOC_HandleTypeDef *hfoc){
 }
 
 /**
- * @brief Queues a CAN message to be transmitted after a specified delay.
- * @param hfoc: Pointer to the FOC handle
- * @param command: The CAN command to be queued
- * @param delay_ticks: The delay in ticks before the message is transmitted
+ * @brief Schedules a delayed reply in the single pending-message slot.
+ * @param hfoc FOC handle containing the delayed-message fields.
+ * @param command Nonzero reply command to transmit later.
+ * @param delay_ticks Delay measured in FOC ticks.
+ * @note A later call replaces any previously scheduled reply.
  */
 void FOC_QueueCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command, uint32_t delay_ticks){
     if(hfoc == NULL || hfoc->phfdcan == NULL){ 
@@ -399,6 +414,11 @@ void FOC_QueueCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command, ui
     hfoc->queued_can_message_target_tick = target_tick;
 }
 
+/**
+ * @brief Submits the pending reply when its target FOC tick has been reached.
+ * @param hfoc FOC handle containing the queued command and target tick.
+ * @note Uses wrap-safe tick comparison and clears the slot after a transmit attempt.
+ */
 void FOC_TransmitQueuedCANMessage(FOC_HandleTypeDef *hfoc){
     if(hfoc == NULL || hfoc->phfdcan == NULL){ 
         return;
@@ -413,8 +433,9 @@ void FOC_TransmitQueuedCANMessage(FOC_HandleTypeDef *hfoc){
 }
 
 /**
- * @brief Main loop function for handling CAN communication. This function should be called periodically in the main loop.
- * @param hfoc: Pointer to the FOC handle
+ * @brief Services cyclic traffic, one received command, and any delayed reply.
+ * @param hfoc FOC handle containing the configured CAN peripheral.
+ * @note Called regularly by the FOC loop; receive processing does not run in the ISR.
  */
 void FOC_CAN_Loop(FOC_HandleTypeDef *hfoc){
     FOC_TransmitCyclicCANMessage(hfoc);
@@ -422,6 +443,12 @@ void FOC_CAN_Loop(FOC_HandleTypeDef *hfoc){
     FOC_TransmitQueuedCANMessage(hfoc);
 }
 
+/**
+ * @brief Receives FIFO-zero interrupt notifications without draining frames.
+ * @param hfdcan HAL peripheral handle; currently unused.
+ * @param RxFifo0ITs Receive interrupt flags supplied by HAL.
+ * @note Currently performs no action; FOC_ProcessCANMessage polls FIFO zero.
+ */
 void CAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs){
     (void)hfdcan; //unused
     if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET){

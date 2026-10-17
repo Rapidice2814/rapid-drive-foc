@@ -4,8 +4,8 @@
 #include "main.h"
 
 #define FOC_VERSION_MAJOR 0
-#define FOC_VERSION_MINOR 1
-#define FOC_VERSION_PATCH 1
+#define FOC_VERSION_MINOR 3
+#define FOC_VERSION_PATCH 0
 
 /* Debugging */
 #define DEBUG_SOF1_BIN 0xAA

@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stddef.h>
 
 #include "FOC_USB_Debug.h"
 #include "FOC_Handle.h"
@@ -11,13 +12,231 @@
 #include "FOC_CAN.h"
 #include "FOC_Diagnostics.h"
 
-uint32_t usb_debug_times[5] = {0};
 
-typedef union{
-    float    f;
-    int32_t  i32;
-    uint32_t u32;
-} TypeConvU_t;
+/* Single source of truth. Array order supplies all wire IDs and mask bits. */
+#define FOC_USB_DEBUG_SIGNAL_LIST(X)            \
+    X(u32,   tick)                      		\
+    X(f,     adc_values.motor_temp)          \
+    X(f,     adc_values.mosfet_temp)         \
+    X(f,     adc_values.vbus)                \
+    X(f,     ibus)                           \
+    X(f,     adc_values.phase_current.a)     \
+    X(f,     adc_values.phase_current.b)     \
+    X(f,     adc_values.phase_current.c)     \
+    X(f,     ab_current.alpha)               \
+    X(f,     ab_current.beta)                \
+    X(f,    dq_current.d)                   \
+    X(f,    dq_current.q)                   \
+    X(f,    dq_current_filtered.d)          \
+    X(f,    dq_current_filtered.q)          \
+    X(f,    phase_voltage.a)                \
+    X(f,    phase_voltage.b)                \
+    X(f,    phase_voltage.c)                \
+    X(f,    ab_voltage.alpha)               \
+    X(f,    ab_voltage.beta)                \
+    X(f,    dq_voltage.d)                   \
+    X(f,    dq_voltage.q)                   \
+    X(f,    encoder_angle_mechanical_wrapped) \
+    X(f,    encoder_angle_mechanical_unwrapped) \
+    X(f,    encoder_speed_mechanical)       \
+    X(f,    encoder_angle_electrical)       \
+    X(f,    encoder_speed_electrical)       \
+    X(f,    dq_current_setpoint.d)          \
+    X(f,    dq_current_setpoint.q)          \
+    X(f,    angle_setpoint)                 \
+    X(f,    speed_setpoint)                 \
+    X(u32,  execution_time.loop_max)        \
+    X(f,  hfi.injection_phase)              \
+    X(f,  hfi.i_alpha_l_raw)                \
+    X(f,  hfi.i_beta_l_raw)                 \
+    X(f,  hfi.i_alpha_l_filtered)           \
+    X(f,  hfi.i_beta_l_filtered)            \
+
+#define FOC_PID_CONTROLLERS_LIST(X)             \
+    X(pid_current_d)                         \
+    X(pid_current_q)                         \
+    X(pid_speed)                             \
+    X(pid_position)                          \
+
+#define VAR_ID_LIST(X)                         \
+    X(f, dq_current_setpoint.d)             \
+    X(f, dq_current_setpoint.q)             \
+    X(f, angle_setpoint)                    \
+    X(f, speed_setpoint)                    \
+    X(f, flash_data.limits.max_dq_current)  \
+    X(f, flash_data.limits.max_dq_voltage)  \
+    X(f, flash_data.limits.vbus_overvoltage_trip_level) \
+    X(f, flash_data.limits.vbus_undervoltage_trip_level) \
+    X(f, flash_data.limits.ibus_overcurrent_trip_level) \
+    X(f, flash_data.limits.motor_temp_trip_level) \
+    X(f, flash_data.limits.mosfet_temp_trip_level) \
+    X(u32, flash_data.motor.pole_pairs) \
+    X(f, flash_data.motor.phase_resistance) \
+    X(f, flash_data.motor.phase_inductance) \
+    X(f, flash_data.motor.torque_constant) \
+    X(u32, flash_data.hfi.hfi_enabled) \
+    X(f, flash_data.hfi.injection_amplitude) \
+    X(f, flash_data.hfi.injection_omega) \
+    X(f, flash_data.controller.current_control_bandwidth) \
+
+
+#define COUNT_VALUE(type, field) + 1
+#define COUNT_PID(field) + 1
+enum {
+    SIGNAL_COUNT = 0 FOC_USB_DEBUG_SIGNAL_LIST(COUNT_VALUE),
+    VAR_COUNT = 0 VAR_ID_LIST(COUNT_VALUE),
+    PID_COUNT = 0 FOC_PID_CONTROLLERS_LIST(COUNT_PID)
+};
+#undef COUNT_VALUE
+#undef COUNT_PID
+#define MAX_SUPPORTED_SIGNALS 256u
+#define SIGNAL_MASK_BYTES ((SIGNAL_COUNT + 7u) / 8u)
+#define DEFINITION_PAGE_BYTES 256u
+
+typedef struct {
+    size_t offset;
+    const char *type;
+    const char *name;
+    size_t size;
+    uint8_t is_signed;
+} DebugDescriptor;
+
+#define VALUE_DESCRIPTOR(type, field) {offsetof(FOC_HandleTypeDef, field), #type, #field, sizeof(((FOC_HandleTypeDef*)0)->field), _Generic(((FOC_HandleTypeDef*)0)->field, int8_t: 1, int16_t: 1, int32_t: 1, default: 0)},
+#define PID_DESCRIPTOR(field) {offsetof(FOC_HandleTypeDef, field), "", #field, sizeof(PIDControllerTypeDef), 0},
+static const DebugDescriptor signal_definitions[] = {FOC_USB_DEBUG_SIGNAL_LIST(VALUE_DESCRIPTOR) {0, NULL, NULL, 0, 0}};
+static const DebugDescriptor variable_definitions[] = {VAR_ID_LIST(VALUE_DESCRIPTOR) {0, NULL, NULL, 0, 0}};
+static const DebugDescriptor pid_definitions[] = {FOC_PID_CONTROLLERS_LIST(PID_DESCRIPTOR) {0, NULL, NULL, 0, 0}};
+#undef VALUE_DESCRIPTOR
+#undef PID_DESCRIPTOR
+
+#define VALID_TYPE_f(field) _Generic((field), float: 1, default: 0)
+#define VALID_TYPE_u32(field) _Generic((field), uint8_t: 1, uint16_t: 1, uint32_t: 1, default: 0)
+#define VALID_TYPE_i32(field) _Generic((field), int8_t: 1, int16_t: 1, int32_t: 1, default: 0)
+#define ASSERT_VALUE(type, field) \
+    _Static_assert(VALID_TYPE_##type(((FOC_HandleTypeDef*)0)->field), "Unsupported debug storage/wire type"); \
+    _Static_assert(sizeof(#field) <= 128, "Debug name too long");
+FOC_USB_DEBUG_SIGNAL_LIST(ASSERT_VALUE)
+VAR_ID_LIST(ASSERT_VALUE)
+#undef ASSERT_VALUE
+#define ASSERT_PID(field) \
+    _Static_assert(_Generic(&((FOC_HandleTypeDef*)0)->field, PIDControllerTypeDef*: 1, default: 0), "PID type mismatch"); \
+    _Static_assert(sizeof(#field) <= 128, "PID name too long");
+FOC_PID_CONTROLLERS_LIST(ASSERT_PID)
+#undef ASSERT_PID
+_Static_assert(SIGNAL_COUNT > 0 && SIGNAL_COUNT <= MAX_SUPPORTED_SIGNALS, "Signal count exceeds mask capacity");
+_Static_assert(VAR_COUNT <= 256 && PID_COUNT <= 256, "Definition IDs exceed one-byte wire format");
+_Static_assert(MAX_LOGDATA_SIGNAL_COUNT > 0 && MAX_LOGDATA_SIGNAL_COUNT <= SIGNAL_COUNT && MAX_LOGDATA_SIGNAL_COUNT <= 255, "Invalid selected-signal limit");
+_Static_assert(SIGNAL_MASK_BYTES <= RX_USB_BUF_SIZE - 5, "Mask exceeds command buffer");
+
+static uint64_t definitions_fingerprint;
+static uint8_t definitions_valid;
+
+/**
+ * @brief Reads a scalar field as its four-byte wire representation.
+ * @param entry Descriptor containing the field offset, native width, and signedness.
+ * @param handle Base address of the FOC handle containing the field.
+ * @return Raw value bits, with smaller signed integers sign-extended.
+ * @note The STM32 target stores native scalar bytes in little-endian order.
+ */
+static uint32_t Debug_ReadRaw(const DebugDescriptor *entry, const void *handle){
+    uint32_t raw = 0;
+    memcpy(&raw, (const uint8_t*)handle + entry->offset, entry->size);
+    if(entry->is_signed && entry->size < 4 && (raw & (1u << (entry->size * 8u - 1u)))){
+        raw |= UINT32_MAX << (entry->size * 8u);
+    }
+    return raw;
+}
+
+/**
+ * @brief Writes a wire value to its native field after checking integer range.
+ * @param entry Descriptor of the destination field.
+ * @param handle Base address of the FOC handle to update.
+ * @param raw Four-byte wire representation of the requested value.
+ * @return 1 if written, or 0 if the value cannot fit a smaller integer field.
+ */
+static uint8_t Debug_WriteRaw(const DebugDescriptor *entry, void *handle, uint32_t raw){
+    if(entry->size < 4){
+        uint32_t bits = entry->size * 8u;
+        if(entry->is_signed){
+            int32_t value;
+            memcpy(&value, &raw, sizeof(value));
+            int32_t limit = (int32_t)(1u << (bits - 1u));
+            if(value < -limit || value >= limit) return 0;
+        }else if(raw >= (1u << bits)) return 0;
+    }
+    memcpy((uint8_t*)handle + entry->offset, &raw, entry->size);
+    return 1;
+}
+
+/**
+ * @brief Selects the descriptor table and count for a discovery list.
+ * @param kind List selector: 0 signals, 1 variables, or 2 PID controllers.
+ * @param count Receives the entry count, or zero for an unknown kind.
+ * @return Descriptor table, or NULL for an unknown kind.
+ */
+static const DebugDescriptor *Debug_Definitions(uint8_t kind, uint16_t *count){
+    switch(kind){
+    case 0: *count = SIGNAL_COUNT; return signal_definitions;
+    case 1: *count = VAR_COUNT; return variable_definitions;
+    case 2: *count = PID_COUNT; return pid_definitions;
+    default: *count = 0; return NULL;
+    }
+}
+
+/**
+ * @brief Formats one canonical, newline-terminated discovery row.
+ * @param out Destination text buffer.
+ * @param capacity Destination capacity, including the terminating NUL.
+ * @param kind List selector; PID rows omit the primitive type.
+ * @param index Automatically assigned list index.
+ * @param entry Descriptor whose name and type are serialized.
+ * @return snprintf result: required characters excluding NUL, or a negative error.
+ * @note Discovery replies and the fingerprint use this same format.
+ */
+static int Debug_FormatDefinition(char *out, size_t capacity, uint8_t kind, uint16_t index,
+                                  const DebugDescriptor *entry){
+    return kind == 2 ? snprintf(out, capacity, "%u\t%s\n", (unsigned)index, entry->name)
+                     : snprintf(out, capacity, "%u\t%s\t%s\n", (unsigned)index, entry->type, entry->name);
+}
+
+/**
+ * @brief Adds text bytes to the running FNV-1a definitions fingerprint.
+ * @param text NUL-terminated text; the terminating NUL is not hashed.
+ */
+static void Debug_HashText(const char *text){
+    while(*text){
+        definitions_fingerprint ^= (uint8_t)*text++;
+        definitions_fingerprint *= UINT64_C(1099511628211);
+    }
+}
+
+/**
+ * @brief Builds the fingerprint and detects duplicate names within each list.
+ * @note Called during USB setup; invalid definitions prevent configuration and telemetry.
+ */
+static void Debug_InitDefinitions(void){
+    static const char *const headings[] = {"signals\n", "variables\n", "pids\n"};
+    definitions_fingerprint = UINT64_C(14695981039346656037);
+    definitions_valid = 1;
+    char line[160];
+    for(uint8_t kind = 0; kind < 3; ++kind){
+        uint16_t count;
+        const DebugDescriptor *entries = Debug_Definitions(kind, &count);
+        Debug_HashText(headings[kind]);
+        for(uint16_t i = 0; i < count; ++i){
+            for(uint16_t j = 0; j < i; ++j){
+                if(strcmp(entries[i].name, entries[j].name) == 0) definitions_valid = 0;
+            }
+            Debug_FormatDefinition(line, sizeof(line), kind, i, &entries[i]);
+            Debug_HashText(line);
+        }
+    }
+}
+
+_Static_assert(13u + MAX_LOGDATA_SAMPLE_COUNT * MAX_LOGDATA_SIGNAL_COUNT * 4u <= TX_USB_BUF_SIZE,
+               "Telemetry packet exceeds the USB transmit buffer");
+
+uint32_t usb_debug_times[5] = {0};
 
 typedef struct{
     uint8_t is_running;
@@ -42,21 +261,28 @@ static void Debug_StopLogging();
 static LogDataHandleTypeDef hlogdata = {0};
 
 
+/**
+ * @brief Initializes discovery metadata and resets USB telemetry capture.
+ * @return DEBUG_OK when names are unique, otherwise DEBUG_ERROR.
+ * @note Stops capture, releases a partial sample buffer, and clears the signal mask.
+ */
 Debug_StatusTypeDef FOC_USB_Setup(){
+    Debug_InitDefinitions();
     Debug_StopLogging();
     Debug_ClearMask();
-    return DEBUG_OK;
+    return definitions_valid ? DEBUG_OK : DEBUG_ERROR;
 }
 
 /**
- * @brief Captures samples for the selected signals and stores them in the debug handle buffer. 
- *        Once enough samples are collected, it packages them into a USB packet and adds it to the transmission buffer.
- *        Ifthe buffer is full, the captured samples will be discarded until there is space in the buffer.
- * @param hfoc Pointer to the FOC handle containing the current state and signal values.
- * @return Debug_StatusTypeDef indicating the status of the capture operation.
+ * @brief Captures one selected-signal sample and queues a full telemetry packet.
+ * @return DEBUG_STOPPED if disabled, DEBUG_ERROR if definitions are invalid or no
+ *         transmit buffer is available, otherwise DEBUG_OK.
+ * @note Called once per completed current-loop sample. Samples are skipped without
+ *       a free buffer; a completed packet is discarded if enqueueing fails.
  */
 Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(void){
     uint32_t start_time = get_current_time();
+    if(!definitions_valid) return DEBUG_ERROR;
     if(!hlogdata.is_running) return DEBUG_STOPPED;
 
     if(hlogdata.txbuf == NULL){
@@ -76,25 +302,13 @@ Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(void){
 
     uint8_t signal_index = 0;
     uint16_t write_index = (uint16_t)(13u + hlogdata.sample_count * hlogdata.signal_count * 4u);
-    TypeConvU_t conv;
-
-    #define SIGNAL_MASK_BIT_IS_SET(bit) \
-        (((bit) < (SIGNAL_MASK_BYTES * 8u)) && \
-        ((hlogdata.signal_mask[(bit) / 8u] & (1u << ((bit) & 7u))) != 0u))
-
-    #define CAPTURE_SIGNAL(bit, member, field)                                  \
-        do {                                                                    \
-            if(SIGNAL_MASK_BIT_IS_SET(bit)) {                                  \
-                conv.member = hfoc.field;                                       \
-                write_u32_le(&hlogdata.txbuf->payload[write_index + signal_index * 4u], conv.u32); \
-                signal_index++;                                                 \
-            }                                                                   \
-        } while (0);
-
-    FOC_USB_DEBUG_SIGNAL_LIST(CAPTURE_SIGNAL);
-    #undef CAPTURE_SIGNAL
-
-    #undef SIGNAL_MASK_BIT_IS_SET
+    for(uint16_t bit = 0; bit < SIGNAL_COUNT; ++bit){
+        if(hlogdata.signal_mask[bit / 8u] & (1u << (bit % 8u))){
+            uint32_t raw = Debug_ReadRaw(&signal_definitions[bit], &hfoc);
+            write_u32_le(&hlogdata.txbuf->payload[write_index + signal_index * 4u], raw);
+            ++signal_index;
+        }
+    }
 
     hlogdata.sample_count++;
     write_u16_le(&hlogdata.txbuf->payload[9], hlogdata.sample_count);
@@ -108,7 +322,7 @@ Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(void){
         hlogdata.txbuf->payload[4] = (uint8_t)((payload_bytes >> 8) & 0xFFu);
         hlogdata.txbuf->length = (uint16_t)(payload_bytes + 5u);
 
-        USB_PushTxBuffer(hlogdata.txbuf);
+        if(!USB_PushTxBuffer(hlogdata.txbuf)) USB_FreeTxBuffer(hlogdata.txbuf);
         hlogdata.txbuf = NULL;
         hlogdata.sample_count = 0;
     }
@@ -117,21 +331,46 @@ Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples(void){
     return DEBUG_OK;
 }
 
+/**
+ * @brief Enables telemetry capture with a fresh sample count.
+ * @note The caller must stop logging first to discard any partial packet.
+ */
 static void Debug_StartLogging(){
     hlogdata.sample_count = 0;
     hlogdata.is_running = 1;
 }
 
+/**
+ * @brief Disables telemetry capture and releases any partially filled transmit buffer.
+
+ */
 static void Debug_StopLogging(){
     hlogdata.is_running = 0;
+    if(hlogdata.txbuf != NULL){
+        USB_FreeTxBuffer(hlogdata.txbuf);
+        hlogdata.txbuf = NULL;
+    }
+    hlogdata.sample_count = 0;
 }
 
+/**
+ * @brief Validates and applies a new signal mask while logging is stopped.
+ * @param new_mask SIGNAL_MASK_BYTES bytes with unused high bits cleared.
+ * @return DEBUG_OK on success, or DEBUG_ERROR if logging is active, unsupported
+ *         bits are selected, or the simultaneous-signal limit is exceeded.
+ */
 static Debug_StatusTypeDef Debug_UpdateMask(const uint8_t *new_mask){
     if(hlogdata.is_running){
         return DEBUG_ERROR;
     }
 
-    uint8_t set_bits = countbits_array(new_mask, SIGNAL_MASK_BYTES);
+    for(uint16_t bit = SIGNAL_COUNT; bit < SIGNAL_MASK_BYTES * 8u; ++bit){
+        if(new_mask[bit / 8u] & (1u << (bit % 8u))) return DEBUG_ERROR;
+    }
+    uint16_t set_bits = 0;
+    for(uint16_t bit = 0; bit < SIGNAL_COUNT; ++bit){
+        if(new_mask[bit / 8u] & (1u << (bit % 8u))) ++set_bits;
+    }
     if(set_bits > MAX_LOGDATA_SIGNAL_COUNT){
         return DEBUG_ERROR;
     }
@@ -145,32 +384,98 @@ static Debug_StatusTypeDef Debug_UpdateMask(const uint8_t *new_mask){
     return DEBUG_OK;
 }
 
+/**
+ * @brief Returns the current internal signal-mask buffer.
+ * @return Pointer to SIGNAL_MASK_BYTES bytes owned by the logging state.
+ */
 static uint8_t* Debug_GetMask(){
     return hlogdata.signal_mask;
 }
 
+/**
+ * @brief Disables every signal by applying an all-zero mask.
+ * @return Result of Debug_UpdateMask; logging must already be stopped.
+ */
 static Debug_StatusTypeDef Debug_ClearMask(){
     const uint8_t zero_mask[SIGNAL_MASK_BYTES] = {0};
     return Debug_UpdateMask(zero_mask);
 }
 
+/**
+ * @brief Validates and executes one complete binary USB command.
+ * @param msg_type Command identifier decoded from the frame header.
+ * @param payload Complete command payload, which may be empty.
+ * @param payload_length Number of available payload bytes.
+ * @note Queues a reply or error. A state-changing ACK means the request was accepted,
+ *       not that a subsequent flash or bootloader action has completed.
+ * @see docs/usb-protocol.md
+ */
 static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t payload_length){
     uint8_t controller_id;
     uint8_t var_id;
-    uint8_t response_payload[13];
+    uint8_t response_payload[29];
 
+    if(!definitions_valid && msg_type != MSG_GET_DEVICE_INFO &&
+       msg_type != MSG_GET_DEFINITIONS && msg_type != MSG_STOP_LOG){
+        Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
+        return;
+    }
     switch ((MsgTypeTypeDef)(msg_type)){
-        
-    case MSG_GET_VERSION:
+    case MSG_GET_DEVICE_INFO:
         if(payload_length != 0){
             Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
-            break;
+            return;
         }
-        response_payload[0] = FOC_VERSION_MAJOR;
-        response_payload[1] = FOC_VERSION_MINOR;
-        response_payload[2] = FOC_VERSION_PATCH;
-        Debug_SendBinaryResponse(MSG_VERSION_REPLY, response_payload, 3);
-        break;
+        response_payload[0] = DEBUG_PROTOCOL_VERSION;
+        response_payload[1] = FOC_VERSION_MAJOR;
+        response_payload[2] = FOC_VERSION_MINOR;
+        response_payload[3] = FOC_VERSION_PATCH;
+        write_u16_le(&response_payload[4], SIGNAL_COUNT);
+        write_u16_le(&response_payload[6], VAR_COUNT);
+        write_u16_le(&response_payload[8], PID_COUNT);
+        response_payload[10] = SIGNAL_MASK_BYTES;
+        response_payload[11] = MAX_LOGDATA_SIGNAL_COUNT;
+        write_u32_le(&response_payload[12], (uint32_t)CURRENT_LOOP_FREQUENCY);
+        write_u16_le(&response_payload[16], RX_USB_BUF_SIZE - 5);
+        write_u16_le(&response_payload[18], TX_USB_BUF_SIZE - 5);
+        write_u32_le(&response_payload[20], (uint32_t)definitions_fingerprint);
+        write_u32_le(&response_payload[24], (uint32_t)(definitions_fingerprint >> 32));
+        response_payload[28] = definitions_valid ? 0 : 1;
+        Debug_SendBinaryResponse(MSG_DEVICE_INFO_REPLY, response_payload, 29);
+        return;
+
+    case MSG_GET_DEFINITIONS: {
+        if(payload_length != 3){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            return;
+        }
+        uint8_t kind = payload[0];
+        uint16_t index = read_u16_le(&payload[1]), count;
+        const DebugDescriptor *entries = Debug_Definitions(kind, &count);
+        uint8_t error = !entries ? 1 : !definitions_valid ? 3 :
+                        (index >= count && !(count == 0 && index == 0)) ? 2 : 0;
+        if(error){
+            uint8_t reply[] = {kind, payload[1], payload[2], error};
+            Debug_SendBinaryResponse(MSG_DEFINITIONS_ERROR, reply, sizeof(reply));
+            return;
+        }
+        uint8_t page[DEFINITION_PAGE_BYTES];
+        uint16_t used = 7, returned = 0;
+        char line[160];
+        for(uint16_t i = index; i < count; ++i){
+            int n = Debug_FormatDefinition(line, sizeof(line), kind, i, &entries[i]);
+            if(n < 0 || (size_t)used + (size_t)n > sizeof(page)) break;
+            memcpy(&page[used], line, (size_t)n);
+            used += (uint16_t)n;
+            ++returned;
+        }
+        page[0] = kind;
+        write_u16_le(&page[1], index);
+        write_u16_le(&page[3], count);
+        write_u16_le(&page[5], returned);
+        Debug_SendBinaryResponse(MSG_DEFINITIONS_REPLY, page, used);
+        return;
+    }
 
     case MSG_SET_MASK:
         if(payload_length != SIGNAL_MASK_BYTES){
@@ -196,11 +501,20 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         break;
 
     case MSG_START_LOG:
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
+        Debug_StopLogging();
         Debug_StartLogging();
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
 
     case MSG_STOP_LOG:
+        if(payload_length != 0){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            break;
+        }
         Debug_StopLogging();
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
@@ -213,17 +527,11 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         controller_id = payload[0];
         PIDValuesTypeDef new_gains;
         memcpy(&new_gains, &payload[1], sizeof(new_gains));
-        switch (controller_id) {
-        #define X(id, name)                                                         \
-            case id:                                                                \
-                PID_SetGains(&hfoc.name, new_gains);                               \
-                break;
-            FOC_PID_CONTROLLERS_LIST(X)
-        #undef X
-            default:
-                Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
-                break;
+        if(controller_id >= PID_COUNT){
+            Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
+            return;
         }
+        PID_SetGains((PIDControllerTypeDef*)((uint8_t*)&hfoc + pid_definitions[controller_id].offset), new_gains);
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
 
@@ -234,17 +542,11 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         }
         controller_id = payload[0];
         PIDValuesTypeDef current_gains;
-        switch (controller_id) {
-        #define X(id, name)                                                         \
-            case id:                                                                \
-                current_gains = PID_GetGains(&hfoc.name);                          \
-                break;
-            FOC_PID_CONTROLLERS_LIST(X)
-        #undef X
-            default:
-                Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
-                break;
+        if(controller_id >= PID_COUNT){
+            Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
+            return;
         }
+        current_gains = PID_GetGains((PIDControllerTypeDef*)((uint8_t*)&hfoc + pid_definitions[controller_id].offset));
         response_payload[0] = controller_id;
         memcpy(&response_payload[1], &current_gains, sizeof(current_gains));
         Debug_SendBinaryResponse(MSG_PID_REPLY, response_payload, 13);
@@ -257,21 +559,15 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         }
 
         var_id = payload[0];
-        TypeConvU_t conv;
-        conv.u32 = read_u32_le(&payload[1]);
-
-        switch (var_id) {
-        #define X(id, typ, field)                                     \
-            case id:                                                  \
-                hfoc.field = conv.typ;                                \
-                break;
-            VAR_ID_LIST(X)
-        #undef X
-            default:
-                Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
-                break;
+        if(var_id >= VAR_COUNT){
+            Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
+            return;
         }
-
+        uint32_t raw = read_u32_le(&payload[1]);
+        if(!Debug_WriteRaw(&variable_definitions[var_id], &hfoc, raw)){
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            return;
+        }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
 
@@ -284,21 +580,12 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         var_id = payload[0];
         response_payload[0] = var_id;
 
-        switch (var_id) {
-        #define X(id, typ, field)                                     \
-            case id: {                                                \
-                TypeConvU_t conv;                                     \
-                conv.typ = hfoc.field;                                \
-                write_u32_le(&response_payload[1], conv.u32);         \
-                break;                                                \
-            }
-            VAR_ID_LIST(X)
-        #undef X
-            default:
-                Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
-                break;
+        if(var_id >= VAR_COUNT){
+            Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
+            return;
         }
-
+        uint32_t current = Debug_ReadRaw(&variable_definitions[var_id], &hfoc);
+        write_u32_le(&response_payload[1], current);
         Debug_SendBinaryResponse(MSG_VAR_REPLY, response_payload, 5);
         break;
 
@@ -360,6 +647,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         break;
     case MSG_TEXT_COMMAND:
         Debug_ExecuteTextCommand((const char*)payload, payload_length);
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
     case MSG_ENTER_BOOTLOADER:
         if(payload_length != 0){
@@ -468,8 +756,19 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
     }
 }
 
+/**
+ * @brief Executes a bounded legacy text command against the global FOC handle.
+ * @param packet Command bytes, which need not be NUL-terminated.
+ * @param length Byte count; commands larger than RX_USB_BUF_SIZE are ignored.
+ * @note Copies input to a terminated local buffer before sscanf or look-ahead access.
+ *       Unknown text is ignored; the caller acknowledges framed text commands.
+ */
 static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
-    UNUSED(length);
+    /* Legacy commands use sscanf and look ahead by one byte. */
+    char terminated[RX_USB_BUF_SIZE + 2] = {0};
+    if(length > RX_USB_BUF_SIZE) return;
+    memcpy(terminated, packet, length);
+    packet = terminated;
     for(int i = 0; i < 1; i++){
         if(packet[i] == 'D'){
             if(packet[i+1] == 'a'){
@@ -602,6 +901,14 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
 
 
 
+/**
+ * @brief Builds and submits one framed binary USB response.
+ * @param msg_type Response identifier.
+ * @param payload Payload bytes, or NULL when len is zero.
+ * @param len Number of payload bytes.
+ * @return 0 for invalid input, oversized payload, or pool exhaustion; 1 after
+ *         submitting the allocated buffer to the transmit queue.
+ */
 static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t len){
     if(payload == NULL && len > 0) return 0;
 
@@ -626,6 +933,13 @@ static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payloa
     return 1;
 }
 
+/**
+ * @brief Formats text and submits it as a framed MSG_TEXT_REPLY response.
+ * @param format printf-style format string.
+ * @param ... Arguments consumed by the format string.
+ * @return 0 if allocation or formatting fails or text is too large; 1 after
+ *         submitting the frame to the transmit queue.
+ */
 uint8_t Debug_SendTextResponse(const char* format, ...){
     va_list args;
 
@@ -662,14 +976,52 @@ uint8_t Debug_SendTextResponse(const char* format, ...){
     return 1;
 }
 
+/**
+ * @brief Accumulates receive bytes and dispatches complete binary or legacy text commands.
+ * @param buf Incoming bytes from one receive-queue item.
+ * @param len Number of incoming bytes.
+ * @note Handles split and concatenated frames. Legacy text requires CR or LF;
+ *       incomplete input is discarded after a receive gap longer than 250 ms.
+ */
 void USB_ProcessReceivedPacket(uint8_t* buf, uint16_t len){
-    UNUSED(len);
-    if(buf[0] == DEBUG_SOF1_BIN || buf[1] == DEBUG_SOF2_BIN){
-        MsgTypeTypeDef msg_type = (MsgTypeTypeDef)buf[2];
-        uint16_t payload_length = (uint16_t)buf[3] | ((uint16_t)buf[4] << 8);
-        uint8_t* payload = &buf[5];
-        Debug_ExecuteBinaryCommand(msg_type, payload, payload_length);
-    } else {
-        Debug_ExecuteTextCommand((const char*)buf, len);
+    static uint8_t pending[RX_USB_BUF_SIZE + 1];
+    static uint16_t used = 0;
+    static uint32_t last_received = 0;
+    uint32_t now = HAL_GetTick();
+    if(used && (uint32_t)(now - last_received) > 250u) used = 0;
+    last_received = now;
+    for(uint16_t i = 0; i < len; ++i){
+        pending[used++] = buf[i];
+        if(pending[0] != DEBUG_SOF1_BIN){
+            if(buf[i] == DEBUG_SOF1_BIN){
+                pending[0] = DEBUG_SOF1_BIN;
+                used = 1;
+                continue;
+            }
+            /* Unframed legacy commands are newline terminated. */
+            if(buf[i] == '\n' || buf[i] == '\r'){
+                Debug_ExecuteTextCommand((const char*)pending, used);
+                used = 0;
+            }else if(used == RX_USB_BUF_SIZE){
+                used = 0;
+                Debug_SendBinaryResponse(MSG_BUFFER_OVERFLOW, NULL, 0);
+            }
+            continue;
+        }
+        if(used == 2 && pending[1] != DEBUG_SOF2_BIN){
+            used = pending[1] == DEBUG_SOF1_BIN ? 1 : 0;
+            continue;
+        }
+        if(used < 5) continue;
+        uint16_t payload_length = read_u16_le(&pending[3]);
+        if(payload_length > RX_USB_BUF_SIZE - 5){
+            used = 0;
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            continue;
+        }
+        if(used == payload_length + 5){
+            Debug_ExecuteBinaryCommand((MsgTypeTypeDef)pending[2], &pending[5], payload_length);
+            used = 0;
+        }
     }
 }

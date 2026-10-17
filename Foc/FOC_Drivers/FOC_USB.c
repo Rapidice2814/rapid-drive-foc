@@ -25,9 +25,9 @@ static DebugUSBHandleTypeDef hdebugusb = {0};
 
 
 /**
- * @brief Transmits a USB packet if there is one ready in the buffer and the USB interface is not busy. 
- *        and the USB interface is connected.
- * @return None.
+ * @brief Starts the next queued transfer when the CDC connection is available.
+ * @note Sends at most one buffer per call. A failed CDC submission clears the busy
+ *       flag and requeues the buffer so a later call can retry.
  */
 void USB_TransmitPacket(){
     if(!CDC_IsConnected()){
@@ -45,16 +45,15 @@ void USB_TransmitPacket(){
         HAL_GPIO_WritePin(DEBUG_LED2_GPIO_Port, DEBUG_LED2_Pin, GPIO_PIN_SET);
         return;
     }else{
+        hdebugusb.tx_busy_flag = 0;
         TxQueue_push(hdebugusb.tx_buffer);
         return;
     }  
 }
 
 /**
- * @brief This function needs to be called ragularly to check for received USB packets. If a packet is received, it processes the packet and executes the corresponding command.
- * @param buf The buffer containing the received data.
- * @param len The length of the received data.
- * @return None.
+ * @brief Dispatches one queued receive item and returns its buffer to the pool.
+ * @note Call regularly from the FOC loop; parsing runs outside the receive callback.
  */
 void USB_ReceivePacket(){
     RxUsbBuf_t* rxmsg = RxQueue_pop();
@@ -65,10 +64,10 @@ void USB_ReceivePacket(){
 }
 
 /**
- * @brief A weak implementation of the packet processing function.
- * @param buf The buffer containing the received data.
- * @param len The length of the received data.
- * @return None.
+ * @brief Provides the default weak handler for queued receive bytes.
+ * @param buf Received bytes; unused by this default implementation.
+ * @param len Received byte count; unused by this default implementation.
+ * @note FOC_USB_Debug.c overrides this handler with the protocol parser.
  */
 __weak void USB_ProcessReceivedPacket(uint8_t* buf, uint16_t len){
     UNUSED(buf);
@@ -76,8 +75,8 @@ __weak void USB_ProcessReceivedPacket(uint8_t* buf, uint16_t len){
 }
 
 /**
- * @brief Callback function that is called when a USB packet transmission is completed.
- * @return None.
+ * @brief Releases the completed transmit buffer and clears the transfer-busy flag.
+ * @note Called by the CDC transmit-complete callback.
  */
 void USB_TransmitCpltCallback(){
     hdebugusb.tx_busy_flag = 0;
@@ -86,13 +85,13 @@ void USB_TransmitCpltCallback(){
 }
 
 /**
- * @brief Callback function that is called when a USB packet is received.
- * @param buf The buffer containing the received data.
- * @param len The length of the received data.
- * @return None.
+ * @brief Copies one bounded CDC receive chunk into the receive pool.
+ * @param buf Incoming bytes, which are copied before returning.
+ * @param len Pointer to the received byte count supplied by the USB stack.
+ * @note Empty, oversized, and unbufferable chunks are dropped.
  */
 void USB_ReceiveCallback(uint8_t* buf, uint32_t* len){
-    if(*len < 1){
+    if(*len < 1 || *len > RX_USB_BUF_SIZE){
         return;
     }
 
@@ -106,8 +105,9 @@ void USB_ReceiveCallback(uint8_t* buf, uint32_t* len){
 
 
 /**
- * @brief Gets a buffer from the USB transmit queue.
- * @return A pointer to the reserved buffer, or 0 if no buffer is available.
+ * @brief Reserves a transmit-pool buffer for the caller to fill.
+ * @return Reserved buffer, or NULL when the pool is exhausted.
+ * @note Submit with USB_PushTxBuffer or release with USB_FreeTxBuffer.
  */
 TxUsbBuf_t* USB_AllocTxBuffer(){
     TxUsbBuf_t* buf = TxQueue_alloc();
@@ -116,26 +116,27 @@ TxUsbBuf_t* USB_AllocTxBuffer(){
 }
 
 /**
- * @brief Pushes the previously reserved buffer to the USB transmit queue, making it available for transmission.
- * @param buf Pointer to the buffer that was reserved and filled with data to be transmitted.
- * @return 1 if the buffer was successfully pushed, 0 otherwise.
+ * @brief Queues an allocated transmit buffer for submission to CDC.
+ * @param buf Allocated buffer containing payload and length.
+ * @return 1 if queued, otherwise 0.
+ * @note Queue ownership transfers only on success; the caller owns a rejected buffer.
  */
 uint8_t USB_PushTxBuffer(TxUsbBuf_t* buf){
     return TxQueue_push(buf);
 }
 
 /**
- * @brief Frees a previously allocated transmit buffer, returning it to the pool of available buffers.
- * @param buf Pointer to the buffer that was previously allocated and is no longer needed.
- * @return 1 if the buffer was successfully freed, 0 otherwise.
+ * @brief Returns a reserved or completed transmit buffer to its pool.
+ * @param buf Buffer allocated from the transmit pool.
+ * @return 1 if released, or 0 if the pointer is invalid.
  */
 uint8_t USB_FreeTxBuffer(TxUsbBuf_t* buf){
     return TxQueue_free(buf);
 }
 
 /**
- * @brief Gets a buffer from the USB receive queue.
- * @return A pointer to the allocated buffer, or 0 if no buffer is available.
+ * @brief Reserves a receive-pool buffer for a producer to fill.
+ * @return Reserved buffer, or NULL when the pool is exhausted.
  */
 RxUsbBuf_t* USB_AllocRxBuffer(){
     RxUsbBuf_t* buf = RxQueue_alloc();
@@ -144,9 +145,10 @@ RxUsbBuf_t* USB_AllocRxBuffer(){
 }
 
 /**
- * @brief Pushes a received buffer to the USB receive queue for processing.
- * @param buf Pointer to the buffer that was reserved and filled with data to be transmitted.
- * @return 1 if the buffer was successfully pushed, 0 otherwise.
+ * @brief Queues a filled receive-pool buffer for foreground processing.
+ * @param buf Allocated receive buffer containing payload and length.
+ * @return 1 if queued, otherwise 0.
+ * @note The foreground loop releases successfully queued receive buffers.
  */
 uint8_t USB_PushRxBuffer(RxUsbBuf_t* buf){
     return RxQueue_push(buf);
@@ -154,11 +156,12 @@ uint8_t USB_PushRxBuffer(RxUsbBuf_t* buf){
 
 
 /**
- * @brief A printf-like function that formats a string and sends it as a text response over USB. 
- *        The formatted string is limited to the size of the TxUsbBuf_t payload.
- * @param format The format string (like in printf).
- * @param ... The variables to format according to the format string.
- * @return 1 if the message was successfully queued for transmission, 0 otherwise.
+ * @brief Formats and queues unframed USB text.
+ * @param format printf-style format string.
+ * @param ... Arguments consumed by the format string.
+ * @return 1 if queued, or 0 if allocation, formatting, or enqueueing fails.
+ * @note Text is truncated to the buffer capacity. Use Debug_SendTextResponse for
+ *       framed text that the binary plotter can decode.
  */
 uint8_t USB_printf(const char* format, ...){
     TxUsbBuf_t* msg = TxQueue_alloc();
