@@ -45,7 +45,8 @@ typedef struct FOC_Handle {
     float encoder_angle_mechanical_unwrapped;       //angle [rad]
     float encoder_angle_mechanical_wrapped_prev;    //previous angle [rad]
     int32_t encoder_full_rotations;                 //number of full rotations, used to calculate the unwrapped angle [-]
-    float encoder_speed_mechanical;                 //mechanical speed [rad/s]
+    float encoder_speed_mechanical;                 //mechanical speed [rad/s], from the encoder PLL
+    float encoder_pll_angle;                        //mechanical angle tracked by the encoder PLL, 0..2pi [rad]
     
     float encoder_angle_electrical;           //angle [rad]
     float encoder_speed_electrical;           //electrical speed [rad/s]

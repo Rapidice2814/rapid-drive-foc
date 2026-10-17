@@ -30,7 +30,16 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
         normalize_angle_0_2pi(&encoder_angle_mechanical_wrapped);
         uint16_t anticog_index = (uint16_t)(encoder_angle_mechanical_wrapped / ANTICOG_ANGLE_STEP); //TODO: put this in a function
         if(anticog_index >= NUMBER_OF_ANTICOG_MEASUREMENTS) anticog_index = 0; // the angle can be exactly 2pi
-        uint8_t anticog_dir = (hfoc->encoder_speed_mechanical >= 0) ? 0 : 1;
+        // the table has a forward and a backward version (friction), pick the commanded direction, else the measured one with
+        // hysteresis, a stuck rotor (speed 0) must not switch to the forward table
+        static uint8_t anticog_dir = 0;
+        if(hfoc->flash_data.controller.control_mode == CONTROL_MODE_SPEED && hfoc->speed_setpoint != 0.0f){
+            anticog_dir = (hfoc->speed_setpoint > 0.0f) ? 0 : 1;
+        } else if(hfoc->encoder_speed_mechanical > ANTICOG_DIRECTION_HYSTERESIS){
+            anticog_dir = 0;
+        } else if(hfoc->encoder_speed_mechanical < -ANTICOG_DIRECTION_HYSTERESIS){
+            anticog_dir = 1;
+        }
         setpoint_q += hfoc->flash_data.controller.anticogging_array[anticog_dir][anticog_index];
     }
 

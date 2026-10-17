@@ -17,6 +17,7 @@
 /*Anticogging*/
 #define NUMBER_OF_ANTICOG_MEASUREMENTS 1000 //The amount of steps in the full rotation
 #define ANTICOG_ANGLE_STEP (2.0f * M_PI / NUMBER_OF_ANTICOG_MEASUREMENTS)
+#define ANTICOG_DIRECTION_HYSTERESIS 0.2f // [rad/s], below this speed the anticogging table of the last direction is kept
 
 
 /*PCB parameters*/
@@ -30,7 +31,7 @@
 #define CURRENT_LOOP_OUTPUT_DELAY 1.15f // [current loop cycles], time from sampling the angle to the voltage being applied (PWM update), the output angle is advanced by this. Measured on the test motor: 1.0-1.25
 
 /*Filters*/
-#define SPEED_MEASUREMENT_ALPHA 0.3f
+#define ENCODER_PLL_BANDWIDTH 2500.0f // [rad/s], bandwidth of the PLL that estimates the speed from the encoder counter
 
 
 /*Temperature*/

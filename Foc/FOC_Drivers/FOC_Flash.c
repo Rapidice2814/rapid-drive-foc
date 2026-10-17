@@ -24,10 +24,10 @@ static const FLASH_DataTypeDef flash_data_default_values = {
     },
     
     .controller = {
-        .current_control_bandwidth = 500.0f,
-        .PID_gains_speed = {
-            .Kp = 0.1f,
-            .Ki = 5.0f,
+        .current_control_bandwidth = 2000.0f, // tested on the 11 pole pair gimbal motor: 5% overshoot, 4000 gives 18%
+        .PID_gains_speed = { // with the 2000 rad/s current loop and the 2500 rad/s encoder PLL, Kp 0.5 starts to amplify noise
+            .Kp = 0.4f,
+            .Ki = 20.0f,
             .Kd = 0.0f
         },
         .PID_gains_position = {

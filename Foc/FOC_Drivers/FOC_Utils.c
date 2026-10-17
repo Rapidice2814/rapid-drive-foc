@@ -217,7 +217,18 @@ FOC_StatusTypeDef FOC_UpdateEncoder(FOC_HandleTypeDef *hfoc, float frequency){
 
     hfoc->encoder_angle_electrical = raw_angle_electrical;
     
-    hfoc->encoder_speed_mechanical = hfoc->encoder_speed_mechanical * (1 - SPEED_MEASUREMENT_ALPHA) + SPEED_MEASUREMENT_ALPHA * delta * frequency;
+    /* Speed from a PLL tracking the counter angle. A count is 1.5 mrad, so the difference between two samples is mostly
+       quantization at low speed, the PLL interpolates between the counts. Critically damped PI: Kp = 2*bw, Ki = bw^2 */
+    float pll_error = raw_angle_mechanical - hfoc->encoder_pll_angle;
+    normalize_angle_pm_pi(&pll_error);
+    if(fabsf(pll_error) > 0.2f){ // start up (or a counter jump), the PLL can't be this far off when tracking
+        hfoc->encoder_pll_angle = raw_angle_mechanical;
+        hfoc->encoder_speed_mechanical = delta * frequency;
+    } else {
+        hfoc->encoder_speed_mechanical += ENCODER_PLL_BANDWIDTH * ENCODER_PLL_BANDWIDTH * pll_error / frequency;
+        hfoc->encoder_pll_angle += (hfoc->encoder_speed_mechanical + 2.0f * ENCODER_PLL_BANDWIDTH * pll_error) / frequency;
+        normalize_angle_0_2pi(&hfoc->encoder_pll_angle);
+    }
     hfoc->encoder_speed_electrical = hfoc->encoder_speed_mechanical * (float)(hfoc->flash_data.motor.pole_pairs);
 
     return FOC_OK;
