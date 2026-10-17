@@ -184,34 +184,6 @@ FOC_StatusTypeDef FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32
 }
 
 /**
-  * @brief Sets the mechanical encoder zero position to the current position.
-  * @param Handle to the FOC structure
-  * @retval FOC_StatusTypeDef
-  */
-FOC_StatusTypeDef FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
-
-    hfoc->flash_data.encoder.offset_valid = 0;
-
-    if(hfoc->has5047p.setup_complete != 1) return FOC_ERROR;
-
-    uint16_t diaagc = 0;
-    AS5047P_GetDIAAGC(&(hfoc->has5047p), &diaagc);
-    uint16_t errors = 0xe00 & diaagc;
-    if(errors != 0) return FOC_ERROR; //check for errors
-    // uint8_t agc = (0xff & diaagc);
-
-
-    uint16_t ap5047p_angle = 0;
-    AS5047P_GetAngle(&(hfoc->has5047p), &ap5047p_angle);
-
-    hfoc->flash_data.encoder.mechanical_offset = ((float)ap5047p_angle / 16384.0f) * 2.0f * M_PIF;
-    hfoc->flash_data.encoder.offset_valid = 1;
-    // *(hfoc->pencoder_count) = (int32_t)(hfoc->flash_data.encoder.mechanical_offset * ENCODER_PULSES_PER_ROTATION / (2 * M_PIF));
-
-    return FOC_OK;
-}
-
-/**
   * @brief Updates the encoder angle and speed in the FOC structure. This function should be called at a fixed frequency.
   * @param Handle to the FOC structure, delta time, filter alpha
   * @param frequency: frequency at which this function is called, used to calculate the speed from the change in angle. Should be in Hz.

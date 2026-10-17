@@ -22,7 +22,7 @@ void FOC_StateCurrentSensorCalibration(FOC_HandleTypeDef* hfoc){
 /*FOC_STATE_IDENTIFY*/
 
 FOC_StateTransitionTypeDef FOC_StateIdentify_Transition(FOC_HandleTypeDef* hfoc){
-    UNUSED(hfoc);
+    DRV8323_ExitHighImpedance(&hfoc->hdrv8323); // the ERROR state leaves the driver in high impedance
 
     WS2812b_SetAllColor(20, 15, 0);
     WS2812b_Send();
@@ -62,7 +62,7 @@ void FOC_StatePIDAutotune(FOC_HandleTypeDef* hfoc){
 /*FOC_STATE_ALIGNMENT*/
 
 FOC_StateTransitionTypeDef FOC_StateAlignment_Transition(FOC_HandleTypeDef* hfoc){
-    UNUSED(hfoc);
+    DRV8323_ExitHighImpedance(&hfoc->hdrv8323); // the ERROR state leaves the driver in high impedance
 
     WS2812b_SetAllColor(20, 15, 0);
     WS2812b_Send();
@@ -84,7 +84,7 @@ void FOC_StateAlignment(FOC_HandleTypeDef* hfoc){
 /*FOC_STATE_ALIGNMENT_TEST*/
 
 FOC_StateTransitionTypeDef FOC_StateAlignmentTest_Transition(FOC_HandleTypeDef* hfoc){
-    UNUSED(hfoc);
+    DRV8323_ExitHighImpedance(&hfoc->hdrv8323); // the ERROR state leaves the driver in high impedance
 
     WS2812b_SetAllColor(20, 15, 0);
     WS2812b_Send();
@@ -104,7 +104,7 @@ void FOC_StateAlignmentTest(FOC_HandleTypeDef* hfoc){
 /*FOC_STATE_ANTICOGGING*/
 
 FOC_StateTransitionTypeDef FOC_StateAntiCogging_Transition(FOC_HandleTypeDef* hfoc){
-    UNUSED(hfoc);
+    DRV8323_ExitHighImpedance(&hfoc->hdrv8323); // the ERROR state leaves the driver in high impedance
 
     WS2812b_SetAllColor(20, 15, 0);
     WS2812b_Send();
