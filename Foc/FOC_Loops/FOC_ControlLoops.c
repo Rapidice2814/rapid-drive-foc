@@ -12,16 +12,16 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
     float encoder_angle_electrical, speed_electrical, setpoint_q, setpoint_d;
 
     // angles and speeds below are in the phase frame, setpoints are given in the encoder direction
+    // only q flips with the direction, the d-axis (magnet flux) is the same in both frames
+    setpoint_d = hfoc->dq_current_setpoint.d;
     if(hfoc->flash_data.motor.direction == 1){
         encoder_angle_electrical = 2 * M_PI - hfoc->encoder_angle_electrical;
         speed_electrical = -hfoc->encoder_speed_electrical;
         setpoint_q = -hfoc->dq_current_setpoint.q;
-        setpoint_d = -hfoc->dq_current_setpoint.d;
     }else{
         encoder_angle_electrical = hfoc->encoder_angle_electrical;
         speed_electrical = hfoc->encoder_speed_electrical;
         setpoint_q = hfoc->dq_current_setpoint.q;
-        setpoint_d = hfoc->dq_current_setpoint.d;
     }
 
 
@@ -71,7 +71,11 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
     hfoc->dq_voltage.d = PID_Update(&hfoc->pid_current_d, setpoint_d, hfoc->dq_current.d);
     hfoc->dq_voltage.q = PID_Update(&hfoc->pid_current_q, setpoint_q, hfoc->dq_current.q);
 
-    if(hfoc->flash_data.controller.current_PID_FF_enabled == 1){
+    if(hfi_active && FOC_HFI_OverridesCurrentControl(hfoc)){ //HFI polarity voltage pulses, the controller must not react
+        hfoc->dq_voltage = (DQVoltagesTypeDef){0.0f, 0.0f};
+        PID_Reset(&hfoc->pid_current_d);
+        PID_Reset(&hfoc->pid_current_q);
+    } else if(hfoc->flash_data.controller.current_PID_FF_enabled == 1){
         if(hfoc->flash_data.motor.torque_constant != 0 && 
             hfoc->flash_data.motor.pole_pairs != 0 && 
             hfoc->flash_data.motor.phase_inductance != 0 &&

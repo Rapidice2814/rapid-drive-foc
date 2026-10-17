@@ -263,6 +263,7 @@ typedef enum {
     X(19, f, flash_data.hfi.PLL_gains.Kp) \
     X(20, f, flash_data.hfi.PLL_gains.Ki) \
     X(21, f, flash_data.hfi.polarity_current) \
+    X(22, f, flash_data.hfi.bias_current) \
 
 Debug_StatusTypeDef FOC_USB_Setup();
 Debug_StatusTypeDef FOC_USB_Debug_CaptureSamples();

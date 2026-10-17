@@ -69,9 +69,14 @@
 #define HFI_PLL_KI 25000.0f
 #define HFI_MAX_ELECTRICAL_SPEED (200.0f * M_2PIF) // [rad/s], HFI is a low speed method, the PLL output is clamped to this value
 
-#define HFI_POLARITY_CURRENT 2.0f // [A], d-axis current pulse used to detect the magnet polarity. 0 disables the polarity detection
+#define HFI_POLARITY_CURRENT 2.0f // [A], average current of the polarity voltage pulses (the voltage follows from R and L). 0 disables the polarity detection
+#define HFI_BIAS_CURRENT 1.5f // [A], DC d-axis current while HFI runs. Keeps the phase currents away from zero, where dead time distorts the carrier
 #define HFI_CONVERGE_TIME 0.2f // [s], time the PLL gets to lock before the polarity detection starts
-#define HFI_POLARITY_PULSE_TIME 0.05f // [s], duration of each polarity pulse, only the second half is used for the measurement
+#define HFI_POLARITY_PULSE_PAIRS 8 // [-], number of +/- voltage pulse pairs, averaged for the polarity decision
+#define HFI_POLARITY_PULSE_SPACING 8 // [cycles], current loop cycles from one pulse to the next, lets the current decay
+#define HFI_POLARITY_DEFAULT_VOLTAGE 1.0f // [V], pulse voltage if the motor R and L are not identified
+#define HFI_SETTLE_TIME 0.05f // [s], time after the polarity detection with the alternating bias, so the PLL catches up before the steady bias pulls the rotor
+#define HFI_BIAS_ALTERNATE_TIME 0.01f // [s], while the polarity is unknown the bias flips sign at this interval, so it can't pull the rotor in one direction
 
 #define HFI_MIN_CARRIER_POWER 1e-6f // [A^2], below this the carrier current is considered absent and the PLL is not updated
 

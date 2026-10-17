@@ -55,7 +55,8 @@ static const FLASH_DataTypeDef flash_data_default_values = {
             .Ki = HFI_PLL_KI,
             .Kd = 0.0f
         },
-        .polarity_current = HFI_POLARITY_CURRENT
+        .polarity_current = HFI_POLARITY_CURRENT,
+        .bias_current = HFI_BIAS_CURRENT
     },
 };
 

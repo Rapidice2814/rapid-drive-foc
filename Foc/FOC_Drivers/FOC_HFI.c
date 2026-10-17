@@ -4,6 +4,8 @@
 #include "Cordic.h"
 #include "main.h"
 
+#include <math.h>
+
 /*
  * High Frequency Injection (pulsating carrier in the estimated d-axis)
  *
@@ -14,21 +16,48 @@
  * LPF(id_hf*iq_hf) / LPF(id_hf*id_hf) gives a signal ~ (Lq-Ld)/Lq * err for small errors, independent of the carrier
  * amplitude, frequency, phase delay and average inductance. A PI-PLL drives this signal to zero.
  *
- * The saliency is pi periodic, so the PLL can lock on the south pole. After converging, two d-axis current pulses are applied
- * along the estimate. The pulse along the magnet flux saturates the iron, lowers Ld and gives the larger carrier current.
- * If the negative pulse wins, the estimate is flipped by pi.
+ * The saliency is pi periodic, so the PLL can lock on the south pole. After converging, short +/- d-axis voltage pulses (one
+ * current loop cycle each) are applied along the estimate, with the current controller bypassed. The pulse along the magnet flux
+ * saturates the iron, lowers Ld and gives the faster current rise. If the negative pulses win, the estimate is flipped by pi.
+ * Current pulses long enough for the current controller would pull a light rotor towards the current before the measurement.
+ *
+ * With ~0A fundamental current, every phase current crosses zero each carrier period and the inverter dead time distorts the
+ * carrier depending on the current direction. On low saliency (surface magnet) motors this fake, stationary saliency is as large
+ * as the real one. A DC d-axis bias current along the estimate keeps the currents away from zero and fixes this.
+ * A d-axis current against the magnet is an unstable equilibrium: the rotor flips towards the current, and if the estimate follows
+ * the rotor the motor runs away. So while the polarity is unknown the bias alternates its sign. After the polarity detection the
+ * PLL gets a short settling time with the alternating bias, and only then the bias is applied steadily, along the magnet.
  *
  * The carrier current is demodulated after the band-pass filter and the PWM/ADC delay. While rotating, the current then belongs
  * to an older estimate, so it is demodulated at angle - speed * delay. Without this, the angle lags by ~speed*delay/saliency.
  */
 
 #define HFI_CONVERGE_CYCLES ((uint32_t)(HFI_CONVERGE_TIME * CURRENT_LOOP_FREQUENCY))
-#define HFI_POLARITY_PULSE_CYCLES ((uint32_t)(HFI_POLARITY_PULSE_TIME * CURRENT_LOOP_FREQUENCY))
-#define HFI_POLARITY_MEASUREMENT_CYCLES (HFI_POLARITY_PULSE_CYCLES - HFI_POLARITY_PULSE_CYCLES / 2)
+#define HFI_SETTLE_CYCLES ((uint32_t)(HFI_SETTLE_TIME * CURRENT_LOOP_FREQUENCY))
+#define HFI_BIAS_ALTERNATE_CYCLES ((uint32_t)(HFI_BIAS_ALTERNATE_TIME * CURRENT_LOOP_FREQUENCY))
 
 static void FOC_HFI_SetState(HFITypeDef *hfi, HFIStateTypeDef state){
     hfi->state = state;
     hfi->state_counter = 0;
+}
+
+/**
+ * @brief Voltage of the polarity pulses, so the current averaged over one pulse (as the ADC sees it) reaches polarity_current
+ * @param hfoc Handle to the FOC structure
+ * @retval float [V]
+ */
+static float FOC_HFI_PolarityPulseVoltage(FOC_HandleTypeDef *hfoc){
+    const float R = hfoc->flash_data.motor.phase_resistance;
+    const float L = hfoc->flash_data.motor.phase_inductance;
+    const float T = 1.0f / CURRENT_LOOP_FREQUENCY;
+    float voltage = HFI_POLARITY_DEFAULT_VOLTAGE;
+
+    if(R > 0.0f && L > 0.0f){
+        const float tau = L / R;
+        const float average_fraction = 1.0f - tau / T * (1.0f - expf(-T / tau)); // average of the RL step response over one period, relative to V/R
+        voltage = hfoc->flash_data.hfi.polarity_current * R / average_fraction;
+    }
+    return fminf(voltage, hfoc->flash_data.limits.max_dq_voltage);
 }
 
 /**
@@ -67,8 +96,10 @@ void FOC_HFI_Reset(FOC_HandleTypeDef *hfoc){
     hfi->speed = 0.0f;
     hfi->encoder_angle_error = 0.0f;
     hfi->bias_current = 0.0f;
-    hfi->polarity_power_positive = 0.0f;
-    hfi->polarity_power_negative = 0.0f;
+    hfi->polarity_pulse_voltage = 0.0f;
+    hfi->polarity_response_positive = 0.0f;
+    hfi->polarity_response_negative = 0.0f;
+    hfi->polarity_pulse_pairs = 0;
     PID_Reset(&hfi->pll);
 
     // the carrier needs at least 4 samples per period, and the 2x carrier ripple after demodulation has to be well above the LPF
@@ -101,6 +132,14 @@ uint8_t FOC_HFI_IsActive(FOC_HandleTypeDef *hfoc){
  */
 uint8_t FOC_HFI_IsLocked(FOC_HandleTypeDef *hfoc){
     return hfoc->hfi.state == HFI_STATE_LOCKED;
+}
+
+/**
+ * @brief Returns 1 while the polarity voltage pulses run, the current controller output has to be zero then
+ * @param hfoc Handle to the FOC structure
+ */
+uint8_t FOC_HFI_OverridesCurrentControl(FOC_HandleTypeDef *hfoc){
+    return hfoc->hfi.state == HFI_STATE_POLARITY_POSITIVE || hfoc->hfi.state == HFI_STATE_POLARITY_NEGATIVE;
 }
 
 /**
@@ -148,23 +187,33 @@ ABCurrentsTypeDef FOC_HFI_Update(FOC_HandleTypeDef *hfoc, ABCurrentsTypeDef ab_c
         hfi->angle_error = 0.0f;
     }
 
-    /* PLL: the proportional part corrects the angle, the integrator tracks the speed */
-    float pll_output = PID_Update(&hfi->pll, hfi->angle_error, 0.0f);
-    hfi->speed = hfi->pll.integrator;
-    hfi->angle += pll_output / CURRENT_LOOP_FREQUENCY;
-    normalize_angle_0_2pi(&hfi->angle);
+    /* PLL: the proportional part corrects the angle, the integrator tracks the speed. Frozen during the polarity pulses,
+       the carrier is off then */
+    if(hfi->state != HFI_STATE_POLARITY_POSITIVE && hfi->state != HFI_STATE_POLARITY_NEGATIVE){
+        float pll_output = PID_Update(&hfi->pll, hfi->angle_error, 0.0f);
+        hfi->speed = hfi->pll.integrator;
+        hfi->angle += pll_output / CURRENT_LOOP_FREQUENCY;
+        normalize_angle_0_2pi(&hfi->angle);
+    }
 
     hfi->encoder_angle_error = hfi->angle - encoder_angle_electrical;
     normalize_angle_pm_pi(&hfi->encoder_angle_error);
 
     /* Convergence and polarity detection */
     hfi->state_counter++;
+    hfi->bias_current = hfoc->flash_data.hfi.bias_current;
+    float pulse_voltage = 0.0f;
     switch(hfi->state){
         case HFI_STATE_CONVERGING:
+            if((hfi->state_counter / HFI_BIAS_ALTERNATE_CYCLES) & 1U){ //polarity unknown, so no net torque from the bias
+                hfi->bias_current = -hfi->bias_current;
+            }
             if(hfi->state_counter >= HFI_CONVERGE_CYCLES){
                 if(hfoc->flash_data.hfi.polarity_current > 0.0f){
-                    hfi->polarity_power_positive = 0.0f;
-                    hfi->polarity_power_negative = 0.0f;
+                    hfi->polarity_pulse_voltage = FOC_HFI_PolarityPulseVoltage(hfoc);
+                    hfi->polarity_response_positive = 0.0f;
+                    hfi->polarity_response_negative = 0.0f;
+                    hfi->polarity_pulse_pairs = 0;
                     FOC_HFI_SetState(hfi, HFI_STATE_POLARITY_POSITIVE);
                 } else {
                     FOC_HFI_SetState(hfi, HFI_STATE_LOCKED);
@@ -173,26 +222,40 @@ ABCurrentsTypeDef FOC_HFI_Update(FOC_HandleTypeDef *hfoc, ABCurrentsTypeDef ab_c
             break;
 
         case HFI_STATE_POLARITY_POSITIVE:
-            hfi->bias_current = hfoc->flash_data.hfi.polarity_current;
-            if(hfi->state_counter > HFI_POLARITY_PULSE_CYCLES / 2){ //skip the current step and the filter settling
-                hfi->polarity_power_positive += hfi->id_id_filtered / (float)HFI_POLARITY_MEASUREMENT_CYCLES;
+        case HFI_STATE_POLARITY_NEGATIVE: {
+            const uint8_t positive = (hfi->state == HFI_STATE_POLARITY_POSITIVE);
+            hfi->bias_current = 0.0f; // the current controller is bypassed
+            if(hfi->state_counter == 1){
+                pulse_voltage = positive ? hfi->polarity_pulse_voltage : -hfi->polarity_pulse_voltage;
+            } else if(hfi->state_counter <= 4){ // the response shows up in the next cycles (PWM update and ADC averaging)
+                const float id = Park_transform(ab_current, hfi->angle).d;
+                if(positive){
+                    hfi->polarity_response_positive += id;
+                } else {
+                    hfi->polarity_response_negative -= id;
+                }
             }
-            if(hfi->state_counter >= HFI_POLARITY_PULSE_CYCLES){
-                FOC_HFI_SetState(hfi, HFI_STATE_POLARITY_NEGATIVE);
+            if(hfi->state_counter >= HFI_POLARITY_PULSE_SPACING){
+                if(positive){
+                    FOC_HFI_SetState(hfi, HFI_STATE_POLARITY_NEGATIVE);
+                } else if(++hfi->polarity_pulse_pairs < HFI_POLARITY_PULSE_PAIRS){
+                    FOC_HFI_SetState(hfi, HFI_STATE_POLARITY_POSITIVE);
+                } else {
+                    if(hfi->polarity_response_negative > hfi->polarity_response_positive){ //the estimate points to the south pole
+                        hfi->angle += M_PIF;
+                        normalize_angle_0_2pi(&hfi->angle);
+                    }
+                    FOC_HFI_SetState(hfi, HFI_STATE_SETTLING);
+                }
             }
             break;
+        }
 
-        case HFI_STATE_POLARITY_NEGATIVE:
-            hfi->bias_current = -hfoc->flash_data.hfi.polarity_current;
-            if(hfi->state_counter > HFI_POLARITY_PULSE_CYCLES / 2){
-                hfi->polarity_power_negative += hfi->id_id_filtered / (float)HFI_POLARITY_MEASUREMENT_CYCLES;
+        case HFI_STATE_SETTLING:
+            if((hfi->state_counter / HFI_BIAS_ALTERNATE_CYCLES) & 1U){
+                hfi->bias_current = -hfi->bias_current;
             }
-            if(hfi->state_counter >= HFI_POLARITY_PULSE_CYCLES){
-                hfi->bias_current = 0.0f;
-                if(hfi->polarity_power_negative > hfi->polarity_power_positive){ //the estimate points to the south pole
-                    hfi->angle += M_PIF;
-                    normalize_angle_0_2pi(&hfi->angle);
-                }
+            if(hfi->state_counter >= HFI_SETTLE_CYCLES){
                 FOC_HFI_SetState(hfi, HFI_STATE_LOCKED);
             }
             break;
@@ -207,6 +270,9 @@ ABCurrentsTypeDef FOC_HFI_Update(FOC_HandleTypeDef *hfoc, ABCurrentsTypeDef ab_c
     float cos_phase, sin_phase;
     Cordic_CalculateSinCos(hfi->injection_phase, &cos_phase, &sin_phase);
     hfi->injection_voltage = hfoc->flash_data.hfi.injection_amplitude * cos_phase;
+    if(FOC_HFI_OverridesCurrentControl(hfoc)){ // no carrier during the polarity pulses
+        hfi->injection_voltage = pulse_voltage;
+    }
 
     return ab_current_fundamental;
 }

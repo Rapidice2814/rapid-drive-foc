@@ -17,8 +17,9 @@ typedef enum {
 typedef enum {
     HFI_STATE_RESET = 0,        // filters and PLL need to be (re)initialized
     HFI_STATE_CONVERGING,       // PLL is locking onto the saliency, the angle is still ambiguous by pi
-    HFI_STATE_POLARITY_POSITIVE,// positive d-axis current pulse along the estimated angle
-    HFI_STATE_POLARITY_NEGATIVE,// negative d-axis current pulse along the estimated angle
+    HFI_STATE_POLARITY_POSITIVE,// positive d-axis voltage pulse along the estimated angle, alternates with the negative one
+    HFI_STATE_POLARITY_NEGATIVE,// negative d-axis voltage pulse along the estimated angle
+    HFI_STATE_SETTLING,         // polarity known, PLL catches up with rotor movement from the pulses before the steady bias is applied
     HFI_STATE_LOCKED,           // angle and polarity are known
     HFI_STATE_INVALID_CONFIG    // injection frequency or amplitude is not usable, nothing is injected
 } HFIStateTypeDef;
@@ -49,9 +50,11 @@ typedef struct {
     float encoder_angle_error;      // [rad], estimated angle - encoder angle, for validation
 
     /* Polarity detection */
-    float bias_current;             // [A], d-axis current added along the estimated angle during polarity detection
-    float polarity_power_positive;  // [A^2], average carrier power during the positive pulse
-    float polarity_power_negative;  // [A^2], average carrier power during the negative pulse
+    float bias_current;             // [A], DC d-axis current added along the estimated angle
+    float polarity_pulse_voltage;   // [V], amplitude of the polarity voltage pulses
+    float polarity_response_positive; // [A], summed d-axis current response to the positive pulses
+    float polarity_response_negative; // [A], summed d-axis current response to the negative pulses
+    uint8_t polarity_pulse_pairs;   // [-], completed +/- pulse pairs
 
     float max_speed;                // [rad/s], PLL output limit
     PIDControllerTypeDef pll;
@@ -66,6 +69,7 @@ void FOC_HFI_Init(FOC_HandleTypeDef *hfoc);
 void FOC_HFI_Reset(FOC_HandleTypeDef *hfoc);
 uint8_t FOC_HFI_IsActive(FOC_HandleTypeDef *hfoc);
 uint8_t FOC_HFI_IsLocked(FOC_HandleTypeDef *hfoc);
+uint8_t FOC_HFI_OverridesCurrentControl(FOC_HandleTypeDef *hfoc);
 ABCurrentsTypeDef FOC_HFI_Update(FOC_HandleTypeDef *hfoc, ABCurrentsTypeDef ab_current, float encoder_angle_electrical);
 void FOC_HFI_ApplyBiasCurrent(FOC_HandleTypeDef *hfoc, float control_angle, float *setpoint_d, float *setpoint_q);
 void FOC_HFI_AddInjectionVoltage(FOC_HandleTypeDef *hfoc, ABVoltagesTypeDef *ab_voltage);

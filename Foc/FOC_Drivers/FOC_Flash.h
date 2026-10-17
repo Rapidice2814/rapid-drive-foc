@@ -74,6 +74,7 @@ struct FLASH_HFIParameters {
     float injection_omega; // [rad/s], the frequency of the injected voltage
     PIDValuesTypeDef PLL_gains; // gains of the angle tracking PLL, Kd is unused
     float polarity_current; // [A], d-axis current used for the magnet polarity detection, 0 to skip the detection
+    float bias_current; // [A], DC d-axis current along the estimated angle while HFI runs. Without it, inverter dead time hides the saliency of low saliency motors. 0 disables it
 };
 
 
@@ -88,9 +89,7 @@ typedef struct {
     struct FLASH_ControllerParameters controller; // controller parameters
     struct FLASH_Limits limits; // limits
     struct FLASH_DriverParameters node; // driver parameters
-    struct FLASH_HFIParameters hfi; // HFI parameters
-
-    uint8_t filler[4]; // filler to make the struct size a multiple of 8 bytes. This is used to avoid issues with flash programming, which requires 8-byte alignment.
+    struct FLASH_HFIParameters hfi; // HFI parameters, hfi.bias_current took the place of a 4 byte filler, so the struct is still a multiple of 8 bytes
 
     uint32_t struct_terminator; // Last part of the struct, should be set to FLASH_DATA_STRUCT_TERMINATOR. This is used to detect whether the struct is correctly read from flash.
 } FLASH_DataTypeDef;
