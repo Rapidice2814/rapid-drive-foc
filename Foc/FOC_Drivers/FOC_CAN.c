@@ -5,6 +5,8 @@
 #include <math.h>
 #include <string.h>
 
+void FOC_QueueCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command, uint32_t delay_ticks);
+
 /**
  * @brief Sets the node ID for the FOC handle and configures the CAN filters accordingly.
  * @param hfoc: Pointer to the FOC handle
@@ -238,8 +240,7 @@ void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
                 FOC_TransmitCANMessage(hfoc, CAN_STATE_REPLY);
                 break;
             case CAN_SET_CONTROL_MODE:
-                ControlModeTypeDef new_mode = (ControlModeTypeDef)RxData[0];
-                FOC_SetControlMode(hfoc, new_mode);
+                FOC_SetControlMode(hfoc, (ControlModeTypeDef)RxData[0]);
                 break;
             case CAN_GET_CONTROL_MODE:
                 if(RxHeader.DataLength != FDCAN_DLC_BYTES_0) return;
@@ -404,10 +405,10 @@ void FOC_TransmitQueuedCANMessage(FOC_HandleTypeDef *hfoc){
     }
 
     const uint32_t current_tick = FOC_GetTick(hfoc);
-    if(queued_can_message_command != 0 && (uint32_t)(current_tick - queued_can_message_target_tick) < 0x80000000u){
-        FOC_TransmitCANMessage(hfoc, (CAN_CommandTypeDef)queued_can_message_command);
-        queued_can_message_command = 0;
-        queued_can_message_target_tick = 0;
+    if(hfoc->queued_can_message_command != 0 && (uint32_t)(current_tick - hfoc->queued_can_message_target_tick) < 0x80000000u){
+        FOC_TransmitCANMessage(hfoc, (CAN_CommandTypeDef)hfoc->queued_can_message_command);
+        hfoc->queued_can_message_command = 0;
+        hfoc->queued_can_message_target_tick = 0;
     }
 }
 
@@ -421,9 +422,9 @@ void FOC_CAN_Loop(FOC_HandleTypeDef *hfoc){
     FOC_TransmitQueuedCANMessage(hfoc);
 }
 
-// void CAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs){
-//     (void)hfdcan; //unused
-//     if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET){
+void CAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs){
+    (void)hfdcan; //unused
+    if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET){
 
-//     }
-// }
+    }
+}

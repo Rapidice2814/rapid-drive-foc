@@ -122,7 +122,15 @@ float constrainf(float value, float min, float max){
     return value;
 }
 
-uint8_t fnv1a64(const void *data, size_t data_len, int8_t *out, size_t out_len){
+/**
+  * @brief Implements the FNV-1a hash function for 64-bit values
+  * @param data The input data
+  * @param data_len The length of the input data
+  * @param out The output buffer
+  * @param out_len The length of the output buffer
+  * @retval 0 on success, 1 on failure
+  */
+uint8_t fnv1a64(const void *data, uint8_t data_len, int8_t *out, uint8_t out_len){
     if (out_len > 8 || (data_len != 0 && data == NULL) ||
         (out_len != 0 && out == NULL)){
         return 1;
