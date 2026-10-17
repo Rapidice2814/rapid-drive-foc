@@ -26,6 +26,9 @@
 #define CURRENT_SENSE_RESISTANCE 0.01f // [Ohm], current sense resistor value to measure the phase currents
 #define VBUS_VOLTAGE_DIVIDER_RATIO (1.0f/(1.0f + 10.0f)) // R2/(R1+R2) voltage divider ratio for the bus voltage measurement, R1 = 100k, R2 = 10k
 
+/*Current loop*/
+#define CURRENT_LOOP_OUTPUT_DELAY 1.15f // [current loop cycles], time from sampling the angle to the voltage being applied (PWM update), the output angle is advanced by this. Measured on the test motor: 1.0-1.25
+
 /*Filters*/
 #define SPEED_MEASUREMENT_ALPHA 0.3f
 

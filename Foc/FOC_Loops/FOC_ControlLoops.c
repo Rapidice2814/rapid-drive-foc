@@ -89,7 +89,9 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
     }
 
 
-    hfoc->ab_voltage = InvPark_transform(hfoc->dq_voltage, control_angle_electrical);
+    // the voltage is applied during the next PWM period, by then the rotor has moved on
+    const float output_angle_electrical = control_angle_electrical + speed_electrical * (CURRENT_LOOP_OUTPUT_DELAY / CURRENT_LOOP_FREQUENCY);
+    hfoc->ab_voltage = InvPark_transform(hfoc->dq_voltage, output_angle_electrical);
     if(hfi_active){
         FOC_HFI_AddInjectionVoltage(hfoc, &hfoc->ab_voltage);
     }

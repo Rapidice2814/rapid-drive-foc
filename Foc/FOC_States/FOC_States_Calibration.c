@@ -1,3 +1,5 @@
+#include <math.h>
+
 #include "FOC_States.h"
 #include "FOC_Handle.h"
 #include "FOC_Loops.h"
@@ -50,8 +52,6 @@ FOC_StateTransitionTypeDef FOC_StatePIDAutotune_Transition(FOC_HandleTypeDef* hf
 void FOC_StatePIDAutotune(FOC_HandleTypeDef* hfoc){
     FOC_LoopStatusTypeDef ret = FOC_PIDAutotune(hfoc);
     if(ret == FOC_LOOP_COMPLETED){
-        hfoc->flash_data.controller.anticogging_data_valid = 0;
-        hfoc->flash_data.controller.current_PID_FF_enabled = 0;
         FOC_NextState(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("PID autotune failed!\n");
@@ -61,8 +61,15 @@ void FOC_StatePIDAutotune(FOC_HandleTypeDef* hfoc){
 
 /*FOC_STATE_ALIGNMENT*/
 
+static float alignment_previous_offset = 0.0f;
+static uint8_t alignment_previous_direction = 0;
+
 FOC_StateTransitionTypeDef FOC_StateAlignment_Transition(FOC_HandleTypeDef* hfoc){
     DRV8323_ExitHighImpedance(&hfoc->hdrv8323); // the ERROR state leaves the driver in high impedance
+
+    // the anticogging table is indexed by the mechanical angle, it stays valid if the alignment gives the same encoder frame
+    alignment_previous_offset = hfoc->flash_data.encoder.mechanical_offset;
+    alignment_previous_direction = hfoc->flash_data.motor.direction;
 
     WS2812b_SetAllColor(20, 15, 0);
     WS2812b_Send();
@@ -73,7 +80,13 @@ FOC_StateTransitionTypeDef FOC_StateAlignment_Transition(FOC_HandleTypeDef* hfoc
 void FOC_StateAlignment(FOC_HandleTypeDef* hfoc){
     FOC_LoopStatusTypeDef ret = FOC_Alignment(hfoc, 1.0f);
     if(ret == FOC_LOOP_COMPLETED){
-        hfoc->flash_data.controller.anticogging_data_valid = 0;
+        if(hfoc->flash_data.motor.direction != alignment_previous_direction ||
+            fabsf(hfoc->flash_data.encoder.mechanical_offset - alignment_previous_offset) > 0.5f * ANTICOG_ANGLE_STEP){
+            if(hfoc->flash_data.controller.anticogging_data_valid){
+                Debug_SendTextResponse("Encoder frame changed, anticogging data is no longer valid\n");
+            }
+            hfoc->flash_data.controller.anticogging_data_valid = 0;
+        }
         FOC_NextState(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("Alignment failed!\n");
@@ -105,6 +118,7 @@ void FOC_StateAlignmentTest(FOC_HandleTypeDef* hfoc){
 
 FOC_StateTransitionTypeDef FOC_StateAntiCogging_Transition(FOC_HandleTypeDef* hfoc){
     DRV8323_ExitHighImpedance(&hfoc->hdrv8323); // the ERROR state leaves the driver in high impedance
+    FOC_AntiCoggingReset(hfoc); // restart, also after an aborted measurement
 
     WS2812b_SetAllColor(20, 15, 0);
     WS2812b_Send();

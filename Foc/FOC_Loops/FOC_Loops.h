@@ -24,6 +24,7 @@ FOC_LoopStatusTypeDef FOC_PIDAutotune(FOC_HandleTypeDef *hfoc);
 FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc);
 FOC_LoopStatusTypeDef Alignment_Test_Loop(FOC_HandleTypeDef *hfoc, float magnitude);
 FOC_LoopStatusTypeDef FOC_AntiCoggingMeasurement(FOC_HandleTypeDef *hfoc);
+void FOC_AntiCoggingReset(FOC_HandleTypeDef *hfoc);
 
 void Current_Loop(FOC_HandleTypeDef *hfoc);
 void Speed_Loop(FOC_HandleTypeDef *hfoc);

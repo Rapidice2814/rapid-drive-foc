@@ -24,6 +24,7 @@ FOC_StateTransitionTypeDef FOC_StateChecklist_Transition(FOC_HandleTypeDef* hfoc
 
 static void FOC_StateChecklist(FOC_HandleTypeDef* hfoc){
     static uint8_t checklist_step = 0;
+    static uint8_t identified = 0; // the motor was identified in this checklist run, so the current gains are outdated
     switch(checklist_step){
         case 0:
             if(hfoc->adc_calibrated != 1)
@@ -34,11 +35,18 @@ static void FOC_StateChecklist(FOC_HandleTypeDef* hfoc){
                 FOC_SetState(hfoc, FOC_STATE_ALIGNMENT, FOC_STATE_CHECKLIST);
             break;
         case 2:
-            if(hfoc->flash_data.motor.phase_resistance == 0 || hfoc->flash_data.motor.phase_inductance == 0)
+            if(hfoc->flash_data.motor.phase_resistance == 0 || hfoc->flash_data.motor.phase_inductance == 0){
                 FOC_SetState(hfoc, FOC_STATE_IDENTIFY, FOC_STATE_CHECKLIST);
+                identified = 1;
+            }
             break;
         case 3:
-            FOC_SetState(hfoc, FOC_STATE_PID_AUTOTUNE, FOC_STATE_CHECKLIST);
+            if(identified ||
+                hfoc->flash_data.controller.PID_gains_d.Kp == 0 || hfoc->flash_data.controller.PID_gains_d.Ki == 0 ||
+                hfoc->flash_data.controller.PID_gains_q.Kp == 0 || hfoc->flash_data.controller.PID_gains_q.Ki == 0){ // keep tuned gains from flash
+                FOC_SetState(hfoc, FOC_STATE_PID_AUTOTUNE, FOC_STATE_CHECKLIST);
+            }
+            identified = 0;
             break;
         case 4:
             FOC_SetState(hfoc, FOC_STATE_RUN, FOC_STATE_NONE);
