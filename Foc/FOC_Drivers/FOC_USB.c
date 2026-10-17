@@ -171,12 +171,12 @@ uint8_t USB_printf(const char* format, ...){
     n = vsnprintf((char*)msg->payload, sizeof(msg->payload), format, args);
     va_end(args);
 
-    if (n < 0) {
+    if(n < 0) {
         TxQueue_free(msg);
         return 0;
     }
 
-    if ((size_t)n >= sizeof(msg->payload)) {
+    if((size_t)n >= sizeof(msg->payload)) {
         n = sizeof(msg->payload) - 1;
     }
 

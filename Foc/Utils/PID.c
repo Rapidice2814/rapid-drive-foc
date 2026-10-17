@@ -51,12 +51,12 @@ float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement) {
 
     float max_int_out = *pid->max_out * 0.8f; // Limit the integrator output to 80% of the max output
 
-    if (fabsf(pid->integrator) > max_int_out) { // clamp the integrator
+    if(fabsf(pid->integrator) > max_int_out) { // clamp the integrator
         pid->integrator = (pid->integrator > 0.0f ? 1.0f : -1.0f) * (max_int_out);
     }
 
     float difference = measurement - pid->prevMeasurement;
-    if (pid->useAngleNormalization) {
+    if(pid->useAngleNormalization) {
         normalize_angle_pm_pi(&difference); // Normalize the angle difference to [-pi, pi]
     }
 		
@@ -67,7 +67,7 @@ float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement) {
 
     pid->out = proportional + pid->integrator + pid->differentiator;
 
-    if (fabsf(pid->out) > *pid->max_out) { //clamp the output
+    if(fabsf(pid->out) > *pid->max_out) { //clamp the output
         pid->out = (pid->out > 0.0f ? 1.0f : -1.0f) * (*pid->max_out);
     }
 

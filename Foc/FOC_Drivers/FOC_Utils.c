@@ -215,10 +215,10 @@ FOC_StatusTypeDef FOC_UpdateEncoder(FOC_HandleTypeDef *hfoc, float frequency){
     hfoc->encoder_angle_mechanical_wrapped = raw_angle_mechanical;
     float delta = raw_angle_mechanical - hfoc->encoder_angle_mechanical_wrapped_prev;
 
-    if (delta > M_PIF) {
+    if(delta > M_PIF) {
         hfoc->encoder_full_rotations--;
         delta -= M_2PIF;
-    } else if (delta < -M_PIF) {
+    } else if(delta < -M_PIF) {
         hfoc->encoder_full_rotations++;
         delta += M_2PIF;
     }
@@ -240,6 +240,20 @@ FOC_StatusTypeDef FOC_UpdateEncoder(FOC_HandleTypeDef *hfoc, float frequency){
     hfoc->encoder_speed_electrical = hfoc->encoder_speed_mechanical * (float)(hfoc->flash_data.motor.pole_pairs);
 
     return FOC_OK;
+}
+
+/**
+  * @brief Gets the current tick value from the FOC structure.
+  * @param Handle to the FOC structure
+  * @retval uint32_t Current tick value
+  * @note The tick value is incremented at the frequency of the CURRENT_LOOP_FREQUENCY
+  */
+uint32_t FOC_GetTick(FOC_HandleTypeDef *hfoc){
+    return hfoc->tick;
+}
+
+void FOC_IncrementTick(FOC_HandleTypeDef *hfoc){
+    hfoc->tick++;
 }
 
 

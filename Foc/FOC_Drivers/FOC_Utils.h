@@ -63,4 +63,8 @@ FOC_StatusTypeDef FOC_UpdateEncoder(FOC_HandleTypeDef *hfoc, float frequency);
 /* PWM */
 FOC_StatusTypeDef FOC_SetPWMCCRPointers(FOC_HandleTypeDef *hfoc, volatile uint32_t *pCCRa, volatile uint32_t *pCCRb, volatile uint32_t *pCCRc, uint32_t max_ccr);
 
+/* Tick */
+uint32_t FOC_GetTick(FOC_HandleTypeDef *hfoc);
+void FOC_IncrementTick(FOC_HandleTypeDef *hfoc);
+
 #endif // FOC_UTILS_H

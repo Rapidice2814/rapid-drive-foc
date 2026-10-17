@@ -37,9 +37,9 @@ void GenerateNtcLut(NTC_LUT_TypeDef *hntclut, float temp_min, float temp_max, fl
 float GetNtcTemperature(NTC_LUT_TypeDef *hntclut, float ntc_resistance){
     if(hntclut == NULL) return -1.0f;
 
-    if (ntc_resistance >= hntclut->resistance_LUT[0])
+    if(ntc_resistance >= hntclut->resistance_LUT[0])
         return hntclut->temperature_LUT[0];
-    if (ntc_resistance <= hntclut->resistance_LUT[NTC_LUT_SIZE - 1])
+    if(ntc_resistance <= hntclut->resistance_LUT[NTC_LUT_SIZE - 1])
         return hntclut->temperature_LUT[NTC_LUT_SIZE - 1];
 
     // Find interval for interpolation
