@@ -48,6 +48,13 @@
 
 
 static uint8_t is_even_parity(uint16_t data);
+
+/* The AS5047P needs >= 350ns between CSn and SCLK edges and >= 350ns CSn high time between frames.
+   Without these, back to back frames read 0 for the angle and diagnostic registers. ~1us at 170MHz. */
+static inline void AS5047P_CsDelay(void){
+    for(volatile uint32_t i = 0; i < 40; i++){
+    }
+}
 static uint16_t AS5047P_TransmitCommand(AS5047P_HandleTypeDef *has5047p, uint16_t address14Bits, uint8_t rwBit);
 static uint16_t AS5047P_TransmitData(AS5047P_HandleTypeDef *has5047p, uint16_t address14Bits);
 
@@ -168,8 +175,11 @@ static uint16_t AS5047P_TransmitCommand(AS5047P_HandleTypeDef *has5047p, uint16_
 
 
 	HAL_GPIO_WritePin(has5047p->slave_select_port, has5047p->slave_select_pin, 0);
+	AS5047P_CsDelay(); // CSn falling to first SCLK edge
 	HAL_SPI_TransmitReceive(has5047p->hspi, (uint8_t*)&command, (uint8_t*)&received, 1, 100);
+	AS5047P_CsDelay(); // last SCLK edge to CSn rising
 	HAL_GPIO_WritePin(has5047p->slave_select_port, has5047p->slave_select_pin, 1);
+	AS5047P_CsDelay(); // CSn high time between frames
 
 	return received;
 }
@@ -185,8 +195,11 @@ static uint16_t AS5047P_TransmitData(AS5047P_HandleTypeDef *has5047p, uint16_t d
     }
 
 	HAL_GPIO_WritePin(has5047p->slave_select_port, has5047p->slave_select_pin, 0);
+	AS5047P_CsDelay(); // CSn falling to first SCLK edge
 	HAL_SPI_TransmitReceive(has5047p->hspi, (uint8_t*)&command, (uint8_t*)&received, 1, 100);
+	AS5047P_CsDelay(); // last SCLK edge to CSn rising
 	HAL_GPIO_WritePin(has5047p->slave_select_port, has5047p->slave_select_pin, 1);
+	AS5047P_CsDelay(); // CSn high time between frames
 
 	return received;
 }
