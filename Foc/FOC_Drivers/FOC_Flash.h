@@ -68,9 +68,11 @@ struct FLASH_DriverParameters {
 };
 
 struct FLASH_HFIParameters {
-    uint8_t hfi_enabled; // boolean, whether HFI is enabled or not
+    uint8_t mode; // HFIModeTypeDef: 0 = disabled, 1 = observer only (control uses the encoder), 2 = sensorless (control uses the HFI angle)
     float injection_amplitude; // [V], the amplitude of the injected voltage
     float injection_omega; // [rad/s], the frequency of the injected voltage
+    PIDValuesTypeDef PLL_gains; // gains of the angle tracking PLL, Kd is unused
+    float polarity_current; // [A], d-axis current used for the magnet polarity detection, 0 to skip the detection
 };
 
 

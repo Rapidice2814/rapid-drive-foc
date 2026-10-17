@@ -16,7 +16,9 @@ FOC_StateTransitionTypeDef FOC_StateFlashSave_Transition(FOC_HandleTypeDef* hfoc
 void FOC_StateFlashSave(FOC_HandleTypeDef* hfoc){
     Debug_SendTextResponse("Saving flash data ...\n");
     if(FOC_FLASH_WriteData(&hfoc->flash_data) != FLASH_OK){
+        Debug_SendTextResponse("Saving flash data failed!\n");
         FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
+        return;
     }
     Debug_SendTextResponse("Flash data saved!\n");
     FOC_NextState(hfoc);
@@ -35,7 +37,9 @@ FOC_StateTransitionTypeDef FOC_StateFlashLoad_Transition(FOC_HandleTypeDef* hfoc
 void FOC_StateFlashLoad(FOC_HandleTypeDef* hfoc){
     Debug_SendTextResponse("Loading flash data ...\n");
     if(FOC_FLASH_ReadData(&hfoc->flash_data) != FLASH_OK){
+        Debug_SendTextResponse("Loading flash data failed!\n");
         FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
+        return;
     }
     Debug_SendTextResponse("Flash data loaded!\n");
     FOC_NextState(hfoc);
@@ -54,7 +58,9 @@ FOC_StateTransitionTypeDef FOC_StateFlashClear_Transition(FOC_HandleTypeDef* hfo
 void FOC_StateFlashClear(FOC_HandleTypeDef* hfoc){
     Debug_SendTextResponse("Clearing flash data ...\n");
     if(FOC_FLASH_ClearData() != FLASH_OK){
+        Debug_SendTextResponse("Clearing flash data failed!\n");
         FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
+        return;
     }
     Debug_SendTextResponse("Flash data cleared!\n");
     FOC_NextState(hfoc);

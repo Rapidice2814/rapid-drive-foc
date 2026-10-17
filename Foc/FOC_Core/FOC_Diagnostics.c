@@ -42,7 +42,7 @@ void FOC_CheckErrors(FOC_HandleTypeDef *hfoc){
 
     if(hfoc->adc_values.vbus > hfoc->flash_data.limits.vbus_overvoltage_trip_level) active_errors |= FOC_ERROR_VBUS_OV;
     if(hfoc->adc_values.vbus < hfoc->flash_data.limits.vbus_undervoltage_trip_level) active_errors |= FOC_ERROR_VBUS_UV;
-    if(hfoc->ibus > hfoc->flash_data.limits.ibus_overcurrent_trip_level) active_errors |= FOC_ERROR_IBUS_OC;
+    if(hfoc->flash_data.limits.ibus_overcurrent_trip_level > 0.0f && hfoc->ibus > hfoc->flash_data.limits.ibus_overcurrent_trip_level) active_errors |= FOC_ERROR_IBUS_OC; // 0 disables the check
 
     hfoc->active_errors = active_errors;
     hfoc->latched_errors |= active_errors;

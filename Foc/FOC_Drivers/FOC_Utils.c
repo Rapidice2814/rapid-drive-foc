@@ -95,6 +95,8 @@ PhaseVoltagesTypeDef InvClarke_transform(ABVoltagesTypeDef ab_voltage){
  * @retval float Bus current
  */
 float CalculateBusCurrent(PhaseCurrentsTypeDef phase_current, PhaseVoltagesTypeDef phase_voltage, float vbus){
+    if(vbus < 1.0f) return 0.0f; // avoid 0/0, a NaN would stick in the filtered bus current forever
+
     float power = phase_voltage.a * phase_current.a +
                   phase_voltage.b * phase_current.b + 
                   phase_voltage.c * phase_current.c;
@@ -113,6 +115,13 @@ float CalculateBusCurrent(PhaseCurrentsTypeDef phase_current, PhaseVoltagesTypeD
 FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTypeDef phase_voltage){
 
     hfoc->phase_voltage = phase_voltage;
+
+    if(!(hfoc->adc_values.vbus > 1.0f)){ // no bus voltage measured yet, the duty cycle would be NaN
+        *(hfoc->pCCRa) = 0;
+        *(hfoc->pCCRb) = 0;
+        *(hfoc->pCCRc) = 0;
+        return FOC_ERROR;
+    }
     
 	float Umin = fminf(phase_voltage.a, fminf(phase_voltage.b, phase_voltage.c));
     float Umax = fmaxf(phase_voltage.a, fmaxf(phase_voltage.b, phase_voltage.c));

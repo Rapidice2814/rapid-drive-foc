@@ -31,6 +31,7 @@ FOC_StateTransitionTypeDef FOC_StateRun_Transition(FOC_HandleTypeDef* hfoc){
     PID_Reset(&hfoc->pid_current_q);
     PID_Reset(&hfoc->pid_speed);
     PID_Reset(&hfoc->pid_position);
+    FOC_HFI_Reset(hfoc);
 
     FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
     DRV8323_ExitHighImpedance(&hfoc->hdrv8323);

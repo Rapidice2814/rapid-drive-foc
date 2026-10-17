@@ -224,11 +224,17 @@ typedef enum {
     X(28, f,    angle_setpoint)                 \
     X(29, f,    speed_setpoint)                 \
     X(30, u32,  execution_time.loop_max)        \
-    X(31, f,  hfi.injection_phase)              \
-    X(32, f,  hfi.i_alpha_l_raw)                \
-    X(33, f,  hfi.i_beta_l_raw)                 \
-    X(34, f,  hfi.i_alpha_l_filtered)           \
-    X(35, f,  hfi.i_beta_l_filtered)            \
+    X(31, f,    hfi.injection_phase)            \
+    X(32, f,    hfi.id_hf)                      \
+    X(33, f,    hfi.iq_hf)                      \
+    X(34, f,    hfi.id_iq_filtered)             \
+    X(35, f,    hfi.id_id_filtered)             \
+    X(36, f,    hfi.angle_error)                \
+    X(37, f,    hfi.angle)                      \
+    X(38, f,    hfi.speed)                      \
+    X(39, f,    hfi.encoder_angle_error)        \
+    X(40, u32,  hfi.state)                      \
+    X(41, f,    hfi.injection_voltage)          \
 
 #define FOC_PID_CONTROLLERS_LIST(X)             \
     X(0, pid_current_d)                         \
@@ -252,10 +258,13 @@ typedef enum {
     X(12, f, flash_data.motor.phase_resistance) \
     X(13, f, flash_data.motor.phase_inductance) \
     X(14, f, flash_data.motor.torque_constant) \
-    X(15, u32, flash_data.hfi.hfi_enabled) \
+    X(15, u32, flash_data.hfi.mode) \
     X(16, f, flash_data.hfi.injection_amplitude) \
     X(17, f, flash_data.hfi.injection_omega) \
     X(18, f, flash_data.controller.current_control_bandwidth) \
+    X(19, f, flash_data.hfi.PLL_gains.Kp) \
+    X(20, f, flash_data.hfi.PLL_gains.Ki) \
+    X(21, f, flash_data.hfi.polarity_current) \
 
 
 
@@ -468,7 +477,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         #undef X
             default:
                 Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
-                break;
+                return;
         }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
@@ -489,7 +498,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         #undef X
             default:
                 Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
-                break;
+                return;
         }
         response_payload[0] = controller_id;
         memcpy(&response_payload[1], &current_gains, sizeof(current_gains));
@@ -515,7 +524,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         #undef X
             default:
                 Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
-                break;
+                return;
         }
 
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
@@ -542,7 +551,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         #undef X
             default:
                 Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
-                break;
+                return;
         }
 
         Debug_SendBinaryResponse(MSG_VAR_REPLY, response_payload, 5);
@@ -908,11 +917,14 @@ uint8_t Debug_SendTextResponse(const char* format, ...){
 }
 
 void USB_ProcessReceivedPacket(uint8_t* buf, uint16_t len){
-    UNUSED(len);
-    if (buf[0] == DEBUG_SOF1_BIN || buf[1] == DEBUG_SOF2_BIN){
+    if (len >= 5 && buf[0] == DEBUG_SOF1_BIN && buf[1] == DEBUG_SOF2_BIN){
         MsgTypeTypeDef msg_type = (MsgTypeTypeDef)buf[2];
         uint16_t payload_length = (uint16_t)buf[3] | ((uint16_t)buf[4] << 8);
         uint8_t* payload = &buf[5];
+        if(payload_length > len - 5){ // never read past the received data
+            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            return;
+        }
         Debug_ExecuteBinaryCommand(msg_type, payload, payload_length);
     } else {
         Debug_ExecuteTextCommand((const char*)buf, len);

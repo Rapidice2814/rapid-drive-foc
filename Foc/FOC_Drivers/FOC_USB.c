@@ -45,7 +45,11 @@ void USB_TransmitPacket(){
         HAL_GPIO_WritePin(DEBUG_LED2_GPIO_Port, DEBUG_LED2_Pin, GPIO_PIN_SET);
         return;
     }else{
-        TxQueue_push(hdebugusb.tx_buffer);
+        hdebugusb.tx_busy_flag = 0; // no transmit complete callback will follow, so the flag has to be cleared here
+        if(!TxQueue_push(hdebugusb.tx_buffer)){
+            TxQueue_free(hdebugusb.tx_buffer);
+        }
+        hdebugusb.tx_buffer = NULL;
         return;
     }  
 }
@@ -92,13 +96,14 @@ void USB_TransmitCpltCallback(){
  * @return None.
  */
 void USB_ReceiveCallback(uint8_t* buf, uint32_t* len){
-    if(*len < 1){
+    if(*len < 1 || *len >= RX_USB_BUF_SIZE){ // one byte is kept for the null terminator
         return;
     }
 
     RxUsbBuf_t* rxmsg = RxQueue_alloc();
     if(!rxmsg) return;
     memcpy(rxmsg->payload, buf, *len);
+    rxmsg->payload[*len] = '\0'; // the pool buffers are reused, so text commands would otherwise be parsed with stale bytes
     rxmsg->length = (uint16_t)*len;
 
     RxQueue_push(rxmsg);

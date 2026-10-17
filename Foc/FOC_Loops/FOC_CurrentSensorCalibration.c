@@ -35,6 +35,9 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration(FOC_HandleTypeDef *hfoc){
 
                 DRV8323_CSACALStart(&hfoc->hdrv8323);
 
+                PhaseCurrentsTypeDef zero_offset_values = {0.0f, 0.0f, 0.0f}; // measure the raw offsets, otherwise a recalibration measures the residual
+                FOC_ADC_SetPhaseCurrentOffsets(&zero_offset_values);
+
                 acc_current_offset_a = 0;
                 acc_current_offset_b = 0;
                 acc_current_offset_c = 0;

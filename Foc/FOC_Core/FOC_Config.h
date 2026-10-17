@@ -59,10 +59,21 @@
 
 
 /* HFI Parameters */
-#define HFI_INJECTION_OMEGA (1000.0 * M_2PIF)
-#define HFI_INJECTION_AMPLITUDE 0.2f
+#define HFI_INJECTION_OMEGA (1000.0f * M_2PIF) // [rad/s], must stay well below CURRENT_LOOP_FREQUENCY / 2
+#define HFI_INJECTION_AMPLITUDE 0.2f // [V]
 
-#define HFI_CURRENT_LPF_CUTOFF_FREQ 200.0f // [Hz], cutoff frequency of the low-pass filter for the HFI currents
+#define HFI_BANDPASS_Q 2.0f // [-], quality factor of the band-pass filter that separates the carrier current from the fundamental current
+#define HFI_CURRENT_LPF_CUTOFF_FREQ 200.0f // [Hz], cutoff frequency of the low-pass filter for the demodulated HFI signals
+
+#define HFI_PLL_KP 1000.0f // [rad/s per unit error], the error is roughly (Lq-Ld)/Lq * angle error, so these gains assume ~10% saliency
+#define HFI_PLL_KI 25000.0f
+#define HFI_MAX_ELECTRICAL_SPEED (200.0f * M_2PIF) // [rad/s], HFI is a low speed method, the PLL output is clamped to this value
+
+#define HFI_POLARITY_CURRENT 2.0f // [A], d-axis current pulse used to detect the magnet polarity. 0 disables the polarity detection
+#define HFI_CONVERGE_TIME 0.2f // [s], time the PLL gets to lock before the polarity detection starts
+#define HFI_POLARITY_PULSE_TIME 0.05f // [s], duration of each polarity pulse, only the second half is used for the measurement
+
+#define HFI_MIN_CARRIER_POWER 1e-6f // [A^2], below this the carrier current is considered absent and the PLL is not updated
 
 
 #endif // FOC_CONFIG_H

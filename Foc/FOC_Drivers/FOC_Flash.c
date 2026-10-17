@@ -53,9 +53,15 @@ static const FLASH_DataTypeDef flash_data_default_values = {
     },
 
     .hfi = {
-        .hfi_enabled = 0,
+        .mode = 0,
         .injection_amplitude = HFI_INJECTION_AMPLITUDE,
-        .injection_omega = HFI_INJECTION_OMEGA
+        .injection_omega = HFI_INJECTION_OMEGA,
+        .PLL_gains = {
+            .Kp = HFI_PLL_KP,
+            .Ki = HFI_PLL_KI,
+            .Kd = 0.0f
+        },
+        .polarity_current = HFI_POLARITY_CURRENT
     },
 };
 
@@ -94,6 +100,8 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
 
     uint32_t PAGEError = 0;
     if (HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError) != HAL_OK){
+        HAL_FLASH_Lock();
+        __enable_irq();
         return FLASH_ERROR;
     }
 
@@ -102,6 +110,8 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
         memcpy(&data_to_write, ((uint8_t*)pdata) + i, sizeof(uint64_t));
 
         if(HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, STORAGE_FLASH_BASE + i, data_to_write) != HAL_OK){
+            HAL_FLASH_Lock();
+            __enable_irq();
             return FLASH_ERROR;
         } 
     }
@@ -129,6 +139,8 @@ FLASH_StatusTypeDef FOC_FLASH_ClearData(){
 
     uint32_t PAGEError = 0;
     if (HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError) != HAL_OK){
+        HAL_FLASH_Lock();
+        __enable_irq();
         return FLASH_ERROR;
     }
 
@@ -141,12 +153,17 @@ FLASH_StatusTypeDef FOC_FLASH_ClearData(){
 
 /**
  * @brief  Reads the FOC configuration data from flash memory.
- * @param  pdata: Pointer to the data structure to be filled with the read data.
+ * @param  pdata: Pointer to the data structure to be filled with the read data. Left untouched if the flash holds no valid data.
  * @retval FLASH_StatusTypeDef: Status of the flash read operation.
  */
 FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
     if(pdata == NULL){
         return FLASH_ERROR;
+    }
+
+    const FLASH_DataTypeDef *pflash = (const FLASH_DataTypeDef *)STORAGE_FLASH_BASE;
+    if(pflash->contains_data != 1 || pflash->struct_terminator != FLASH_DATA_STRUCT_TERMINATOR){
+        return FLASH_EMPTY;
     }
     
     for(uint32_t i = 0; i < sizeof(FLASH_DataTypeDef) / sizeof(uint64_t); i++){
@@ -154,11 +171,7 @@ FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
         ((uint64_t*)pdata)[i] = data64;
     }
 
-    if(pdata->contains_data == 1 && pdata->struct_terminator == FLASH_DATA_STRUCT_TERMINATOR){
-        return FLASH_OK;
-    } else {
-        return FLASH_EMPTY;
-    }
+    return FLASH_OK;
 }
 
 /**
