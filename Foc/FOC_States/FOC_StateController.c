@@ -54,6 +54,15 @@ FOC_StateTypeDef FOC_GetState(FOC_HandleTypeDef *hfoc){
     return hfoc->state;
 }
 
+/**
+ * @brief Requests a state transition and returns the result.
+ * @param hfoc FOC handle to transition.
+ * @param state Requested state; ERROR requires at least one latched fault.
+ * @param next_state Optional continuation, committed only after acceptance.
+ * @return Transition result or the active/latched fault preventing the change.
+ * @note ERROR cancels pending continuations. Fault acknowledgement recovers
+ *       through STOP rather than resuming the interrupted operation.
+ */
 FOC_StateTransitionTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDef state, FOC_StateTypeDef next_state){
     if(next_state != FOC_STATE_NONE){
         hfoc->next_state = next_state;

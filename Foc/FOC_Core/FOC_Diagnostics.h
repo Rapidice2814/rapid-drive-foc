@@ -27,6 +27,9 @@ typedef struct FOC_Handle FOC_HandleTypeDef;
 
 #define FOC_ERROR_ENCODER_FAULT (1u << 14)
 
+/* Failed calibration, identification, tuning, or storage operation. */
+#define FOC_ERROR_OPERATION_FAILED (1u << 15)
+
 void FOC_CheckErrors(FOC_HandleTypeDef *hfoc);
 void FOC_ClearLatchedErrors(FOC_HandleTypeDef *hfoc);
 

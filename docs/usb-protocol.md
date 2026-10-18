@@ -1,4 +1,4 @@
-# USB protocol reference (v3)
+# USB protocol reference (v4)
 
 Frames use `AA 55 | message:u8 | payload_length:u16le | payload`.
 All multi-byte integers and four-byte numeric values are little endian.
@@ -74,7 +74,7 @@ using its discovered type (`f`, `u32`, or `i32`). Empty means zero payload bytes
 | MSG_DEVICE_INFO_REPLY | D→H | 29 bytes | Protocol/firmware versions, counts, limits, rate, fingerprint, status |
 | MSG_GET_DEFINITIONS | H→D | kind:u8, start:u16 (3 bytes) | DEFINITIONS_REPLY or DEFINITIONS_ERROR |
 | MSG_DEFINITIONS_REPLY | D→H | 7-byte page header and UTF-8 rows | See discovery rules below |
-| MSG_DEFINITIONS_ERROR | D→H | kind:u8, start:u16, error:u8 (4 bytes) | Explicit discovery failure |
+| MSG_DEFINITIONS_ERROR | D→H | Command-error payload | Explicit discovery failure; includes kind/start in text |
 | MSG_LOG_DATA | D→H | timestamp:u32, samples:u16, signals:u16, sample words | Sample-major telemetry; see below |
 | MSG_SET_MASK | H→D | mask:ceil(signal_count / 8) bytes | ACK if valid and logging is stopped; otherwise ERROR |
 | MSG_GET_MASK | H→D | Empty | MASK_REPLY |
@@ -109,17 +109,16 @@ using its discovered type (`f`, `u32`, or `i32`). Empty means zero payload bytes
 | MSG_SET_CONTROL_MODE | H→D | mode:u8 (1 byte) | Selects mode and ACKs, or INVALID_PAYLOAD for an unsupported mode |
 | MSG_GET_CONTROL_MODE | H→D | Empty | CONTROL_MODE_REPLY |
 | MSG_CONTROL_MODE_REPLY | D→H | mode:u8 (1 byte) | Current control mode |
-| MSG_UNKNOWN_TYPE (0xFA) | D→H | Empty | Command ID is not supported |
-| MSG_INVALID_PAYLOAD (0xFB) | D→H | Empty | Wrong payload length, oversized command, invalid scalar range, or unsupported control mode |
-| MSG_UNKNOWN_ID (0xFC) | D→H | Empty | Variable/PID ID is outside its discovered list |
-| MSG_BUFFER_OVERFLOW (0xFD) | D→H | Empty | Unframed input exceeded the receive-buffer capacity |
+| MSG_UNKNOWN_TYPE (0xFA) | D→H | Command-error payload | Command ID is not supported |
+| MSG_INVALID_PAYLOAD (0xFB) | D→H | Command-error payload | Wrong payload length, oversized command, invalid scalar range, or unsupported control mode |
+| MSG_UNKNOWN_ID (0xFC) | D→H | Command-error payload | Variable/PID ID is outside its discovered list |
+| MSG_BUFFER_OVERFLOW (0xFD) | D→H | Command-error payload | Unframed input exceeded the receive-buffer capacity |
 | MSG_ACK (0xFE) | D→H | Empty | Command accepted; no request ID is included |
-| MSG_ERROR (0xFF) | D→H | Empty | Command rejected by state/mask rules, or invalid driver definitions prevent configuration |
+| MSG_ERROR (0xFF) | D→H | Command-error payload | Command rejected by state/mask rules, or invalid driver definitions prevent configuration |
 
-Payload lengths are checked for the fixed-layout commands above. Node IDs and
-CAN cyclic indexes are exceptions to semantic range validation: the current
-setters/getters do not check them. Valid node IDs are 0–15 and cyclic indexes
-are 0–8, as listed in the [CAN reference](can-protocol.md#cyclic-replies-and-timing).
+Payload lengths are checked for the fixed-layout commands above. USB node-ID
+commands validate the range 0–15; USB CAN cyclic-rate commands validate index
+0–8, as listed in the [CAN reference](can-protocol.md#cyclic-replies-and-timing).
 
 The plotter restricts PID and setpoint editors to RUN; the low-level USB
 SET_PID/SET_VAR handlers do not independently enforce that UI restriction.
@@ -207,7 +206,7 @@ cached.
 
 | Offset | Type | Meaning |
 | --- | --- | --- |
-| 0 | u8 | Protocol version (3) |
+| 0 | u8 | Protocol version (4) |
 | 1–3 | 3 × u8 | Firmware major, minor, patch |
 | 4 | u16 | Signal count |
 | 6 | u16 | Variable count |
@@ -224,8 +223,11 @@ Device-info polling refreshes firmware version and connection health without
 restarting discovery or logging. Changes to capabilities or the definitions
 fingerprint require a new connection initialization.
 
-Protocol 3 has no separate firmware-version commands. Its command IDs are not
-compatible with earlier versions: 0x00 is ENTER_BOOTLOADER, not a version request.
+Protocol 4 retains the command IDs and successful reply layouts from protocol 3,
+but changes all command-error payloads, including DEFINITIONS_ERROR. Versions 3
+and 4 are not interchangeable. There are no separate firmware-version commands.
+Versions before 3 also use different command IDs: 0x00 is now ENTER_BOOTLOADER,
+not a version request.
 
 ## Definition pages
 
@@ -250,11 +252,65 @@ Repeated names within a list, repeated/out-of-order IDs, unknown types,
 wrong counts, partial rows, and unexpected kind/start values are invalid.
 A name may occur once in each of multiple lists.
 
-`MSG_DEFINITIONS_ERROR = 0x05` has four bytes:
-`kind:u8 | requested_start:u16 | error:u8`.
-Error 1 means unknown list, 2 means index out of range, and 3 means invalid
-driver definitions. Invalid payload lengths use `MSG_INVALID_PAYLOAD`.
-An error response is distinct from a valid empty-list response.
+`MSG_DEFINITIONS_ERROR = 0x05` uses the common command-error payload below.
+Its original command is GET_DEFINITIONS. Codes 18, 19, and 16 indicate an unknown
+list, an out-of-range index, and invalid definitions respectively. The text
+includes the requested kind/index. Invalid payload lengths use
+`MSG_INVALID_PAYLOAD`. An error response is distinct from a valid empty list.
+
+## Command errors
+
+All error response types (0x05 and 0xFA–0xFD/0xFF) use one self-contained payload:
+
+```text
+original_command:u8 | error_code:u16le | message:UTF-8
+```
+
+The message is 1–160 bytes with no terminating NUL. Total payload length is
+4–163 bytes; frame length determines message length. Driver-generated messages
+are bounded ASCII text and may be truncated to 160 bytes. Codes are independent
+of the active/latched device-fault bitmaps and discovered field IDs.
+
+| Code | Name | Meaning |
+| --- | --- | --- |
+| 1 | UNKNOWN_COMMAND | Unsupported request identifier |
+| 2 | INVALID_LENGTH | Wrong or oversized command payload |
+| 3 | UNKNOWN_ID | Unknown variable, PID, or cyclic index |
+| 4 | OUT_OF_RANGE | Value cannot fit storage, or invalid node/control-mode value |
+| 5 | INVALID_STATE | Invalid or denied target state |
+| 6 | ADC_NOT_CALIBRATED | ADC calibration prevents RUN |
+| 7 | ENCODER_NOT_ALIGNED | Encoder alignment prevents RUN |
+| 8 | ACTIVE_FAULTS | Active faults prevent RUN |
+| 9 | LATCHED_FAULTS | Latched faults prevent RUN |
+| 10 | MUST_BE_IDLE | Flash/bootloader operation requires IDLE |
+| 11 | MUST_BE_STOPPED | IDLE requires the STOP state |
+| 12 | MOTOR_MOVING | Speed prevents entry into IDLE |
+| 13 | LOGGING_ACTIVE | Signal mask cannot change while logging |
+| 14 | INVALID_MASK | Unsupported signal bits |
+| 15 | TOO_MANY_SIGNALS | Selection exceeds the device limit |
+| 16 | INVALID_DEFINITIONS | Duplicate definition names |
+| 17 | RECEIVE_OVERFLOW | Unframed input exceeded receive capacity |
+| 18 | UNKNOWN_DEFINITION_LIST | Unsupported discovery kind |
+| 19 | DEFINITION_INDEX | Discovery start index is out of range |
+| 20 | INTERNAL | Internal command/state-transition failure |
+
+For example, an encoder-alignment rejection of SET_STATE has command 0x15,
+code 7, and text describing the denial. State-transition errors also include
+target/current states and fault bitmaps within the text limit. Explanations are
+carried with the error rather than inferred from preceding TEXT_REPLY messages.
+
+The plotter keeps one command outstanding and checks that the error's command
+matches that request. Malformed or mismatched errors stop the session. Ordinary
+runtime rejections are displayed without disconnecting; initialization errors
+and receive-buffer overflow remain fatal. Unknown numeric codes remain
+displayable using their numeric value and driver text.
+
+Unframed overflow has original_command=0xFF because no command can be identified.
+Complete command frames are processed in receive order, including concatenated
+frames; each error is built from that frame's command context. There are no
+request sequence IDs, automatic retries, or new asynchronous completion replies.
+An ACK remains empty and confirms command acceptance. Flash completion/failure
+and later state changes remain asynchronous diagnostics.
 
 ## Fingerprint and caching
 
@@ -339,6 +395,20 @@ the separate open-loop voltage routine.
 | 12 | FOC_ERROR_VBUS_UV |
 | 13 | FOC_ERROR_IBUS_OC |
 | 14 | FOC_ERROR_ENCODER_FAULT |
+| 15 | FOC_ERROR_OPERATION_FAILED |
 
-Not all defined error bits are set by the current diagnostic paths. Latched
-faults can reappear after clearing if the underlying fault remains present.
+ERROR requires at least one latched fault. Active faults are reevaluated from
+the hardware/measurements and latched automatically. State-changing requests
+cannot bypass active or latched faults. Entering ERROR cancels any pending
+next state and immediately disables motor output.
+
+CLEAR_LATCHED_ERRORS acknowledges stored faults and immediately reevaluates the
+active conditions. Present faults relatch and retain ERROR. When both masks are
+clear, ERROR transitions to STOP, never directly to RUN. The normal STOP logic
+then enters IDLE once stationary.
+
+OPERATION_FAILED (bit 15, 0x00008000) is the common latched event for failures in
+current-sensor calibration, identification, PID autotune, alignment/alignment
+test, anticogging, and flash save/load/clear. Diagnostic text identifies the
+particular operation; clearing the event does not retry that operation.
+Other defined error bits may not be set by the current diagnostic paths.

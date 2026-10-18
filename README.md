@@ -18,9 +18,9 @@ of the firmware source tree and STM32 build tools.
   bus settings, payloads, cyclic replies, addressing, and implementation limits.
 - [Plotter installation and use](https://github.com/Rapidice2814/rapid-drive-plotter#readme).
 
-Current firmware version: **0.3.0**. USB protocol version: **3**. Firmware and
+Current firmware version: **0.3.0**. USB protocol version: **4**. Firmware and
 plotter compatibility is determined by the USB protocol version. Earlier USB
-command IDs have different meanings in protocol 3: 0x00 is the bootloader
+command IDs from versions before 3 have different meanings: 0x00 is the bootloader
 command, not a version request. CAN command numbering is independent of USB.
 
 ## Development tools
@@ -152,6 +152,12 @@ checks transitions, and entering IDLE requires STOP with the motor stationary.
 Accepted flash actions set RUN as the next state, so a successful flash command
 may resume operation after the action. A denied transition to RUN falls back
 to STOP; a failed flash operation enters ERROR.
+
+ERROR is tied to latched fault bits. Failed calibration, identification,
+tuning, alignment, anticogging, and storage actions latch OPERATION_FAILED
+(bit 15, 0x00008000). Clearing latched faults immediately reevaluates active
+conditions: present faults relatch, while fault-free recovery enters STOP
+instead of RUN. STOP then enters IDLE once stationary.
 
 HDF5 recordings and cached definitions are stored in user directories, not in
 the firmware repository. Their locations and environment-variable overrides

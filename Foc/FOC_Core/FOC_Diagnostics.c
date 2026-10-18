@@ -2,6 +2,12 @@
 #include "FOC_States.h"
 #include "FOC_Handle.h"
 
+/**
+ * @brief Recomputes active faults, latches them, and updates the fault state.
+ * @param hfoc FOC handle with the latest measurements and configured limits.
+ * @note ERROR is retained until latched faults are acknowledged. Recovery goes
+ *       to STOP only when both active and latched fault masks are clear.
+ */
 void FOC_CheckErrors(FOC_HandleTypeDef *hfoc){
     uint32_t active_errors = 0;
 
@@ -22,14 +28,29 @@ void FOC_CheckErrors(FOC_HandleTypeDef *hfoc){
 
     if(hfoc->latched_errors){
         FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
+    }else if(hfoc->active_errors == 0 && hfoc->state == FOC_STATE_ERROR){
+        FOC_SetState(hfoc, FOC_STATE_STOP, FOC_STATE_NONE);
     }
 }
 
+/**
+ * @brief Acknowledges latched faults and immediately reevaluates active faults.
+ * @param hfoc FOC handle to acknowledge.
+ * @note Present faults relatch immediately; clearing does not resume RUN.
+ */
 void FOC_ClearLatchedErrors(FOC_HandleTypeDef *hfoc){
     hfoc->latched_errors = 0;
+    FOC_CheckErrors(hfoc);
 }
 
+/**
+ * @brief Latches a reported fault and requests ERROR.
+ * @param hfoc FOC handle receiving the fault.
+ * @param error Nonzero fault bitmap; one-shot software faults remain latched
+ *              after active hardware faults are reevaluated.
+ */
 void FOC_SetError(FOC_HandleTypeDef *hfoc, uint32_t error){
+    if(error == 0) return;
     hfoc->active_errors |= error;
     hfoc->latched_errors |= error;
     FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);

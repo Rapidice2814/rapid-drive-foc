@@ -10,19 +10,19 @@
 FOC_StateTransitionTypeDef FOC_StateRun_Transition(FOC_HandleTypeDef* hfoc){
     if(hfoc->adc_calibrated != 1){
         Debug_SendTextResponse("Cannot enter RUN state because ADC is not calibrated!\n");
-        return FOC_STATETRANSITION_DENIED; // can only enter RUN state if ADC is calibrated
+        return FOC_STATETRANSITION_ADC_NOT_CALIBRATED;
     }
     if(hfoc->flash_data.encoder.offset_valid != 1){
         Debug_SendTextResponse("Cannot enter RUN state because encoder is not aligned!\n");
-        return FOC_STATETRANSITION_DENIED; // can only enter RUN state if encoder is aligned
+        return FOC_STATETRANSITION_ENCODER_NOT_ALIGNED;
     }
     if(hfoc->active_errors != 0){
         Debug_SendTextResponse("Cannot enter RUN state because there are active errors! Active errors: 0x%08lX\n", hfoc->active_errors);
-        return FOC_STATETRANSITION_DENIED; // can only enter RUN state if there are no active errors
+        return FOC_STATETRANSITION_ACTIVE_FAULTS;
     }
     if(hfoc->latched_errors != 0){
         Debug_SendTextResponse("Cannot enter RUN state because there are latched errors! Latched errors: 0x%08lX\n", hfoc->latched_errors);
-        return FOC_STATETRANSITION_DENIED; // can only enter RUN state if there are no latched errors
+        return FOC_STATETRANSITION_LATCHED_FAULTS;
     }
 
     FOC_SetControlMode(hfoc, CONTROL_MODE_OPENLOOP);
@@ -73,11 +73,11 @@ void FOC_StateStop(FOC_HandleTypeDef* hfoc){
 FOC_StateTransitionTypeDef FOC_StateIdle_Transition(FOC_HandleTypeDef* hfoc){
     if(hfoc->state != FOC_STATE_STOP){
         Debug_SendTextResponse("Can only enter IDLE state from STOP state! Current state: %s\n", FOC_StateToString(hfoc->state));
-        return FOC_STATETRANSITION_DENIED; // can only enter IDLE state from STOP state
+        return FOC_STATETRANSITION_MUST_BE_STOPPED;
     }
     if(fabsf(hfoc->encoder_speed_mechanical) > 0.1f){
         Debug_SendTextResponse("Cannot enter IDLE state because motor is not stopped! Speed: %dmRad/s\n", (int)(hfoc->encoder_speed_mechanical * 1000.0f));
-        return FOC_STATETRANSITION_DENIED; // can only enter IDLE state if motor is stopped
+        return FOC_STATETRANSITION_MOTOR_MOVING;
     }
 
     hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0.0f, 0.0f};

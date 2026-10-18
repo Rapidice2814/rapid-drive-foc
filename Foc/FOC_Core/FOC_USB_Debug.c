@@ -235,6 +235,8 @@ static void Debug_InitDefinitions(void){
 
 _Static_assert(13u + MAX_LOGDATA_SAMPLE_COUNT * MAX_LOGDATA_SIGNAL_COUNT * 4u <= TX_USB_BUF_SIZE,
                "Telemetry packet exceeds the USB transmit buffer");
+_Static_assert(3u + DEBUG_ERROR_MESSAGE_BYTES <= TX_USB_BUF_SIZE - 5u,
+               "Command error exceeds the USB transmit buffer");
 
 uint32_t usb_debug_times[5] = {0};
 
@@ -356,23 +358,23 @@ static void Debug_StopLogging(){
 /**
  * @brief Validates and applies a new signal mask while logging is stopped.
  * @param new_mask SIGNAL_MASK_BYTES bytes with unused high bits cleared.
- * @return DEBUG_OK on success, or DEBUG_ERROR if logging is active, unsupported
- *         bits are selected, or the simultaneous-signal limit is exceeded.
+ * @return DEBUG_OK, DEBUG_BUSY while logging, DEBUG_INVALID_MASK for unsupported
+ *         bits, or DEBUG_TOO_MANY_SIGNALS when the selection limit is exceeded.
  */
 static Debug_StatusTypeDef Debug_UpdateMask(const uint8_t *new_mask){
     if(hlogdata.is_running){
-        return DEBUG_ERROR;
+        return DEBUG_BUSY;
     }
 
     for(uint16_t bit = SIGNAL_COUNT; bit < SIGNAL_MASK_BYTES * 8u; ++bit){
-        if(new_mask[bit / 8u] & (1u << (bit % 8u))) return DEBUG_ERROR;
+        if(new_mask[bit / 8u] & (1u << (bit % 8u))) return DEBUG_INVALID_MASK;
     }
     uint16_t set_bits = 0;
     for(uint16_t bit = 0; bit < SIGNAL_COUNT; ++bit){
         if(new_mask[bit / 8u] & (1u << (bit % 8u))) ++set_bits;
     }
     if(set_bits > MAX_LOGDATA_SIGNAL_COUNT){
-        return DEBUG_ERROR;
+        return DEBUG_TOO_MANY_SIGNALS;
     }
 
     for (uint8_t i = 0; i < SIGNAL_MASK_BYTES; i++){
@@ -402,6 +404,80 @@ static Debug_StatusTypeDef Debug_ClearMask(){
 }
 
 /**
+ * @brief Sends a command error with its originating command, code, and text.
+ * @param response Error response message identifier.
+ * @param command Original request identifier, or 0xFF for unidentifiable input.
+ * @param code Stable machine-readable reason.
+ * @param format printf-style explanation; limited to DEBUG_ERROR_MESSAGE_BYTES.
+ */
+static void Debug_SendCommandError(MsgTypeTypeDef response, MsgTypeTypeDef command,
+                                   Debug_ErrorCodeTypeDef code, const char *format, ...)
+                                   __attribute__((format(printf, 4, 5)));
+
+static void Debug_SendCommandError(MsgTypeTypeDef response, MsgTypeTypeDef command,
+                                   Debug_ErrorCodeTypeDef code, const char *format, ...){
+    uint8_t reply[3u + DEBUG_ERROR_MESSAGE_BYTES + 1u];
+    reply[0] = (uint8_t)command;
+    write_u16_le(&reply[1], (uint16_t)code);
+    va_list args;
+    va_start(args, format);
+    int n = vsnprintf((char*)&reply[3], DEBUG_ERROR_MESSAGE_BYTES + 1u, format, args);
+    va_end(args);
+    if(n < 0){
+        const char fallback[] = "Command failed.";
+        memcpy(&reply[3], fallback, sizeof(fallback));
+        n = (int)sizeof(fallback) - 1;
+    }
+    if((unsigned)n > DEBUG_ERROR_MESSAGE_BYTES) n = DEBUG_ERROR_MESSAGE_BYTES;
+    Debug_SendBinaryResponse(response, reply, (uint16_t)(3u + (unsigned)n));
+}
+
+/**
+ * @brief Requests a state transition and replies with its exact denial reason.
+ * @param command Original USB request.
+ * @param state Requested state.
+ * @param next_state State to request after completion.
+ * @note Success acknowledges acceptance, not completion of asynchronous work.
+ */
+static void Debug_ReplyStateTransition(MsgTypeTypeDef command, FOC_StateTypeDef state,
+                                       FOC_StateTypeDef next_state){
+    FOC_StateTransitionTypeDef result = FOC_SetState(&hfoc, state, next_state);
+    if(result == FOC_STATETRANSITION_OK){
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        return;
+    }
+    Debug_ErrorCodeTypeDef code;
+    const char *reason;
+    switch(result){
+    case FOC_STATETRANSITION_ADC_NOT_CALIBRATED:
+        code = DEBUG_ERR_ADC_NOT_CALIBRATED; reason = "ADC is not calibrated."; break;
+    case FOC_STATETRANSITION_ENCODER_NOT_ALIGNED:
+        code = DEBUG_ERR_ENCODER_NOT_ALIGNED; reason = "Encoder is not aligned."; break;
+    case FOC_STATETRANSITION_ACTIVE_FAULTS:
+        code = DEBUG_ERR_ACTIVE_FAULTS; reason = "Active faults prevent RUN."; break;
+    case FOC_STATETRANSITION_LATCHED_FAULTS:
+        code = DEBUG_ERR_LATCHED_FAULTS; reason = "Latched faults prevent RUN."; break;
+    case FOC_STATETRANSITION_MUST_BE_IDLE:
+        code = DEBUG_ERR_MUST_BE_IDLE; reason = "Operation requires IDLE."; break;
+    case FOC_STATETRANSITION_MUST_BE_STOPPED:
+        code = DEBUG_ERR_MUST_BE_STOPPED; reason = "IDLE requires the STOP state."; break;
+    case FOC_STATETRANSITION_MOTOR_MOVING:
+        code = DEBUG_ERR_MOTOR_MOVING; reason = "Motor must be stationary before IDLE."; break;
+    case FOC_STATETRANSITION_ERROR:
+        code = DEBUG_ERR_INTERNAL; reason = "State transition failed."; break;
+    default:
+        code = DEBUG_ERR_INVALID_STATE; reason = "Requested state is invalid or denied."; break;
+    }
+    if(state == FOC_STATE_ERROR && hfoc.latched_errors == 0){
+        reason = "ERROR requires at least one latched fault.";
+    }
+    Debug_SendCommandError(MSG_ERROR, command, code,
+        "%s Target=%s; current=%s; active=0x%08lX; latched=0x%08lX.",
+        reason, FOC_StateToString(state), FOC_StateToString(hfoc.state),
+        (unsigned long)hfoc.active_errors, (unsigned long)hfoc.latched_errors);
+}
+
+/**
  * @brief Validates and executes one complete binary USB command.
  * @param msg_type Command identifier decoded from the frame header.
  * @param payload Complete command payload, which may be empty.
@@ -417,13 +493,15 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     if(!definitions_valid && msg_type != MSG_GET_DEVICE_INFO &&
        msg_type != MSG_GET_DEFINITIONS && msg_type != MSG_STOP_LOG){
-        Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
+        Debug_SendCommandError(MSG_ERROR, msg_type, DEBUG_ERR_INVALID_DEFINITIONS,
+            "Driver definitions contain duplicate names.");
         return;
     }
     switch ((MsgTypeTypeDef)(msg_type)){
     case MSG_GET_DEVICE_INFO:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             return;
         }
         response_payload[0] = DEBUG_PROTOCOL_VERSION;
@@ -446,7 +524,8 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_GET_DEFINITIONS: {
         if(payload_length != 3){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             return;
         }
         uint8_t kind = payload[0];
@@ -455,8 +534,12 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         uint8_t error = !entries ? 1 : !definitions_valid ? 3 :
                         (index >= count && !(count == 0 && index == 0)) ? 2 : 0;
         if(error){
-            uint8_t reply[] = {kind, payload[1], payload[2], error};
-            Debug_SendBinaryResponse(MSG_DEFINITIONS_ERROR, reply, sizeof(reply));
+            Debug_SendCommandError(MSG_DEFINITIONS_ERROR, msg_type,
+                error == 1 ? DEBUG_ERR_UNKNOWN_DEFINITION_LIST :
+                error == 2 ? DEBUG_ERR_DEFINITION_INDEX : DEBUG_ERR_INVALID_DEFINITIONS,
+                "Definitions request failed: kind=%u, start=%u, reason=%s.",
+                (unsigned)kind, (unsigned)index,
+                error == 1 ? "unknown list" : error == 2 ? "index out of range" : "duplicate names");
             return;
         }
         uint8_t page[DEFINITION_PAGE_BYTES];
@@ -479,13 +562,19 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_SET_MASK:
         if(payload_length != SIGNAL_MASK_BYTES){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
         uint8_t new_mask[SIGNAL_MASK_BYTES];
         memcpy(new_mask, payload, SIGNAL_MASK_BYTES);
-        if(Debug_UpdateMask(new_mask) != DEBUG_OK){
-            Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
+        Debug_StatusTypeDef mask_status = Debug_UpdateMask(new_mask);
+        if(mask_status != DEBUG_OK){
+            Debug_SendCommandError(MSG_ERROR, msg_type,
+                mask_status == DEBUG_BUSY ? DEBUG_ERR_LOGGING_ACTIVE :
+                mask_status == DEBUG_TOO_MANY_SIGNALS ? DEBUG_ERR_TOO_MANY_SIGNALS : DEBUG_ERR_INVALID_MASK,
+                "%s", mask_status == DEBUG_BUSY ? "Stop logging before changing the signal mask." :
+                mask_status == DEBUG_TOO_MANY_SIGNALS ? "Too many signals selected." : "Signal mask contains unsupported bits.");
             break;
         }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
@@ -493,7 +582,8 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_GET_MASK:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
         uint8_t* current_mask = Debug_GetMask();
@@ -502,7 +592,8 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_START_LOG:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
         Debug_StopLogging();
@@ -512,7 +603,8 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_STOP_LOG:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
         Debug_StopLogging();
@@ -521,14 +613,16 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_SET_PID:
         if(payload_length != 13){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
         controller_id = payload[0];
         PIDValuesTypeDef new_gains;
         memcpy(&new_gains, &payload[1], sizeof(new_gains));
         if(controller_id >= PID_COUNT){
-            Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
+            Debug_SendCommandError(MSG_UNKNOWN_ID, msg_type, DEBUG_ERR_UNKNOWN_ID,
+                "Unknown variable/PID ID %u.", (unsigned)payload[0]);
             return;
         }
         PID_SetGains((PIDControllerTypeDef*)((uint8_t*)&hfoc + pid_definitions[controller_id].offset), new_gains);
@@ -537,13 +631,15 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_GET_PID:
         if(payload_length != 1){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
         controller_id = payload[0];
         PIDValuesTypeDef current_gains;
         if(controller_id >= PID_COUNT){
-            Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
+            Debug_SendCommandError(MSG_UNKNOWN_ID, msg_type, DEBUG_ERR_UNKNOWN_ID,
+                "Unknown variable/PID ID %u.", (unsigned)payload[0]);
             return;
         }
         current_gains = PID_GetGains((PIDControllerTypeDef*)((uint8_t*)&hfoc + pid_definitions[controller_id].offset));
@@ -554,18 +650,21 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_SET_VAR:
         if(payload_length != 5){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
 
         var_id = payload[0];
         if(var_id >= VAR_COUNT){
-            Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
+            Debug_SendCommandError(MSG_UNKNOWN_ID, msg_type, DEBUG_ERR_UNKNOWN_ID,
+                "Unknown variable/PID ID %u.", (unsigned)payload[0]);
             return;
         }
         uint32_t raw = read_u32_le(&payload[1]);
         if(!Debug_WriteRaw(&variable_definitions[var_id], &hfoc, raw)){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_OUT_OF_RANGE,
+                "Value is outside the native storage range for %s.", variable_definitions[var_id].name);
             return;
         }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
@@ -573,7 +672,8 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_GET_VAR:
         if(payload_length != 1){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
 
@@ -581,7 +681,8 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         response_payload[0] = var_id;
 
         if(var_id >= VAR_COUNT){
-            Debug_SendBinaryResponse(MSG_UNKNOWN_ID, NULL, 0);
+            Debug_SendCommandError(MSG_UNKNOWN_ID, msg_type, DEBUG_ERR_UNKNOWN_ID,
+                "Unknown variable/PID ID %u.", (unsigned)payload[0]);
             return;
         }
         uint32_t current = Debug_ReadRaw(&variable_definitions[var_id], &hfoc);
@@ -591,55 +692,44 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_FLASH_SAVE:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
-        if(FOC_SetState(&hfoc, FOC_STATE_FLASH_SAVE, FOC_STATE_RUN) != FOC_STATETRANSITION_OK){
-            Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
-            break;
-        }
-        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        Debug_ReplyStateTransition(msg_type, FOC_STATE_FLASH_SAVE, FOC_STATE_RUN);
         break;
 
     case MSG_FLASH_LOAD:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
-        if(FOC_SetState(&hfoc, FOC_STATE_FLASH_LOAD, FOC_STATE_RUN) != FOC_STATETRANSITION_OK){
-            Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
-            break;
-        }
-        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        Debug_ReplyStateTransition(msg_type, FOC_STATE_FLASH_LOAD, FOC_STATE_RUN);
         break;
 
     case MSG_FLASH_CLEAR:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
-        if(FOC_SetState(&hfoc, FOC_STATE_FLASH_CLEAR, FOC_STATE_RUN) != FOC_STATETRANSITION_OK){
-            Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
-            break;
-        }
-        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        Debug_ReplyStateTransition(msg_type, FOC_STATE_FLASH_CLEAR, FOC_STATE_RUN);
         break;
 
     case MSG_SET_STATE:
         if(payload_length != 1){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
-        if(FOC_SetState(&hfoc, (FOC_StateTypeDef)payload[0], FOC_STATE_NONE) != FOC_STATETRANSITION_OK){
-            Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
-            break;
-        }
-        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        Debug_ReplyStateTransition(msg_type, (FOC_StateTypeDef)payload[0], FOC_STATE_NONE);
         break;
 
     case MSG_GET_STATE:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
         response_payload[0] = (uint8_t)FOC_GetState(&hfoc);
@@ -651,19 +741,22 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         break;
     case MSG_ENTER_BOOTLOADER:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
-        if(FOC_SetState(&hfoc, FOC_STATE_BOOTLOADER, FOC_STATE_NONE) != FOC_STATETRANSITION_OK){
-            Debug_SendBinaryResponse(MSG_ERROR, NULL, 0);
-            break;
-        }
-        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        Debug_ReplyStateTransition(msg_type, FOC_STATE_BOOTLOADER, FOC_STATE_NONE);
         break;
     
     case MSG_SET_NODE_ID:
         if(payload_length != 1){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
+            break;
+        }
+        if(payload[0] > 15u){
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_OUT_OF_RANGE,
+                "CAN node ID %u is outside 0..15.", (unsigned)payload[0]);
             break;
         }
         FOC_SetNodeId(&hfoc, payload[0]);
@@ -672,7 +765,8 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_GET_NODE_ID:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
         response_payload[0] = FOC_GetNodeId(&hfoc);
@@ -681,7 +775,8 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_GET_ACTIVE_ERRORS:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
         write_u32_le(&response_payload[0], FOC_GetActiveErrors(&hfoc));
@@ -690,7 +785,8 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
     
     case MSG_GET_LATCHED_ERRORS:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
         write_u32_le(&response_payload[0], FOC_GetLatchedErrors(&hfoc));
@@ -699,7 +795,8 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_CLEAR_LATCHED_ERRORS:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
         FOC_ClearLatchedErrors(&hfoc);
@@ -708,7 +805,13 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_SET_CAN_CYCLIC_RATE:
         if(payload_length != 5){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
+            break;
+        }
+        if(payload[0] >= CAN_CYCLIC_COUNT){
+            Debug_SendCommandError(MSG_UNKNOWN_ID, msg_type, DEBUG_ERR_UNKNOWN_ID,
+                "Unknown CAN cyclic index %u.", (unsigned)payload[0]);
             break;
         }
         uint32_t new_rate = read_u32_le(&payload[1]);
@@ -718,7 +821,13 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 
     case MSG_GET_CAN_CYCLIC_RATE:
         if(payload_length != 1){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
+            break;
+        }
+        if(payload[0] >= CAN_CYCLIC_COUNT){
+            Debug_SendCommandError(MSG_UNKNOWN_ID, msg_type, DEBUG_ERR_UNKNOWN_ID,
+                "Unknown CAN cyclic index %u.", (unsigned)payload[0]);
             break;
         }
         response_payload[0] = payload[0];
@@ -729,12 +838,14 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
     
     case MSG_SET_CONTROL_MODE:
         if(payload_length != 1){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
         ControlModeTypeDef new_mode = (ControlModeTypeDef)payload[0];
         if(FOC_SetControlMode(&hfoc, new_mode) != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_OUT_OF_RANGE,
+                "Unsupported control mode %u.", (unsigned)payload[0]);
             break;
         }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
@@ -742,7 +853,8 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
     
     case MSG_GET_CONTROL_MODE:
         if(payload_length != 0){
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
+                "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
         response_payload[0] = (uint8_t)FOC_GetControlMode(&hfoc);
@@ -751,7 +863,8 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
     
 
     default:
-        Debug_SendBinaryResponse(MSG_UNKNOWN_TYPE, NULL, 0);
+        Debug_SendCommandError(MSG_UNKNOWN_TYPE, msg_type, DEBUG_ERR_UNKNOWN_COMMAND,
+            "Unknown command 0x%02X.", (unsigned)msg_type);
         break;
     }
 }
@@ -929,7 +1042,10 @@ static uint8_t Debug_SendBinaryResponse(MsgTypeTypeDef msg_type, uint8_t* payloa
         memcpy(&txbuf->payload[5], payload, len);
     }
     txbuf->length = len + 5;
-    USB_PushTxBuffer(txbuf);
+    if(!USB_PushTxBuffer(txbuf)){
+        USB_FreeTxBuffer(txbuf);
+        return 0;
+    }
     return 1;
 }
 
@@ -972,7 +1088,10 @@ uint8_t Debug_SendTextResponse(const char* format, ...){
     }
 
     txbuf->length = len + 5;
-    USB_PushTxBuffer(txbuf);
+    if(!USB_PushTxBuffer(txbuf)){
+        USB_FreeTxBuffer(txbuf);
+        return 0;
+    }
     return 1;
 }
 
@@ -1004,7 +1123,8 @@ void USB_ProcessReceivedPacket(uint8_t* buf, uint16_t len){
                 used = 0;
             }else if(used == RX_USB_BUF_SIZE){
                 used = 0;
-                Debug_SendBinaryResponse(MSG_BUFFER_OVERFLOW, NULL, 0);
+                Debug_SendCommandError(MSG_BUFFER_OVERFLOW, (MsgTypeTypeDef)0xFF, DEBUG_ERR_RECEIVE_OVERFLOW,
+                    "Unframed input exceeded the receive buffer.");
             }
             continue;
         }
@@ -1016,7 +1136,8 @@ void USB_ProcessReceivedPacket(uint8_t* buf, uint16_t len){
         uint16_t payload_length = read_u16_le(&pending[3]);
         if(payload_length > RX_USB_BUF_SIZE - 5){
             used = 0;
-            Debug_SendBinaryResponse(MSG_INVALID_PAYLOAD, NULL, 0);
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, (MsgTypeTypeDef)pending[2], DEBUG_ERR_INVALID_LENGTH,
+                "Command payload exceeds %u bytes.", (unsigned)(RX_USB_BUF_SIZE - 5));
             continue;
         }
         if(used == payload_length + 5){

@@ -2,6 +2,7 @@
 #include "FOC_Handle.h"
 #include "FOC_Loops.h"
 #include "FOC_USB_Debug.h"
+#include "FOC_Diagnostics.h"
 #include "WS2812b_Driver.h"
 
 
@@ -13,9 +14,13 @@ FOC_StateTransitionTypeDef FOC_StateCurrentSensorCalibration_Transition(FOC_Hand
 }
 
 void FOC_StateCurrentSensorCalibration(FOC_HandleTypeDef* hfoc){
-    if(FOC_CurrentSensorCalibration(hfoc) == FOC_LOOP_COMPLETED){
+    FOC_LoopStatusTypeDef ret = FOC_CurrentSensorCalibration(hfoc);
+    if(ret == FOC_LOOP_COMPLETED){
         hfoc->adc_calibrated = 1;
         FOC_NextState(hfoc);
+    }else if(ret == FOC_LOOP_ERROR){
+        Debug_SendTextResponse("Current sensor calibration failed!\n");
+        FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
     }
 }
 
@@ -36,7 +41,7 @@ void FOC_StateIdentify(FOC_HandleTypeDef* hfoc){
         FOC_NextState(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("Motor identification failed!\n");
-        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
+        FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
     } 
 }
 
@@ -55,7 +60,7 @@ void FOC_StatePIDAutotune(FOC_HandleTypeDef* hfoc){
         FOC_NextState(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("PID autotune failed!\n");
-        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
+        FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
     }
 }
 
@@ -77,7 +82,7 @@ void FOC_StateAlignment(FOC_HandleTypeDef* hfoc){
         FOC_NextState(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("Alignment failed!\n");
-        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
+        FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
     }
 }
 
@@ -97,7 +102,8 @@ void FOC_StateAlignmentTest(FOC_HandleTypeDef* hfoc){
     if(ret == FOC_LOOP_COMPLETED){
         FOC_NextState(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
-        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
+        Debug_SendTextResponse("Alignment test failed!\n");
+        FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
     }
 }
 
@@ -119,6 +125,6 @@ void FOC_StateAntiCogging(FOC_HandleTypeDef* hfoc){
         FOC_NextState(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("Anti-cogging measurement failed!\n");
-        FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
+        FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
     }
 }

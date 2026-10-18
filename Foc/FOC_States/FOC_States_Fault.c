@@ -5,8 +5,14 @@
 
 /* FOC_STATE_ERROR */
 
+/**
+ * @brief Enters ERROR only for a latched fault and immediately disables output.
+ * @param hfoc FOC handle with at least one latched error.
+ * @return FOC_STATETRANSITION_DENIED without a latched error, otherwise OK.
+ */
 FOC_StateTransitionTypeDef FOC_StateError_Transition(FOC_HandleTypeDef* hfoc){
-    UNUSED(hfoc);
+    DRV8323_SetHighImpedance(&hfoc->hdrv8323);
+    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
     return FOC_STATETRANSITION_OK;
 }
 

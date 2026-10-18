@@ -62,6 +62,8 @@ static FLASH_EraseInitTypeDef EraseInitStruct;
  * @brief  Writes the FOC configuration data to flash memory.
  * @param  pdata: Pointer to the data structure to be written to flash.
  * @retval FLASH_StatusTypeDef: Status of the flash write operation.
+ * @note Restores the previous interrupt mask and locks flash on every exit
+ *       after entering the programming critical section.
  */
 FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
     if(pdata == NULL){
@@ -79,8 +81,10 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
         return FLASH_ERROR;
     } 
 
+    uint32_t interrupt_mask = __get_PRIMASK();
+    FLASH_StatusTypeDef status = FLASH_ERROR;
     __disable_irq();
-    HAL_FLASH_Unlock();
+    if(HAL_FLASH_Unlock() != HAL_OK) goto cleanup;
 
     EraseInitStruct.TypeErase = FLASH_TYPEERASE_PAGES;
     EraseInitStruct.Page = STORAGE_FLASH_PAGE;
@@ -88,7 +92,7 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
 
     uint32_t PAGEError = 0;
     if(HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError) != HAL_OK){
-        return FLASH_ERROR;
+        goto cleanup;
     }
 
     for(uint32_t i = 0; i < sizeof(FLASH_DataTypeDef); i += sizeof(uint64_t)){
@@ -96,26 +100,32 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
         memcpy(&data_to_write, ((uint8_t*)pdata) + i, sizeof(uint64_t));
 
         if(HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, STORAGE_FLASH_BASE + i, data_to_write) != HAL_OK){
-            return FLASH_ERROR;
+            goto cleanup;
         } 
     }
-    HAL_FLASH_Lock();
-    __enable_irq();
+    status = FLASH_OK;
+cleanup:
+    if(HAL_FLASH_Lock() != HAL_OK) status = FLASH_ERROR;
+    __set_PRIMASK(interrupt_mask);
 
-    return FLASH_OK;
+    return status;
 }
 
 /**
  * @brief  Clears the FOC configuration data in flash memory by erasing the relevant pages.
  * @retval FLASH_StatusTypeDef: Status of the flash clear operation.
+ * @note Restores the previous interrupt mask and locks flash on every exit
+ *       after entering the erase critical section.
  */
 FLASH_StatusTypeDef FOC_FLASH_ClearData(){
     if(READ_BIT(FLASH->SR, FLASH_SR_BSY) !=0U){ // Wait for any ongoing flash operation to complete
         return FLASH_ERROR;
     } 
 
+    uint32_t interrupt_mask = __get_PRIMASK();
+    FLASH_StatusTypeDef status = FLASH_ERROR;
     __disable_irq();
-    HAL_FLASH_Unlock();
+    if(HAL_FLASH_Unlock() != HAL_OK) goto cleanup;
 
     EraseInitStruct.TypeErase = FLASH_TYPEERASE_PAGES;
     EraseInitStruct.Page = STORAGE_FLASH_PAGE;
@@ -123,13 +133,15 @@ FLASH_StatusTypeDef FOC_FLASH_ClearData(){
 
     uint32_t PAGEError = 0;
     if(HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError) != HAL_OK){
-        return FLASH_ERROR;
+        goto cleanup;
     }
 
-    HAL_FLASH_Lock();
-    __enable_irq();
+    status = FLASH_OK;
+cleanup:
+    if(HAL_FLASH_Lock() != HAL_OK) status = FLASH_ERROR;
+    __set_PRIMASK(interrupt_mask);
 
-    return FLASH_OK;
+    return status;
 }
 
 
