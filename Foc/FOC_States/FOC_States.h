@@ -39,7 +39,8 @@ typedef enum {
     X(FOC_STATE_FLASH_LOAD,                 FOC_StateFlashLoad_Transition,                  FOC_StateFlashLoad) \
     X(FOC_STATE_FLASH_CLEAR,                FOC_StateFlashClear_Transition,                 FOC_StateFlashClear) \
     X(FOC_STATE_BOOTLOADER,                 FOC_StateBootloader_Transition,                 FOC_StateBootloader) \
-    X(FOC_STATE_OPENLOOP,                   FOC_StateOpenLoop_Transition,                   FOC_StateOpenLoop)
+    X(FOC_STATE_OPENLOOP,                   FOC_StateOpenLoop_Transition,                   FOC_StateOpenLoop) \
+    X(FOC_STATE_ENCODER_CALIBRATION,        FOC_StateEncoderCalibration_Transition,         FOC_StateEncoderCalibration)
 
 typedef enum
 {
@@ -54,6 +55,15 @@ typedef enum
 
     FOC_STATE_COUNT
 } FOC_StateTypeDef;
+
+/**
+ * @brief Identifies maintenance states that must execute with outputs disabled.
+ * @note Fault polling still latches faults but does not preempt these actions.
+ */
+static inline int FOC_StateIsMaintenance(FOC_StateTypeDef state){
+    return state == FOC_STATE_FLASH_SAVE || state == FOC_STATE_FLASH_LOAD ||
+           state == FOC_STATE_FLASH_CLEAR || state == FOC_STATE_BOOTLOADER;
+}
 
 static const char *const FOC_StateNames[FOC_STATE_COUNT] =
 {
@@ -81,6 +91,8 @@ void FOC_StateLoop(FOC_HandleTypeDef *hfoc);
 
 /* Startup States */
 FOC_StateTransitionTypeDef FOC_StateBootloader_Transition(FOC_HandleTypeDef* hfoc);
+FOC_StateTransitionTypeDef FOC_StateEncoderCalibration_Transition(FOC_HandleTypeDef *hfoc);
+void FOC_StateEncoderCalibration(FOC_HandleTypeDef *hfoc);
 void FOC_StateBootloader(FOC_HandleTypeDef* hfoc);
 FOC_StateTransitionTypeDef FOC_StateInit_Transition(FOC_HandleTypeDef* hfoc);
 void FOC_StateInit(FOC_HandleTypeDef* hfoc);

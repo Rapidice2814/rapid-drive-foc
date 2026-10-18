@@ -1,63 +1,100 @@
+#include <math.h>
 #include "FOC_Loops.h"
 #include "FOC_Handle.h"
 #include "FOC_USB_Debug.h"
 
 /**
-  * @brief Sets the Current controller PI gains based on the motor parameters
-  * @param Handle to the FOC structure
-  * @note 
-  * @retval FOC_StatusTypeDef
-  */
-FOC_StatusTypeDef FOC_TuneCurrentPID(FOC_HandleTypeDef *hfoc){
-    if(hfoc->flash_data.controller.current_control_bandwidth == 0 || hfoc->flash_data.controller.current_control_bandwidth > 5000) return FOC_ERROR; // check if the bandwidth is in range
-    if(hfoc->flash_data.motor.phase_resistance == 0 || hfoc->flash_data.motor.phase_inductance == 0) return FOC_ERROR; // check if the motor parameters are valid
-
-    hfoc->flash_data.controller.PID_gains_d.Kp = hfoc->flash_data.motor.phase_inductance * hfoc->flash_data.controller.current_control_bandwidth;
-    hfoc->flash_data.controller.PID_gains_q.Kp = hfoc->flash_data.motor.phase_inductance * hfoc->flash_data.controller.current_control_bandwidth;
-
-    hfoc->flash_data.controller.PID_gains_d.Ki = hfoc->flash_data.motor.phase_resistance * hfoc->flash_data.controller.current_control_bandwidth;
-    hfoc->flash_data.controller.PID_gains_q.Ki = hfoc->flash_data.motor.phase_resistance * hfoc->flash_data.controller.current_control_bandwidth;
-
-    return FOC_OK;
+ * @brief Starts a fresh, non-blocking current PI tuning operation.
+ * @param hfoc FOC handle owning the workspace and motor parameters.
+ */
+void FOC_PIDAutotune_Start(FOC_HandleTypeDef *hfoc){
+    if(hfoc->pid_autotune.runtime.active) FOC_PIDAutotune_Finish(hfoc, FOC_LOOP_CANCELLED);
+    hfoc->pid_autotune = (FOC_PIDAutotuneContextTypeDef){
+        .runtime = {.active = 1, .status = FOC_LOOP_IN_PROGRESS, .started_ms = HAL_GetTick()},
+        .stage = FOC_PID_TUNE_START
+    };
 }
 
+/**
+ * @brief Retains a terminal tuning result, committing validated gains on success.
+ * @param hfoc FOC handle owning the tuning operation.
+ * @param result Terminal status; cancellation leaves existing gains unchanged.
+ * @return Retained terminal status.
+ */
+FOC_LoopStatusTypeDef FOC_PIDAutotune_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopStatusTypeDef result){
+    FOC_PIDAutotuneContextTypeDef *ctx = &hfoc->pid_autotune;
+    if(!ctx->runtime.active) return ctx->runtime.status;
+    if(result == FOC_LOOP_COMPLETED && !ctx->candidate_valid){
+        ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
+        result = FOC_LOOP_ERROR;
+    }
+    if(result != FOC_LOOP_COMPLETED && result != FOC_LOOP_ERROR && result != FOC_LOOP_CANCELLED){
+        ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_INPUT;
+        result = FOC_LOOP_ERROR;
+    }
+    if(result == FOC_LOOP_COMPLETED){
+        hfoc->flash_data.controller.PID_gains_d.Kp = ctx->candidate_kp;
+        hfoc->flash_data.controller.PID_gains_q.Kp = ctx->candidate_kp;
+        hfoc->flash_data.controller.PID_gains_d.Ki = ctx->candidate_ki;
+        hfoc->flash_data.controller.PID_gains_q.Ki = ctx->candidate_ki;
+    }
+    if(result == FOC_LOOP_ERROR) ctx->failed_stage = ctx->stage;
+    ctx->runtime.active = 0;
+    ctx->runtime.status = result;
+    ctx->stage = result == FOC_LOOP_COMPLETED ? FOC_PID_TUNE_DONE :
+                 result == FOC_LOOP_CANCELLED ? FOC_PID_TUNE_CANCELLED : FOC_PID_TUNE_FAILED;
+    return result;
+}
 
 /**
-  * @brief 
-  * @param hfoc Handle to the FOC structure
-  * @retval FOC_LoopStatusTypeDef
-  */
-FOC_LoopStatusTypeDef FOC_PIDAutotune(FOC_HandleTypeDef *hfoc){
-
-    static uint8_t step = 0;
-    static uint32_t next_step_time = 0;
-
-    switch(step){
-        case 0:
-            if(HAL_GetTick() >= next_step_time){
-                Debug_SendTextResponse("Starting PID Autotune\n");
-                Debug_SendTextResponse("Current Control Bandwidth: %d rad/s\n", (int)(hfoc->flash_data.controller.current_control_bandwidth));
-
-                step++;
-                next_step_time = HAL_GetTick() + 10;
-            }
-            break;
-        case 1:
-            if(HAL_GetTick() >= next_step_time){
-                if(FOC_TuneCurrentPID(hfoc) != FOC_OK){
-                    Debug_SendTextResponse("Error tuning PID gains\n");
-                    step = 0;
-                    return FOC_LOOP_ERROR;
-                } else{
-                    Debug_SendTextResponse("PID gains tuned successfully\n");
-                    Debug_SendTextResponse("Kp_d: %de-3, Ki_d: %d\n", (int)(hfoc->flash_data.controller.PID_gains_d.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_d.Ki));
-                    Debug_SendTextResponse("Kp_q: %de-3, Ki_q: %d\n", (int)(hfoc->flash_data.controller.PID_gains_q.Kp * 1000), (int)(hfoc->flash_data.controller.PID_gains_q.Ki));
-                    step = 0;
-                    return FOC_LOOP_COMPLETED;
-                }
-            }
-            break;
+ * @brief Executes one tuning stage without changing gains until validation passes.
+ * @param hfoc FOC handle previously started for tuning.
+ * @return IN_PROGRESS or the retained terminal result.
+ */
+FOC_LoopStatusTypeDef FOC_PIDAutotune_Update(FOC_HandleTypeDef *hfoc){
+    FOC_PIDAutotuneContextTypeDef *ctx = &hfoc->pid_autotune;
+    if(!ctx->runtime.active){
+        if(ctx->stage == FOC_PID_TUNE_IDLE){
+            ctx->runtime.status = FOC_LOOP_ERROR;
+            ctx->runtime.error = FOC_ROUTINE_ERROR_NOT_STARTED;
+        }
+        return ctx->runtime.status;
     }
-
-return FOC_LOOP_IN_PROGRESS;
+    uint32_t now = HAL_GetTick();
+    if(FOC_RoutineElapsed(now, ctx->runtime.started_ms, 1000U)){
+        ctx->runtime.error = FOC_ROUTINE_ERROR_TIMEOUT;
+        return FOC_PIDAutotune_Finish(hfoc, FOC_LOOP_ERROR);
+    }
+    switch(ctx->stage){
+        case FOC_PID_TUNE_START:
+            Debug_SendTextResponse("Starting PID Autotune\n");
+            ctx->runtime.stage_started_ms = now;
+            ctx->stage = FOC_PID_TUNE_COMPUTE;
+            break;
+        case FOC_PID_TUNE_COMPUTE:
+            if(FOC_RoutineElapsed(now, ctx->runtime.stage_started_ms, 10U)){
+                float bandwidth = hfoc->flash_data.controller.current_control_bandwidth;
+                float r = hfoc->flash_data.motor.phase_resistance;
+                float l = hfoc->flash_data.motor.phase_inductance;
+                if(!isfinite(bandwidth) || bandwidth <= 0 || bandwidth > 5000 ||
+                   !isfinite(r) || r <= 0 || !isfinite(l) || l <= 0){
+                    ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_INPUT;
+                    return FOC_PIDAutotune_Finish(hfoc, FOC_LOOP_ERROR);
+                }
+                ctx->candidate_kp = l * bandwidth;
+                ctx->candidate_ki = r * bandwidth;
+                ctx->candidate_valid = isfinite(ctx->candidate_kp) && isfinite(ctx->candidate_ki);
+                if(!ctx->candidate_valid){
+                    ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
+                    return FOC_PIDAutotune_Finish(hfoc, FOC_LOOP_ERROR);
+                }
+                Debug_SendTextResponse("PID gains tuned successfully\n");
+                return FOC_PIDAutotune_Finish(hfoc, FOC_LOOP_COMPLETED);
+            }
+            break;
+        default:
+            ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_STAGE;
+            return FOC_PIDAutotune_Finish(hfoc, FOC_LOOP_ERROR);
+    }
+    return FOC_LOOP_IN_PROGRESS;
 }

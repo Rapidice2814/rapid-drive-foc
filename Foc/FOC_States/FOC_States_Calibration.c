@@ -4,7 +4,41 @@
 #include "FOC_USB_Debug.h"
 #include "FOC_Diagnostics.h"
 #include "WS2812b_Driver.h"
+#include <math.h>
 
+/** @brief Allows encoder calibration only from stationary, fault-free IDLE. */
+FOC_StateTransitionTypeDef FOC_StateEncoderCalibration_Transition(FOC_HandleTypeDef *hfoc){
+    if(hfoc->state != FOC_STATE_IDLE) return FOC_STATETRANSITION_MUST_BE_IDLE;
+    if(hfoc->active_errors) return FOC_STATETRANSITION_ACTIVE_FAULTS;
+    if(hfoc->latched_errors) return FOC_STATETRANSITION_LATCHED_FAULTS;
+    if(!hfoc->adc_calibrated) return FOC_STATETRANSITION_ADC_NOT_CALIBRATED;
+    if(!hfoc->flash_data.encoder.offset_valid) return FOC_STATETRANSITION_ENCODER_NOT_ALIGNED;
+    if(!isfinite(hfoc->encoder_speed_mechanical) || fabsf(hfoc->encoder_speed_mechanical) > 0.1f) return FOC_STATETRANSITION_MOTOR_MOVING;
+    const FOC_EncoderSourceTypeDef *source = FOC_EncoderSource(hfoc->flash_data.encoder.source_id);
+    if(source == NULL || !source->calibratable || !hfoc->encoder_runtime.healthy ||
+       hfoc->flash_data.motor.pole_pairs == 0) return FOC_STATETRANSITION_DENIED;
+    return FOC_STATETRANSITION_OK;
+}
+
+/** @brief Advances calibration; success stops, failure latches an operation fault. */
+void FOC_StateEncoderCalibration(FOC_HandleTypeDef *hfoc){
+    FOC_LoopStatusTypeDef status = FOC_EncoderCalibration_Update(hfoc);
+    if(status == FOC_LOOP_COMPLETED) FOC_SetState(hfoc, FOC_STATE_STOP, FOC_STATE_NONE);
+    else if(status == FOC_LOOP_ERROR) FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
+}
+
+/**
+ * @brief Continues a migrated calibration or stops when no continuation exists.
+ * @param hfoc FOC handle with a successfully completed routine.
+ * @note A denied continuation falls back to STOP; completion never restarts it.
+ */
+static void FOC_StateCalibrationComplete(FOC_HandleTypeDef *hfoc){
+    FOC_StateTypeDef destination = hfoc->next_state == FOC_STATE_NONE ? FOC_STATE_STOP : hfoc->next_state;
+    if(FOC_SetState(hfoc, destination, FOC_STATE_NONE) != FOC_STATETRANSITION_OK &&
+       hfoc->state != FOC_STATE_ERROR){
+        FOC_SetState(hfoc, FOC_STATE_STOP, FOC_STATE_NONE);
+    }
+}
 
 /*FOC_STATE_CURRENT_SENSOR_CALIBRATION*/
 
@@ -14,10 +48,9 @@ FOC_StateTransitionTypeDef FOC_StateCurrentSensorCalibration_Transition(FOC_Hand
 }
 
 void FOC_StateCurrentSensorCalibration(FOC_HandleTypeDef* hfoc){
-    FOC_LoopStatusTypeDef ret = FOC_CurrentSensorCalibration(hfoc);
+    FOC_LoopStatusTypeDef ret = FOC_CurrentSensorCalibration_Update(hfoc);
     if(ret == FOC_LOOP_COMPLETED){
-        hfoc->adc_calibrated = 1;
-        FOC_NextState(hfoc);
+        FOC_StateCalibrationComplete(hfoc);
     }else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("Current sensor calibration failed!\n");
         FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
@@ -29,16 +62,14 @@ void FOC_StateCurrentSensorCalibration(FOC_HandleTypeDef* hfoc){
 FOC_StateTransitionTypeDef FOC_StateIdentify_Transition(FOC_HandleTypeDef* hfoc){
     UNUSED(hfoc);
 
-    WS2812b_SetAllColor(20, 15, 0);
-    WS2812b_Send();
 
     return FOC_STATETRANSITION_OK;
 }
 
 void FOC_StateIdentify(FOC_HandleTypeDef* hfoc){
-    FOC_LoopStatusTypeDef ret = FOC_MotorIdentification(hfoc);
+    FOC_LoopStatusTypeDef ret = FOC_MotorIdentification_Update(hfoc);
     if(ret == FOC_LOOP_COMPLETED){
-        FOC_NextState(hfoc);
+        FOC_StateCalibrationComplete(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("Motor identification failed!\n");
         FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
@@ -53,11 +84,11 @@ FOC_StateTransitionTypeDef FOC_StatePIDAutotune_Transition(FOC_HandleTypeDef* hf
 }
 
 void FOC_StatePIDAutotune(FOC_HandleTypeDef* hfoc){
-    FOC_LoopStatusTypeDef ret = FOC_PIDAutotune(hfoc);
+    FOC_LoopStatusTypeDef ret = FOC_PIDAutotune_Update(hfoc);
     if(ret == FOC_LOOP_COMPLETED){
         hfoc->flash_data.controller.anticogging_data_valid = 0;
         hfoc->flash_data.controller.current_PID_FF_enabled = 0;
-        FOC_NextState(hfoc);
+        FOC_StateCalibrationComplete(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("PID autotune failed!\n");
         FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
@@ -68,18 +99,14 @@ void FOC_StatePIDAutotune(FOC_HandleTypeDef* hfoc){
 
 FOC_StateTransitionTypeDef FOC_StateAlignment_Transition(FOC_HandleTypeDef* hfoc){
     UNUSED(hfoc);
-
-    WS2812b_SetAllColor(20, 15, 0);
-    WS2812b_Send();
-
     return FOC_STATETRANSITION_OK;
 }
 
 void FOC_StateAlignment(FOC_HandleTypeDef* hfoc){
-    FOC_LoopStatusTypeDef ret = FOC_Alignment(hfoc, 1.0f);
+    FOC_LoopStatusTypeDef ret = FOC_Alignment_Update(hfoc);
     if(ret == FOC_LOOP_COMPLETED){
         hfoc->flash_data.controller.anticogging_data_valid = 0;
-        FOC_NextState(hfoc);
+        FOC_StateCalibrationComplete(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("Alignment failed!\n");
         FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
@@ -91,16 +118,14 @@ void FOC_StateAlignment(FOC_HandleTypeDef* hfoc){
 FOC_StateTransitionTypeDef FOC_StateAlignmentTest_Transition(FOC_HandleTypeDef* hfoc){
     UNUSED(hfoc);
 
-    WS2812b_SetAllColor(20, 15, 0);
-    WS2812b_Send();
     
     return FOC_STATETRANSITION_OK;
 }
 
 void FOC_StateAlignmentTest(FOC_HandleTypeDef* hfoc){
-    FOC_LoopStatusTypeDef  ret = Alignment_Test_Loop(hfoc, 1.0f);
+    FOC_LoopStatusTypeDef  ret = FOC_AlignmentTest_Update(hfoc);
     if(ret == FOC_LOOP_COMPLETED){
-        FOC_NextState(hfoc);
+        FOC_StateCalibrationComplete(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("Alignment test failed!\n");
         FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
@@ -110,19 +135,21 @@ void FOC_StateAlignmentTest(FOC_HandleTypeDef* hfoc){
 /*FOC_STATE_ANTICOGGING*/
 
 FOC_StateTransitionTypeDef FOC_StateAntiCogging_Transition(FOC_HandleTypeDef* hfoc){
-    UNUSED(hfoc);
-
-    WS2812b_SetAllColor(20, 15, 0);
-    WS2812b_Send();
-
+    if(hfoc->state != FOC_STATE_IDLE) return FOC_STATETRANSITION_MUST_BE_IDLE;
+    if(hfoc->active_errors) return FOC_STATETRANSITION_ACTIVE_FAULTS;
+    if(hfoc->latched_errors) return FOC_STATETRANSITION_LATCHED_FAULTS;
+    if(!hfoc->adc_calibrated) return FOC_STATETRANSITION_ADC_NOT_CALIBRATED;
+    if(!hfoc->flash_data.encoder.offset_valid) return FOC_STATETRANSITION_ENCODER_NOT_ALIGNED;
+    if(!isfinite(hfoc->encoder_speed_mechanical) || fabsf(hfoc->encoder_speed_mechanical) > 0.1f) return FOC_STATETRANSITION_MOTOR_MOVING;
+    if(!hfoc->encoder_runtime.healthy) return FOC_STATETRANSITION_DENIED;
     return FOC_STATETRANSITION_OK;
 }
 
 void FOC_StateAntiCogging(FOC_HandleTypeDef* hfoc){
-    FOC_LoopStatusTypeDef ret = FOC_AntiCoggingMeasurement(hfoc);
+    FOC_LoopStatusTypeDef ret = FOC_AntiCogging_Update(hfoc);
     if(ret == FOC_LOOP_COMPLETED){
         hfoc->flash_data.controller.anticogging_data_valid = 1;
-        FOC_NextState(hfoc);
+        FOC_StateCalibrationComplete(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("Anti-cogging measurement failed!\n");
         FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);

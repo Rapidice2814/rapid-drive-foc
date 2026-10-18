@@ -16,12 +16,20 @@ of the firmware source tree and STM32 build tools.
   telemetry, configuration commands, errors, and legacy text commands.
 - [CAN protocol and command reference](docs/can-protocol.md): identifier layout,
   bus settings, payloads, cyclic replies, addressing, and implementation limits.
+- [Calibration controls and editable tables](docs/calibration-tables.md):
+  multi-revolution measurements, progress, compensation and USB table transfers.
 - [Plotter installation and use](https://github.com/Rapidice2814/rapid-drive-plotter#readme).
 
-Current firmware version: **0.3.0**. USB protocol version: **4**. Firmware and
+Current firmware version: **0.3.0**. USB protocol version: **6**. Firmware and
 plotter compatibility is determined by the USB protocol version. Earlier USB
 command IDs from versions before 3 have different meanings: 0x00 is the bootloader
 command, not a version request. CAN command numbering is independent of USB.
+
+[Encoder sources and calibration](docs/encoder-calibration.md) documents source
+selection, linearization, backend integration and flash compatibility. Encoder
+calibration introduces flash format 2 with CRC validation. Older saved records
+are not loaded; defaults are used. Back up settings before upgrading. Successful
+calibration saves current settings and invalidates anti-cogging.
 
 ## Development tools
 
@@ -124,7 +132,7 @@ also supports ELF programming over ST-LINK/SWD. Additional interfaces and
 connection options are documented in ST's
 [programmer CLI reference](https://dev.st.com/stm32cube-docs/prog/2.23.0/en/docs/markup/CubeProg_Command_Lines.html).
 
-The USB bootloader command is accepted only from IDLE. It jumps to the MCU
+The USB bootloader command is accepted from IDLE or ERROR. It jumps to the MCU
 system bootloader and is separate from normal USB CDC telemetry. SWD is the
 initial programming path described above; entering the system bootloader does
 not itself upload a new firmware image.
@@ -147,11 +155,14 @@ current configuration supports up to eight selected signals at once. Firmware
 reports the sample rate. The simulator operates without hardware.
 
 Motor setpoint and PID editing controls require RUN in the plotter. Flash
-save/load/clear and system-bootloader entry require IDLE; the state machine
+save/load/clear and system-bootloader entry require IDLE or ERROR; the state machine
 checks transitions, and entering IDLE requires STOP with the motor stationary.
-Accepted flash actions set RUN as the next state, so a successful flash command
-may resume operation after the action. A denied transition to RUN falls back
-to STOP; a failed flash operation enters ERROR.
+Flash actions requested from IDLE can return to RUN after success. A denied
+transition to RUN falls back to STOP; a failed flash operation enters ERROR.
+Actions started from ERROR keep motor outputs disabled, preserve fault masks,
+and return to ERROR while faults remain. If faults have been cleared, they
+return to STOP rather than RUN. Fault polling does not preempt flash or
+bootloader maintenance states.
 
 ERROR is tied to latched fault bits. Failed calibration, identification,
 tuning, alignment, anticogging, and storage actions latch OPERATION_FAILED
@@ -210,6 +221,9 @@ sources use USER CODE sections for application integration; the main application
 logic resides in Foc.
 
 ## Tests and troubleshooting
+
+The calibration/identification routine lifecycle and executable C tests
+are documented in [FOC routines](docs/foc-routines.md).
 
 The plotter repository contains protocol, cache, simulator, and dynamic-UI
 tests:

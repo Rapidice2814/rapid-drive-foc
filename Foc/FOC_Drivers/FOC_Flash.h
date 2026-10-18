@@ -7,6 +7,8 @@
 #include "FOC_Config.h"
 #include "FOC_Loops.h"
 #include "FOC_CAN.h"
+#include "FOC_Encoder.h"
+#include "FOC_FlashFormat.h"
 
 typedef enum {
     FLASH_OK = 0,
@@ -47,6 +49,13 @@ struct FLASH_ControllerParameters {
 struct FLASH_EncoderParameters {
     float mechanical_offset; // [radians]
     uint8_t offset_valid; // boolean
+    uint8_t source_id;
+    uint8_t correction_source;
+    uint8_t correction_valid;
+    uint8_t correction_enabled;
+    float raw_zero;
+    float calibration_voltage;
+    float correction[FOC_ENCODER_LUT_SIZE];
 };
 
 struct FLASH_Limits {
@@ -79,7 +88,10 @@ struct FLASH_HFIParameters {
 
 typedef struct {
     /* Flash settings*/
-    uint8_t contains_data; // boolean, first byte of the flash data. This is used to detect whether the flash has data.
+    uint32_t magic;
+    uint16_t format_version;
+    uint16_t stored_size;
+    uint8_t contains_data; // Boolean record-valid marker following the format header.
 
     struct FLASH_MotorParameters motor; // motor parameters
     struct FLASH_EncoderParameters encoder; // encoder parameters
@@ -88,10 +100,20 @@ typedef struct {
     struct FLASH_DriverParameters node; // driver parameters
     struct FLASH_HFIParameters hfi; // HFI parameters
 
-    uint8_t filler[4]; // filler to make the struct size a multiple of 8 bytes. This is used to avoid issues with flash programming, which requires 8-byte alignment.
+    uint8_t filler[4]; // Keep the CRC/terminator tail and record 8-byte aligned.
+
+    uint32_t crc;
 
     uint32_t struct_terminator; // Last part of the struct, should be set to FLASH_DATA_STRUCT_TERMINATOR. This is used to detect whether the struct is correctly read from flash.
 } FLASH_DataTypeDef;
+
+/** @brief Validates a settings record before any of its configuration is applied. */
+static inline uint8_t FOC_FLASH_RecordValid(const FLASH_DataTypeDef *data){
+    return data != NULL && data->magic == FOC_FLASH_MAGIC &&
+        data->format_version == FOC_FLASH_FORMAT_VERSION && data->stored_size == sizeof(*data) &&
+        data->contains_data == 1 && data->struct_terminator == FLASH_DATA_STRUCT_TERMINATOR &&
+        data->crc == FOC_FlashCRC(data, offsetof(FLASH_DataTypeDef, crc));
+}
 
 
 

@@ -1,336 +1,252 @@
+#include <math.h>
 #include "FOC_Loops.h"
 #include "FOC_Handle.h"
 #include "FOC_USB_Debug.h"
-#include <math.h>
-#include <stdio.h>
-#include <string.h>
 
+#define MEASUREMENT_VOLTAGE 1.0f
+#define IDENTIFICATION_TIMEOUT_MS 60000U
+#define IDENTIFICATION_MAX_ITERATIONS 4096U
 
-
-/**
-  * @brief This function models the current in an RL circuit with a step input voltage
-  * @param t the time in seconds
-  * @param R the resistance in ohms
-  * @param L the inductance in henries
-  * @param V the voltage in volts
-  * @retval the current at time t in amperes
-  */
-float model_current(float t, float R, float L, float V) {
-    return (V / R) * (1.0 - exp(-R * t / L));
+/** @brief Models the current response of the original RL fitting algorithm. */
+static float model_current(float t, float r, float l){
+    return (MEASUREMENT_VOLTAGE / r) * (1.0 - exp(-r * t / l));
 }
 
-/**
-  * @brief Computes the sum of squared errors between predicted and measured arrays
-  * @param predArr pointer to the array of predicted values
-  * @param measArr pointer to the array of measured values
-  * @param n the number of elements in the arrays
-  * @retval the sum of squared errors
-  */
-float compute_error(float *predArr, float *measArr, int n) {
-    float error = 0.0;
-    for (int i = 0; i < n; ++i) {
-        float diff = predArr[i] - measArr[i];
+/** @brief Computes bounded squared error over one captured response. */
+static float compute_error(const float *predicted, const float *measured){
+    float error = 0;
+    for(unsigned i = 0; i < FOC_IDENTIFICATION_SAMPLES; i++){
+        float diff = predicted[i] - measured[i];
         error += diff * diff;
     }
     return error;
 }
 
-/**
-  * @brief Computes the percentage difference between the maximum and minimum values in an array
-  * @param data pointer to the array of values
-  * @param size the number of elements in the array
-  * @retval the percentage difference
-  */
-float percentDifferenceMaxMin(float* data, int size) {
-    if(size <= 1) return 0.0f;
-
-    float min = data[0];
-    float max = data[0];
-
-    for (int i = 1; i < size; i++) {
-        if(data[i] < min) min = data[i];
-        if(data[i] > max) max = data[i];
+/** @brief Computes the spread of the three phase-pair estimates. */
+static float estimate_spread(const float *values){
+    float min = values[0], max = values[0];
+    for(unsigned i = 1; i < 3; i++){
+        if(values[i] < min) min = values[i];
+        if(values[i] > max) max = values[i];
     }
-
-    if(max == 0.0f) return 0.0f; // avoid divide by zero
-
-    float diff = max - min;
-    float percentDiff = (diff / max) * 100.0f;
-
-    return percentDiff;
+    return max > 0 ? (max - min) / max * 100.0f : 100.0f;
 }
 
+/** @brief Selects a named stage and its non-blocking settling interval. */
+static void identification_stage(FOC_IdentificationContextTypeDef *ctx,
+                                 FOC_IdentificationStageTypeDef stage, uint32_t now, uint32_t wait_ms){
+    ctx->stage = stage;
+    ctx->runtime.stage_started_ms = now;
+    ctx->wait_ms = wait_ms;
+}
 
-
-#define MEASUREMENT_VOLTAGE 1.0f
-#define MEASUREMENT_STEPS 25
+/** @brief Applies the original test voltage to the selected phase. */
+static void identification_voltage(FOC_HandleTypeDef *hfoc, uint8_t selector){
+    PhaseVoltagesTypeDef voltage = {0};
+    if(selector == 0) voltage.a = MEASUREMENT_VOLTAGE;
+    else if(selector == 1) voltage.b = MEASUREMENT_VOLTAGE;
+    else voltage.c = MEASUREMENT_VOLTAGE;
+    FOC_SetPhaseVoltages(hfoc, voltage);
+}
 
 /**
-  * @brief Identifies the motor resistance and inductance by applying a voltage and measuring the current response.
-  * @note 
-  * @param hfoc Handle to the FOC structure
-  * @retval FOC_LoopStatusTypeDef
-  */
-FOC_LoopStatusTypeDef FOC_MotorIdentification(FOC_HandleTypeDef *hfoc){
+ * @brief Starts fresh motor identification without modifying accepted R/L values.
+ * @param hfoc FOC handle owning all sample buffers and fitting state.
+ */
+void FOC_MotorIdentification_Start(FOC_HandleTypeDef *hfoc){
+    if(hfoc->identification.runtime.active) FOC_MotorIdentification_Finish(hfoc, FOC_LOOP_CANCELLED);
+    hfoc->identification = (FOC_IdentificationContextTypeDef){
+        .runtime = {.active = 1, .status = FOC_LOOP_IN_PROGRESS, .started_ms = HAL_GetTick()},
+        .stage = FOC_IDENT_START
+    };
+}
 
-    static uint8_t step = 0;
-    static uint32_t next_step_time = 0;
-    
-    static uint8_t selector = 0;
-
-    static float timeArray[MEASUREMENT_STEPS] = {0.0f};
-    static float measuredCurrentArray[MEASUREMENT_STEPS] = {0.0f};
-    static float predictedCurrentArray[MEASUREMENT_STEPS] = {0.0f};
-
-    static float estimatedR = 0.0f;
-    static float estimatedL = 0.0f;
-
-    //a measurement has 2 phases in paraller and 1 in series, so this is 3/2 of the phase resistace
-    static float RArray[3] = {0.0f}; //contains the estimated resistance for each measurement
-    static float LArray[3] = {0.0f}; //contains the estimated inductance for each measurement
-    // static float EArray[3] = {0.0f}; //contains the error for each measurement
-    
-
-    static float R = 0.0f;
-    static float L = 0.0f;
-    static float error = 0.0f;
-    static float gradient_R = 0, gradient_L = 0;
-
-    static uint8_t attempt = 0;
-
-
-    switch(step){
-        case 0:
-            Debug_SendTextResponse("Starting motor identification attempt %d\n", attempt);
-
-            FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
-            
-            step++;
-            next_step_time = HAL_GetTick() + 100;
-            break;
-        case 1:
-            if(HAL_GetTick() >= next_step_time){
-
-                estimatedR = MOTOR_STATOR_RESISTANCE * (3.0f/2);
-                estimatedL = MOTOR_STATOR_INDUCTANCE * (3.0f/2);
-
-                for(int i = 0; i < MEASUREMENT_STEPS; i++){
-                    timeArray[i] = (float)i / (float)CURRENT_LOOP_FREQUENCY;
-                    measuredCurrentArray[i] = 0.0f;
-                }
-
-                if(selector == 0){
-                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){MEASUREMENT_VOLTAGE, 0.0f, 0.0f});
-                } else if(selector == 1){
-                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, MEASUREMENT_VOLTAGE, 0.0f});
-                } else if(selector == 2){
-                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, MEASUREMENT_VOLTAGE});
-                }
-
-                step++;
-                next_step_time = HAL_GetTick() + 100;
-            }
-            break;
-        case 2:
-            if(HAL_GetTick() >= next_step_time){
-
-                FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
-
-                step++;
-                next_step_time = HAL_GetTick() + 100;
-            }
-            break;
-        case 3:
-            if(HAL_GetTick() >= next_step_time){
-
-                step++;
-                next_step_time = HAL_GetTick() + 0;
-            }
-            break;
-        case 4:
-            if(HAL_GetTick() >= next_step_time){
-                static uint8_t substep = 0;
-                if(substep == 0){
-                    if(selector == 0){
-                        FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){MEASUREMENT_VOLTAGE, 0.0f, 0.0f});
-                    } else if(selector == 1){
-                        FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, MEASUREMENT_VOLTAGE, 0.0f});
-                    } else if(selector == 2){
-                        FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, MEASUREMENT_VOLTAGE});
-                    }
-                    substep++;
-                } else if(substep <= MEASUREMENT_STEPS){
-                    if(selector == 0){
-                        measuredCurrentArray[substep-1] = hfoc->adc_values.phase_current.a;
-                    } else if(selector == 1){
-                        measuredCurrentArray[substep-1] = hfoc->adc_values.phase_current.b;
-                    } else if(selector == 2){
-                        measuredCurrentArray[substep-1] = hfoc->adc_values.phase_current.c;
-                    }                 
-                    substep++;
-                } else{
-                    substep = 0;
-                    step++;
-                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
-                    next_step_time = HAL_GetTick() + 1;
-                }
-            }
-            break;
-        case 5:
-            {
-                static uint8_t substep = 0;
-                static float error_default;
-                static float error_R, error_L;
-
-                switch(substep){
-                    case 0:
-                        L = estimatedL;
-                        R = estimatedR;
-                        substep++;
-                        step++;
-                        break;
-                    case 1:
-                        error_default = error;
-                        L = estimatedL + 1e-6f;
-                        R = estimatedR;
-                        substep++;
-                        step++;
-                        break;
-                    case 2:
-                        error_L = error;
-                        L = estimatedL;
-                        R = estimatedR + 1e-2f;
-                        substep++;
-                        step++;
-                        break;
-                    case 3:
-                        error_R = error;
-                        gradient_L = (error_L - error_default) * 1e-5f;
-                        gradient_R = (error_R - error_default) * 1e-3f;
-
-                        estimatedL -= gradient_L;
-                        estimatedR -= gradient_R;
-
-                        substep = 0;
-
-                        if(error < 0.5f || (fabsf(gradient_L) < 1e-7f && fabsf(gradient_R) < 1e-4f)){ //wat until the error is below 0.5 or until the system converges
-                            RArray[selector] = estimatedR;
-                            LArray[selector] = estimatedL;
-                            // EArray[selector] = error;
-
-                            Debug_SendTextResponse("Motor Identification step: %d, Resistance: %dmOhm, Inductance: %duH, Error: %d\n",
-                                 selector, (int)(estimatedR * 1000), (int)(estimatedL * 1000000), (int)(error * 1000));
-
-                            step += 2; //go to the next step
-                            next_step_time = HAL_GetTick() + 10;
-                        }else{
-                            // Debug_SendTextResponse("EError: %d\n", (int)(error * 1000));
-                        }
-                        break;
-                    default:
-                        break;
-                }
-            }
-            break;
-        case 6:
-            {
-                static uint8_t substep = 0;
-                if(substep < MEASUREMENT_STEPS){
-                    predictedCurrentArray[substep] = model_current(timeArray[substep], R, L, MEASUREMENT_VOLTAGE);
-                    substep++;
-                } else if(substep == MEASUREMENT_STEPS){
-                    error = compute_error(predictedCurrentArray, measuredCurrentArray, MEASUREMENT_STEPS);
-                    // Debug_SendTextResponse("Error: %d\n", (int)(error * 1000));
-                    substep++;
-                } else{
-                    substep = 0;
-                    step--;
-                }
-            }
-            break;
-        case 7:
-            if(HAL_GetTick() >= next_step_time){
-                if(selector == 2){
-                    selector = 0;
-                    step++;
-                } else{
-                    selector++;
-                    step = 1;
-                }
-            }
-            break;
-        case 8:
-            if(HAL_GetTick() >= next_step_time){
-                float spreadR = percentDifferenceMaxMin(RArray, 3);
-                float spreadL = percentDifferenceMaxMin(LArray, 3);
-                Debug_SendTextResponse("Percent deviation of Resistance: %d%%, Inductance: %d%%\n", (int)(spreadR), (int)(spreadL));
-
-                if(spreadR < 30.0f && spreadL < 30.0f){
-                    // Debug_SendTextResponse("Deviation is acceptable\n");
-                    float sumR = 0.0f;
-                    float sumL = 0.0f;
-                    for(int i = 0; i < 3; i++){
-                        sumR += RArray[i];
-                        sumL += LArray[i];
-                    }
-
-                    hfoc->flash_data.motor.phase_resistance = sumR * (2.0f / (3.0f * 3.0f));
-                    hfoc->flash_data.motor.phase_inductance = sumL * (2.0f / (3.0f * 3.0f));
-                    
-
-                    Debug_SendTextResponse("Motor Identified! Resistance: %dmOhm, Inductance: %duH\n", 
-                        (int)(hfoc->flash_data.motor.phase_resistance * 1000), 
-                        (int)(hfoc->flash_data.motor.phase_inductance * 1000000));
-
-                    step++;
-                    next_step_time = HAL_GetTick() + 10;
-                } else{
-                    Debug_SendTextResponse("Deviation is too high, retrying...\n");
-                    step = 0;
-                    attempt++;
-                    if(attempt > 3){
-                        Debug_SendTextResponse("Motor identification failed after 3 attempts\n");
-
-                        hfoc->flash_data.motor.phase_inductance = 0;
-                        hfoc->flash_data.motor.phase_resistance = 0;
-
-                        attempt = 0;
-                        return FOC_LOOP_ERROR; // error
-                    }
-                    next_step_time = HAL_GetTick() + 10;
-                }
-            }
-            break;
-        
-        default:
-            if(HAL_GetTick() >= next_step_time){
-                step = 0;
-                next_step_time = 0;
-                selector = 0;
-
-                for (int i = 0; i < MEASUREMENT_STEPS; i++) {
-                    timeArray[i] = 0.0f;
-                    measuredCurrentArray[i] = 0.0f;
-                    predictedCurrentArray[i] = 0.0f;
-                }
-
-                for (int i = 0; i < 3; i++) {
-                    RArray[i] = 0.0f;
-                    LArray[i] = 0.0f;
-                }
-
-                estimatedR = 0.0f;
-                estimatedL = 0.0f;
-                R = 0.0f;
-                L = 0.0f;
-                error = 0.0f;
-                gradient_R = 0.0f;
-                gradient_L = 0.0f;
-
-                attempt = 0;
-                return FOC_LOOP_COMPLETED; // complete
-            }
-            break;
+/**
+ * @brief Removes test voltage and commits validated phase R/L only on success.
+ * @param hfoc FOC handle owning the identification operation.
+ * @param result Terminal status.
+ * @return Retained terminal result; repeated cleanup has no hardware effects.
+ */
+FOC_LoopStatusTypeDef FOC_MotorIdentification_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopStatusTypeDef result){
+    FOC_IdentificationContextTypeDef *ctx = &hfoc->identification;
+    if(!ctx->runtime.active) return ctx->runtime.status;
+    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
+    if(result == FOC_LOOP_COMPLETED && !ctx->candidate_valid){
+        ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
+        result = FOC_LOOP_ERROR;
     }
-return FOC_LOOP_IN_PROGRESS;
+    if(result != FOC_LOOP_COMPLETED && result != FOC_LOOP_ERROR && result != FOC_LOOP_CANCELLED){
+        ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_INPUT;
+        result = FOC_LOOP_ERROR;
+    }
+    if(result == FOC_LOOP_COMPLETED){
+        hfoc->flash_data.motor.phase_resistance = ctx->candidate_r;
+        hfoc->flash_data.motor.phase_inductance = ctx->candidate_l;
+    }
+    if(result == FOC_LOOP_ERROR) ctx->failed_stage = ctx->stage;
+    ctx->runtime.active = 0;
+    ctx->runtime.status = result;
+    ctx->stage = result == FOC_LOOP_COMPLETED ? FOC_IDENT_DONE :
+                 result == FOC_LOOP_CANCELLED ? FOC_IDENT_CANCELLED : FOC_IDENT_FAILED;
+    return result;
+}
+
+/**
+ * @brief Advances one capture sample, model sample, or fitting stage per call.
+ * @param hfoc FOC handle previously started for identification.
+ * @return IN_PROGRESS or retained terminal status.
+ * @note Preserves the phase excitation, 25-sample capture, perturbations, gradient
+ *       scales, convergence thresholds, and three-phase spread check.
+ */
+FOC_LoopStatusTypeDef FOC_MotorIdentification_Update(FOC_HandleTypeDef *hfoc){
+    FOC_IdentificationContextTypeDef *ctx = &hfoc->identification;
+    if(!ctx->runtime.active){
+        if(ctx->stage == FOC_IDENT_IDLE){
+            ctx->runtime.status = FOC_LOOP_ERROR;
+            ctx->runtime.error = FOC_ROUTINE_ERROR_NOT_STARTED;
+        }
+        return ctx->runtime.status;
+    }
+    uint32_t now = HAL_GetTick();
+    if(FOC_RoutineElapsed(now, ctx->runtime.started_ms, IDENTIFICATION_TIMEOUT_MS)){
+        ctx->runtime.error = FOC_ROUTINE_ERROR_TIMEOUT;
+        return FOC_MotorIdentification_Finish(hfoc, FOC_LOOP_ERROR);
+    }
+    if(ctx->selector > 2 || ctx->capture_index > FOC_IDENTIFICATION_SAMPLES + 1 ||
+       ctx->model_index > FOC_IDENTIFICATION_SAMPLES + 1){
+        ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_STAGE;
+        return FOC_MotorIdentification_Finish(hfoc, FOC_LOOP_ERROR);
+    }
+    if(!FOC_RoutineElapsed(now, ctx->runtime.stage_started_ms, ctx->wait_ms)) return FOC_LOOP_IN_PROGRESS;
+    switch(ctx->stage){
+        case FOC_IDENT_START:
+            Debug_SendTextResponse("Starting motor identification attempt %d\n", ctx->attempt + 1);
+            FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
+            ctx->selector = 0;
+            identification_stage(ctx, FOC_IDENT_PREPARE, now, 100);
+            break;
+        case FOC_IDENT_PREPARE:
+            ctx->estimated_r = MOTOR_STATOR_RESISTANCE * 1.5f;
+            ctx->estimated_l = MOTOR_STATOR_INDUCTANCE * 1.5f;
+            ctx->capture_index = ctx->model_index = 0;
+            ctx->iterations = 0;
+            ctx->fit_stage = FOC_IDENT_FIT_BASELINE;
+            for(unsigned i = 0; i < FOC_IDENTIFICATION_SAMPLES; i++){
+                ctx->time[i] = (float)i / CURRENT_LOOP_FREQUENCY;
+                ctx->measured[i] = 0;
+            }
+            identification_voltage(hfoc, ctx->selector);
+            identification_stage(ctx, FOC_IDENT_REMOVE_VOLTAGE, now, 100);
+            break;
+        case FOC_IDENT_REMOVE_VOLTAGE:
+            FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
+            identification_stage(ctx, FOC_IDENT_WAIT_CAPTURE, now, 100);
+            break;
+        case FOC_IDENT_WAIT_CAPTURE:
+            identification_stage(ctx, FOC_IDENT_CAPTURE, now, 0);
+            break;
+        case FOC_IDENT_CAPTURE:
+            if(ctx->capture_index == 0){
+                identification_voltage(hfoc, ctx->selector);
+                ctx->capture_index++;
+            }else if(ctx->capture_index <= FOC_IDENTIFICATION_SAMPLES){
+                float current = ctx->selector == 0 ? hfoc->adc_values.phase_current.a :
+                                ctx->selector == 1 ? hfoc->adc_values.phase_current.b : hfoc->adc_values.phase_current.c;
+                if(!isfinite(current)) goto invalid_result;
+                ctx->measured[ctx->capture_index++ - 1] = current;
+            }else{
+                ctx->capture_index = 0;
+                FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
+                identification_stage(ctx, FOC_IDENT_SELECT_MODEL, now, 0);
+            }
+            break;
+        case FOC_IDENT_SELECT_MODEL:
+            ctx->model_r = ctx->estimated_r;
+            ctx->model_l = ctx->estimated_l;
+            switch(ctx->fit_stage){
+                case FOC_IDENT_FIT_BASELINE:
+                    ctx->fit_stage = FOC_IDENT_FIT_INDUCTANCE;
+                    break;
+                case FOC_IDENT_FIT_INDUCTANCE:
+                    ctx->baseline_error = ctx->error;
+                    ctx->model_l += 1e-6f;
+                    ctx->fit_stage = FOC_IDENT_FIT_RESISTANCE;
+                    break;
+                case FOC_IDENT_FIT_RESISTANCE:
+                    ctx->inductance_error = ctx->error;
+                    ctx->model_r += 1e-2f;
+                    ctx->fit_stage = FOC_IDENT_FIT_APPLY;
+                    break;
+                case FOC_IDENT_FIT_APPLY: {
+                    float gradient_l = (ctx->inductance_error - ctx->baseline_error) * 1e-5f;
+                    float gradient_r = (ctx->error - ctx->baseline_error) * 1e-3f;
+                    ctx->estimated_l -= gradient_l;
+                    ctx->estimated_r -= gradient_r;
+                    if(!isfinite(ctx->estimated_r) || ctx->estimated_r <= 0 ||
+                       !isfinite(ctx->estimated_l) || ctx->estimated_l <= 0) goto invalid_result;
+                    ctx->fit_stage = FOC_IDENT_FIT_BASELINE;
+                    if(ctx->error < 0.5f || (fabsf(gradient_l) < 1e-7f && fabsf(gradient_r) < 1e-4f)){
+                        ctx->resistance[ctx->selector] = ctx->estimated_r;
+                        ctx->inductance[ctx->selector] = ctx->estimated_l;
+                        identification_stage(ctx, FOC_IDENT_NEXT_PHASE, now, 10);
+                    }else if(++ctx->iterations >= IDENTIFICATION_MAX_ITERATIONS){
+                        ctx->runtime.error = FOC_ROUTINE_ERROR_TIMEOUT;
+                        return FOC_MotorIdentification_Finish(hfoc, FOC_LOOP_ERROR);
+                    }
+                    return FOC_LOOP_IN_PROGRESS;
+                }
+                default:
+                    ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_STAGE;
+                    return FOC_MotorIdentification_Finish(hfoc, FOC_LOOP_ERROR);
+            }
+            ctx->model_index = 0;
+            identification_stage(ctx, FOC_IDENT_EVALUATE_MODEL, now, 0);
+            break;
+        case FOC_IDENT_EVALUATE_MODEL:
+            if(!isfinite(ctx->model_r) || ctx->model_r <= 0 ||
+               !isfinite(ctx->model_l) || ctx->model_l <= 0) goto invalid_result;
+            if(ctx->model_index < FOC_IDENTIFICATION_SAMPLES){
+                float predicted = model_current(ctx->time[ctx->model_index], ctx->model_r, ctx->model_l);
+                if(!isfinite(predicted)) goto invalid_result;
+                ctx->predicted[ctx->model_index++] = predicted;
+            }else if(ctx->model_index == FOC_IDENTIFICATION_SAMPLES){
+                ctx->error = compute_error(ctx->predicted, ctx->measured);
+                if(!isfinite(ctx->error)) goto invalid_result;
+                ctx->model_index++;
+            }else{
+                ctx->model_index = 0;
+                identification_stage(ctx, FOC_IDENT_SELECT_MODEL, now, 0);
+            }
+            break;
+        case FOC_IDENT_NEXT_PHASE:
+            if(ctx->selector < 2){
+                ctx->selector++;
+                identification_stage(ctx, FOC_IDENT_PREPARE, now, 0);
+            }else{
+                identification_stage(ctx, FOC_IDENT_VALIDATE, now, 0);
+            }
+            break;
+        case FOC_IDENT_VALIDATE:
+            if(estimate_spread(ctx->resistance) < 30 && estimate_spread(ctx->inductance) < 30){
+                ctx->candidate_r = (ctx->resistance[0] + ctx->resistance[1] + ctx->resistance[2]) * (2.0f / 9.0f);
+                ctx->candidate_l = (ctx->inductance[0] + ctx->inductance[1] + ctx->inductance[2]) * (2.0f / 9.0f);
+                ctx->candidate_valid = isfinite(ctx->candidate_r) && ctx->candidate_r > 0 &&
+                                       isfinite(ctx->candidate_l) && ctx->candidate_l > 0;
+                if(!ctx->candidate_valid) goto invalid_result;
+                identification_stage(ctx, FOC_IDENT_WAIT_FINISH, now, 10);
+            }else if(ctx->attempt < 3){
+                ctx->attempt++;
+                identification_stage(ctx, FOC_IDENT_START, now, 10);
+            }else goto invalid_result;
+            break;
+        case FOC_IDENT_WAIT_FINISH:
+            return FOC_MotorIdentification_Finish(hfoc, FOC_LOOP_COMPLETED);
+        default:
+            ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_STAGE;
+            return FOC_MotorIdentification_Finish(hfoc, FOC_LOOP_ERROR);
+    }
+    return FOC_LOOP_IN_PROGRESS;
+invalid_result:
+    ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
+    return FOC_MotorIdentification_Finish(hfoc, FOC_LOOP_ERROR);
 }

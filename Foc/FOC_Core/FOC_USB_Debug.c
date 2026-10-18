@@ -11,6 +11,7 @@
 #include "FOC_Config.h"
 #include "FOC_CAN.h"
 #include "FOC_Diagnostics.h"
+#include "FOC_Calibration.h"
 
 
 /* Single source of truth. Array order supplies all wire IDs and mask bits. */
@@ -454,11 +455,13 @@ static void Debug_ReplyStateTransition(MsgTypeTypeDef command, FOC_StateTypeDef 
     case FOC_STATETRANSITION_ENCODER_NOT_ALIGNED:
         code = DEBUG_ERR_ENCODER_NOT_ALIGNED; reason = "Encoder is not aligned."; break;
     case FOC_STATETRANSITION_ACTIVE_FAULTS:
-        code = DEBUG_ERR_ACTIVE_FAULTS; reason = "Active faults prevent RUN."; break;
+        code = DEBUG_ERR_ACTIVE_FAULTS; reason = "Active faults prevent this operation."; break;
     case FOC_STATETRANSITION_LATCHED_FAULTS:
-        code = DEBUG_ERR_LATCHED_FAULTS; reason = "Latched faults prevent RUN."; break;
+        code = DEBUG_ERR_LATCHED_FAULTS; reason = "Latched faults prevent this operation."; break;
     case FOC_STATETRANSITION_MUST_BE_IDLE:
-        code = DEBUG_ERR_MUST_BE_IDLE; reason = "Operation requires IDLE."; break;
+        code = DEBUG_ERR_MUST_BE_IDLE;
+        reason = state == FOC_STATE_ENCODER_CALIBRATION ? "Encoder calibration requires IDLE." : "Operation requires IDLE or ERROR.";
+        break;
     case FOC_STATETRANSITION_MUST_BE_STOPPED:
         code = DEBUG_ERR_MUST_BE_STOPPED; reason = "IDLE requires the STOP state."; break;
     case FOC_STATETRANSITION_MOTOR_MOVING:
@@ -726,6 +729,126 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         Debug_ReplyStateTransition(msg_type, (FOC_StateTypeDef)payload[0], FOC_STATE_NONE);
         break;
 
+    case MSG_GET_CALIBRATION_INFO: {
+        if(payload_length != 1 || payload[0] > 1) goto calibration_payload_error;
+        uint8_t kind = payload[0];
+        FOC_RoutineRuntimeTypeDef *r = kind ? &hfoc.anticogging.runtime : &hfoc.encoder_calibration.runtime;
+        uint8_t info[10] = {kind};
+        info[1] = kind ? (hfoc.flash_data.controller.anticogging_data_valid ? 1 : 0) |
+                        (hfoc.flash_data.controller.anticogging_FF_enabled ? 2 : 0) :
+                        (hfoc.flash_data.encoder.correction_valid ? 1 : 0) |
+                        (hfoc.flash_data.encoder.correction_enabled ? 2 : 0);
+        info[1] |= r->active ? 4 : 0;
+        info[1] |= hfoc.calibration_upload.active ? 8 : 0;
+        info[2] = kind ? hfoc.anticogging.stage : hfoc.encoder_calibration.stage;
+        info[3] = r->error;
+        write_u16_le(info+4, kind ? hfoc.anticogging.progress : hfoc.encoder_calibration.progress);
+        info[6] = hfoc.calibration_revolutions[kind] ? hfoc.calibration_revolutions[kind] : 3;
+        write_u16_le(info+7, FOC_CalibrationSize(kind) / (kind ? 2 : 1));
+        info[9] = kind ? 2 : 1;
+        Debug_SendBinaryResponse(MSG_CALIBRATION_INFO_REPLY, info, sizeof(info));
+        break;
+    }
+    case MSG_START_CALIBRATION:
+        if(payload_length != 2 || payload[0] > 1 || payload[1] < 1 || payload[1] > 8) goto calibration_payload_error;
+        if(!FOC_CalibrationSafe(&hfoc) || hfoc.state != FOC_STATE_IDLE || hfoc.calibration_upload.active) goto calibration_state_error;
+        hfoc.calibration_revolutions[payload[0]] = payload[1];
+        Debug_ReplyStateTransition(msg_type, payload[0] ? FOC_STATE_ANTICOGGING : FOC_STATE_ENCODER_CALIBRATION, FOC_STATE_NONE);
+        break;
+    case MSG_ENABLE_CALIBRATION:
+        if(payload_length != 2 || payload[0] > 1 || payload[1] > 1) goto calibration_payload_error;
+        if(!FOC_CalibrationEnable(&hfoc, payload[0], payload[1])) goto calibration_state_error;
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+    case MSG_GET_CALIBRATION_TABLE: {
+        if(payload_length != 4 || payload[0] > 1 || !payload[3] || payload[3] > FOC_CALIBRATION_CHUNK) goto calibration_payload_error;
+        unsigned offset = read_u16_le(payload+1), count = payload[3], total = FOC_CalibrationSize(payload[0]);
+        if(offset + count > total) goto calibration_payload_error;
+        if(!FOC_CalibrationSafe(&hfoc) || hfoc.calibration_upload.active) goto calibration_state_error;
+        uint8_t reply[6+4*FOC_CALIBRATION_CHUNK];
+        reply[0] = payload[0];
+        write_u16_le(reply+1, offset); write_u16_le(reply+3, total); reply[5] = count;
+        for(unsigned i=0; i<count; i++){
+            float value = FOC_CalibrationValue(&hfoc, payload[0], offset+i);
+            memcpy(reply+6+4*i, &value, 4);
+        }
+        Debug_SendBinaryResponse(MSG_CALIBRATION_TABLE_REPLY, reply, 6+4*count);
+        break;
+    }
+    case MSG_BEGIN_CALIBRATION_UPLOAD:
+        if(payload_length != 3 || payload[0] > 1) goto calibration_payload_error;
+        if(!FOC_CalibrationBegin(&hfoc, payload[0], read_u16_le(payload+1))) goto calibration_state_error;
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+    case MSG_WRITE_CALIBRATION_TABLE: {
+        if(payload_length < 4 || payload[0] > 1 || !payload[3] || payload[3] > FOC_CALIBRATION_CHUNK || payload_length != 4+4*payload[3]) goto calibration_payload_error;
+        float values[FOC_CALIBRATION_CHUNK];
+        memcpy(values, payload+4, payload_length-4);
+        if(!FOC_CalibrationWrite(&hfoc, payload[0], read_u16_le(payload+1), values, payload[3])) goto calibration_state_error;
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+    }
+    case MSG_COMMIT_CALIBRATION_UPLOAD:
+        if(payload_length != 5 || payload[0] > 1) goto calibration_payload_error;
+        if(!FOC_CalibrationCommit(&hfoc, payload[0], read_u32_le(payload+1))) goto calibration_state_error;
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+    case MSG_ABORT_CALIBRATION_UPLOAD:
+        if(payload_length != 0) goto calibration_payload_error;
+        hfoc.calibration_upload.active = 0;
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+    calibration_payload_error:
+        Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_OUT_OF_RANGE, "Invalid calibration kind, range, count or payload length.");
+        break;
+    calibration_state_error:
+        Debug_SendCommandError(MSG_ERROR, msg_type, DEBUG_ERR_INVALID_STATE,
+            "Calibration rejected: requires stationary IDLE/ERROR, ordered complete upload with matching CRC, valid values/table, and no conflicting transfer. Abort an unfinished upload before retrying.");
+        break;
+    case MSG_GET_ENCODER_INFO: {
+        if(payload_length != 0){
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH, "Encoder info expects no payload.");
+            break;
+        }
+        uint8_t info[7 + FOC_ENCODER_SOURCE_MAX * 34];
+        unsigned count;
+        const FOC_EncoderSourceTypeDef *sources = FOC_EncoderSources(&count);
+        info[0] = hfoc.flash_data.encoder.source_id;
+        info[1] = (hfoc.flash_data.encoder.correction_valid ? 1 : 0) |
+                  (hfoc.flash_data.encoder.correction_enabled ? 2 : 0) |
+                  (hfoc.flash_data.encoder.offset_valid ? 4 : 0) |
+                  (hfoc.encoder_runtime.healthy ? 8 : 0);
+        info[2] = hfoc.encoder_calibration.stage;
+        info[3] = hfoc.encoder_calibration.runtime.error;
+        write_u16_le(&info[4], hfoc.encoder_calibration.progress);
+        info[6] = count;
+        unsigned length = 7;
+        for(unsigned i = 0; i < count; i++){
+            size_t name_length = strlen(sources[i].name);
+            if(name_length > 31) name_length = 31;
+            info[length++] = sources[i].id;
+            info[length++] = sources[i].calibratable ? 1 : 0;
+            info[length++] = name_length;
+            memcpy(&info[length], sources[i].name, name_length);
+            length += name_length;
+        }
+        Debug_SendBinaryResponse(MSG_ENCODER_INFO_REPLY, info, length);
+        break;
+    }
+    case MSG_SET_ENCODER_SOURCE:
+    case MSG_SET_ENCODER_CORRECTION:
+        if(hfoc.calibration_upload.active) goto calibration_state_error;
+        if(payload_length != 1){
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH, "Encoder setting expects one byte.");
+        }else if(msg_type == MSG_SET_ENCODER_SOURCE && FOC_EncoderSource(payload[0]) == NULL){
+            Debug_SendCommandError(MSG_UNKNOWN_ID, msg_type, DEBUG_ERR_UNKNOWN_ID, "Encoder source is not available.");
+        }else if((msg_type == MSG_SET_ENCODER_SOURCE ? FOC_EncoderSelect(&hfoc, payload[0]) :
+                  FOC_EncoderEnableCorrection(&hfoc, payload[0])) == 0){
+            Debug_SendCommandError(MSG_ERROR, msg_type, DEBUG_ERR_INVALID_STATE,
+                "Requires stationary IDLE/ERROR; enabling correction also requires a valid source-matched table.");
+        }else Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+
     case MSG_GET_STATE:
         if(payload_length != 0){
             Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
@@ -885,7 +1008,8 @@ static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
     for(int i = 0; i < 1; i++){
         if(packet[i] == 'D'){
             if(packet[i+1] == 'a'){
-                hfoc.flash_data.controller.anticogging_FF_enabled = !hfoc.flash_data.controller.anticogging_FF_enabled;
+                if(!FOC_CalibrationEnable(&hfoc, 1, !hfoc.flash_data.controller.anticogging_FF_enabled))
+                    Debug_SendTextResponse("Anti-cogging toggle rejected: stationary IDLE/ERROR and a valid table are required.\n");
             } else if(packet[i+1] == 'f'){
                 hfoc.flash_data.controller.current_PID_FF_enabled = !hfoc.flash_data.controller.current_PID_FF_enabled;
             } 

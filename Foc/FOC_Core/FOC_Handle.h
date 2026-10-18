@@ -12,6 +12,7 @@
 #include "FOC_ADC.h"
 #include "Timing.h"
 #include "FOC_HFI.h"
+#include "FOC_Routine.h"
 
 typedef struct FOC_Handle {
 
@@ -19,6 +20,21 @@ typedef struct FOC_Handle {
     FOC_StateTypeDef state; // Current state of the FOC driver
     FOC_StateTypeDef previous_state;
     FOC_StateTypeDef next_state;
+
+    /* Per-handle calibration workspaces; never persisted to flash. */
+    FOC_AlignmentContextTypeDef alignment;
+    FOC_CurrentCalibrationContextTypeDef current_calibration;
+    FOC_EncoderCalibrationContextTypeDef encoder_calibration;
+    FOC_EncoderRuntimeTypeDef encoder_runtime;
+    FOC_IdentificationContextTypeDef identification;
+    FOC_PIDAutotuneContextTypeDef pid_autotune;
+    FOC_AlignmentTestContextTypeDef alignment_test;
+    FOC_AntiCoggingContextTypeDef anticogging;
+    uint8_t calibration_revolutions[2];
+    FOC_CalibrationUploadTypeDef calibration_upload;
+    FOC_OpenLoopContextTypeDef open_loop;
+    uint8_t run_loop_divider;
+    uint8_t checklist_step;
 
     /* Flags */
     uint8_t adc_calibrated;

@@ -47,6 +47,19 @@ volatile uint8_t debug_loop_flag = 0;
 #define VOLTAGE_SENSE_CONVERSION_FACTOR ((3.3f/4096.0f) / VBUS_VOLTAGE_DIVIDER_RATIO)
 
 
+/** @brief Initializes the AS5047P and its absolute-seeded timer backend only. */
+uint8_t FOC_EncoderInitTimer(FOC_HandleTypeDef *handle){
+    handle->pencoder_count = NULL;
+    if(HAL_TIM_Base_Stop(&htim3) != HAL_OK) return 0;
+    if(AS5047P_SetPins(&handle->has5047p, &hspi2, AS_NCS_GPIO_Port, AS_NCS_Pin) != AS5047P_OK ||
+       AS5047P_Init(&handle->has5047p) != AS5047P_OK ||
+       FOC_SetEncoderPointer(handle, &htim3.Instance->CNT) != FOC_OK){
+        handle->pencoder_count = NULL;
+        return 0;
+    }
+    return HAL_TIM_Base_Start(&htim3) == HAL_OK;
+}
+
 void FOC_Setup(){
 
     FOC_Init(&hfoc); 
@@ -75,10 +88,6 @@ void FOC_Setup(){
         Error_Handler();
     }
     
-    if(AS5047P_SetPins(&hfoc.has5047p, &hspi2, AS_NCS_GPIO_Port, AS_NCS_Pin) != AS5047P_OK){
-        Error_Handler();
-    }
-
     if(DRV8323_Init(&hfoc.hdrv8323) != DRV8323_OK){
         while(1){
             HAL_GPIO_TogglePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin);
@@ -86,16 +95,7 @@ void FOC_Setup(){
         };
     }
 
-    if(AS5047P_Init(&hfoc.has5047p) != AS5047P_OK){
-        while(1){
-            HAL_GPIO_TogglePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin);
-            HAL_Delay(100);
-        };
-    }
-
-    if(FOC_SetEncoderPointer(&hfoc, &htim3.Instance->CNT) != FOC_OK){
-        Error_Handler();
-    }
+    uint8_t encoder_ready = FOC_EncoderInitialize(&hfoc);
 
     if(FOC_SetPWMCCRPointers(&hfoc, &htim1.Instance->CCR3, &htim1.Instance->CCR2, &htim1.Instance->CCR1, PWM_CLOCK_DIVIDER) != FOC_OK){
         Error_Handler();
@@ -108,7 +108,6 @@ void FOC_Setup(){
     }
     WS2812b_Send();
 
-    HAL_TIM_Base_Start(&htim3); //start encoder timer
 
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
@@ -135,7 +134,8 @@ void FOC_Setup(){
     hfoc.phfdcan = &hfdcan1; //set the CAN handle pointer
 
     FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
-    DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
+    if(encoder_ready) DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
+    else FOC_SetError(&hfoc, FOC_ERROR_ENCODER_FAULT);
 
     uint8_t rand8 = (uint8_t)(hfoc.random_number & 0xFF);
     Debug_SendTextResponse("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
@@ -158,7 +158,9 @@ void FOC_Loop(){
         float ibus = CalculateBusCurrent(hfoc.adc_values.phase_current, hfoc.phase_voltage, hfoc.adc_values.vbus);
         hfoc.ibus = 0.99f * hfoc.ibus + 0.01f * ibus;
 
-        FOC_UpdateEncoder(&hfoc, CURRENT_LOOP_FREQUENCY);
+        if(FOC_UpdateEncoder(&hfoc, CURRENT_LOOP_FREQUENCY) != FOC_OK){
+            FOC_SetError(&hfoc, FOC_ERROR_ENCODER_FAULT);
+        }
 
         FOC_CheckErrors(&hfoc);
         

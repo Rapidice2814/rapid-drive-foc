@@ -2,6 +2,7 @@
 #include <assert.h>
 
 #include "FOC_Flash.h"
+#include <math.h>
 
 #define STORAGE_FLASH_PAGE 56
 #define NUMBER_OF_FLASH_PAGES 8
@@ -18,6 +19,7 @@ static_assert(sizeof(FLASH_DataTypeDef) <= FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAG
 
 // static const FLASH_DataTypeDef flash_data_default_values = {0};
 static const FLASH_DataTypeDef flash_data_default_values = {
+    .encoder = {.calibration_voltage = 0.5f},
     .motor = {
         .torque_constant = MOTOR_TORQUE_CONSTANT,
         .pole_pairs = MOTOR_POLE_PAIRS,
@@ -40,7 +42,7 @@ static const FLASH_DataTypeDef flash_data_default_values = {
     .limits = {
         .vbus_overvoltage_trip_level = 27.0f,
         .vbus_undervoltage_trip_level = 20.0f,
-        .ibus_overcurrent_trip_level = 0.0f,
+        .ibus_overcurrent_trip_level = 1.0f,
         .mosfet_temp_trip_level = MOSFET_MAX_TEMP,
         .motor_temp_trip_level = MOTOR_MAX_TEMP,
         .max_dq_voltage = VOLTAGE_LIMIT * M_1_SQRT3F,
@@ -71,6 +73,10 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
     }
 
     pdata->contains_data = 1;
+    pdata->magic = FOC_FLASH_MAGIC;
+    pdata->format_version = FOC_FLASH_FORMAT_VERSION;
+    pdata->stored_size = sizeof(*pdata);
+    pdata->crc = FOC_FlashCRC(pdata, offsetof(FLASH_DataTypeDef, crc));
     pdata->struct_terminator = FLASH_DATA_STRUCT_TERMINATOR;
 
     if(FOC_FLASH_CompareData(pdata) == FLASH_SAME){
@@ -155,6 +161,15 @@ FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
         return FLASH_ERROR;
     }
     
+    const FLASH_DataTypeDef *stored = (const FLASH_DataTypeDef *)STORAGE_FLASH_BASE;
+    if(!FOC_FLASH_RecordValid(stored) || FOC_EncoderSource(stored->encoder.source_id) == NULL ||
+       !isfinite(stored->encoder.raw_zero) || !isfinite(stored->encoder.mechanical_offset) ||
+       stored->encoder.correction_enabled > 1 || stored->encoder.correction_valid > 1 ||
+       (stored->encoder.correction_enabled && !stored->encoder.correction_valid) ||
+       (stored->encoder.correction_valid &&
+        (stored->encoder.correction_source != stored->encoder.source_id || !FOC_EncoderValidateLUT(stored->encoder.correction)))){
+        return FLASH_EMPTY;
+    }
     for(uint32_t i = 0; i < sizeof(FLASH_DataTypeDef) / sizeof(uint64_t); i++){
         uint64_t data64 = *(uint64_t*)(STORAGE_FLASH_BASE + i * sizeof(uint64_t));
         ((uint64_t*)pdata)[i] = data64;

@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include "FOC_Utils.h"
+#include "FOC_Encoder.h"
 #include "FOC_Handle.h"
 #include "Utils.h"
 #include "FOC_Config.h"
@@ -167,7 +168,10 @@ FOC_StatusTypeDef FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32
 
     if(hfoc->has5047p.setup_complete != 1) return FOC_ERROR;
     uint16_t ap5047p_angle = 0;
-    AS5047P_GetAngle(&(hfoc->has5047p), &ap5047p_angle);
+    if(AS5047P_GetAngle(&(hfoc->has5047p), &ap5047p_angle) != AS5047P_OK){
+        hfoc->pencoder_count = NULL;
+        return FOC_ERROR;
+    }
 
     *(hfoc->pencoder_count) = (int32_t)(((float)ap5047p_angle / 16384.0f)  * ENCODER_PULSES_PER_ROTATION); //set absolute angle
 
@@ -180,26 +184,7 @@ FOC_StatusTypeDef FOC_SetEncoderPointer(FOC_HandleTypeDef *hfoc, volatile uint32
   * @retval FOC_StatusTypeDef
   */
 FOC_StatusTypeDef FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
-
-    hfoc->flash_data.encoder.offset_valid = 0;
-
-    if(hfoc->has5047p.setup_complete != 1) return FOC_ERROR;
-
-    uint16_t diaagc = 0;
-    AS5047P_GetDIAAGC(&(hfoc->has5047p), &diaagc);
-    uint16_t errors = 0xe00 & diaagc;
-    if(errors != 0) return FOC_ERROR; //check for errors
-    // uint8_t agc = (0xff & diaagc);
-
-
-    uint16_t ap5047p_angle = 0;
-    AS5047P_GetAngle(&(hfoc->has5047p), &ap5047p_angle);
-
-    hfoc->flash_data.encoder.mechanical_offset = ((float)ap5047p_angle / 16384.0f) * 2.0f * M_PIF;
-    hfoc->flash_data.encoder.offset_valid = 1;
-    // *(hfoc->pencoder_count) = (int32_t)(hfoc->flash_data.encoder.mechanical_offset * ENCODER_PULSES_PER_ROTATION / (2 * M_PIF));
-
-    return FOC_OK;
+    return FOC_EncoderSetZero(hfoc) ? FOC_OK : FOC_ERROR;
 }
 
 /**
@@ -209,37 +194,7 @@ FOC_StatusTypeDef FOC_SetEncoderZero(FOC_HandleTypeDef *hfoc){
   * @retval FOC_StatusTypeDef
   */
 FOC_StatusTypeDef FOC_UpdateEncoder(FOC_HandleTypeDef *hfoc, float frequency){
-    float raw_angle_mechanical = (((float)(*(hfoc->pencoder_count)) / ENCODER_PULSES_PER_ROTATION) * 2 * M_PIF) - hfoc->flash_data.encoder.mechanical_offset;
-    normalize_angle_0_2pi(&raw_angle_mechanical);
-
-    hfoc->encoder_angle_mechanical_wrapped = raw_angle_mechanical;
-    float delta = raw_angle_mechanical - hfoc->encoder_angle_mechanical_wrapped_prev;
-
-    if(delta > M_PIF) {
-        hfoc->encoder_full_rotations--;
-        delta -= M_2PIF;
-    } else if(delta < -M_PIF) {
-        hfoc->encoder_full_rotations++;
-        delta += M_2PIF;
-    }
-
-    hfoc->encoder_angle_mechanical_unwrapped = (float)hfoc->encoder_full_rotations * M_2PIF + raw_angle_mechanical;
-    hfoc->encoder_angle_mechanical_wrapped_prev = raw_angle_mechanical;
-
-    // uint16_t as5047p_angle = 0;
-    // AS5047P_GetAngle(&hfoc->has5047p, &as5047p_angle);
-    // hfoc->encoder_angle_mechanical_wrapped = (((float)as5047p_angle / 16384.0f) * 2.0f * M_PIF) - hfoc->flash_data.encoder.mechanical_offset;
-
-    
-    float raw_angle_electrical = hfoc->encoder_angle_mechanical_wrapped * (float)(hfoc->flash_data.motor.pole_pairs);
-    normalize_angle_0_2pi(&raw_angle_electrical);
-
-    hfoc->encoder_angle_electrical = raw_angle_electrical;
-    
-    hfoc->encoder_speed_mechanical = hfoc->encoder_speed_mechanical * (1 - SPEED_MEASUREMENT_ALPHA) + SPEED_MEASUREMENT_ALPHA * delta * frequency;
-    hfoc->encoder_speed_electrical = hfoc->encoder_speed_mechanical * (float)(hfoc->flash_data.motor.pole_pairs);
-
-    return FOC_OK;
+    return FOC_EncoderUpdate(hfoc, frequency) ? FOC_OK : FOC_ERROR;
 }
 
 /**

@@ -1,4 +1,7 @@
-# USB protocol reference (v4)
+# USB protocol reference (v6)
+
+Calibration control, progress and editable-table payloads are specified in
+[Calibration table transfers](calibration-tables.md).
 
 Frames use `AA 55 | message:u8 | payload_length:u16le | payload`.
 All multi-byte integers and four-byte numeric values are little endian.
@@ -57,6 +60,20 @@ or transaction ID. The plotter therefore keeps one command outstanding at a time
 | 0x25 | `MSG_SET_CONTROL_MODE` |
 | 0x26 | `MSG_GET_CONTROL_MODE` |
 | 0x27 | `MSG_CONTROL_MODE_REPLY` |
+| 0x28 | `MSG_GET_ENCODER_INFO` |
+| 0x29 | `MSG_ENCODER_INFO_REPLY` |
+| 0x2A | `MSG_SET_ENCODER_SOURCE` |
+| 0x2B | `MSG_SET_ENCODER_CORRECTION` |
+| 0x2C | `MSG_GET_CALIBRATION_INFO` |
+| 0x2D | `MSG_CALIBRATION_INFO_REPLY` |
+| 0x2E | `MSG_START_CALIBRATION` |
+| 0x2F | `MSG_ENABLE_CALIBRATION` |
+| 0x30 | `MSG_GET_CALIBRATION_TABLE` |
+| 0x31 | `MSG_CALIBRATION_TABLE_REPLY` |
+| 0x32 | `MSG_BEGIN_CALIBRATION_UPLOAD` |
+| 0x33 | `MSG_WRITE_CALIBRATION_TABLE` |
+| 0x34 | `MSG_COMMIT_CALIBRATION_UPLOAD` |
+| 0x35 | `MSG_ABORT_CALIBRATION_UPLOAD` |
 
 Response/error IDs occupy 0xFA through 0xFF.
 
@@ -69,7 +86,7 @@ using its discovered type (`f`, `u32`, or `i32`). Empty means zero payload bytes
 
 | Command | Direction | Payload | Response or behavior |
 | --- | --- | --- | --- |
-| MSG_ENTER_BOOTLOADER | H→D | Empty | Requests BOOTLOADER from IDLE; ACK if accepted, ERROR if denied |
+| MSG_ENTER_BOOTLOADER | H→D | Empty | Requests BOOTLOADER from IDLE or ERROR; ACK if accepted, ERROR if denied |
 | MSG_GET_DEVICE_INFO | H→D | Empty | DEVICE_INFO_REPLY; see detailed layout below |
 | MSG_DEVICE_INFO_REPLY | D→H | 29 bytes | Protocol/firmware versions, counts, limits, rate, fingerprint, status |
 | MSG_GET_DEFINITIONS | H→D | kind:u8, start:u16 (3 bytes) | DEFINITIONS_REPLY or DEFINITIONS_ERROR |
@@ -87,9 +104,9 @@ using its discovered type (`f`, `u32`, or `i32`). Empty means zero payload bytes
 | MSG_SET_VAR | H→D | id:u8, value:4 bytes (5 bytes) | Applies typed value, ACK; a value too wide for native integer storage is INVALID_PAYLOAD |
 | MSG_GET_VAR | H→D | id:u8 (1 byte) | VAR_REPLY |
 | MSG_VAR_REPLY | D→H | id:u8, value:4 bytes (5 bytes) | Current typed value |
-| MSG_FLASH_SAVE | H→D | Empty | Requests FLASH_SAVE from IDLE, then RUN; ACK or ERROR |
-| MSG_FLASH_LOAD | H→D | Empty | Requests FLASH_LOAD from IDLE, then RUN; ACK or ERROR |
-| MSG_FLASH_CLEAR | H→D | Empty | Requests FLASH_CLEAR from IDLE, then RUN; ACK or ERROR |
+| MSG_FLASH_SAVE | H→D | Empty | Requests FLASH_SAVE from IDLE or ERROR; ACK or ERROR |
+| MSG_FLASH_LOAD | H→D | Empty | Requests FLASH_LOAD from IDLE or ERROR; ACK or ERROR |
+| MSG_FLASH_CLEAR | H→D | Empty | Requests FLASH_CLEAR from IDLE or ERROR; ACK or ERROR |
 | MSG_SET_STATE | H→D | state:u8 (1 byte) | Requests a state transition; ACK or ERROR |
 | MSG_GET_STATE | H→D | Empty | STATE_REPLY |
 | MSG_STATE_REPLY | D→H | state:u8 (1 byte) | Current state enum |
@@ -125,9 +142,14 @@ SET_PID/SET_VAR handlers do not independently enforce that UI restriction.
 Control-mode selection resets the target associated with the newly selected
 mode when the mode changes; it does not enter RUN. Flash actions and bootloader
 entry are state-machine requests: an ACK confirms acceptance, not completion.
-Flash actions are accepted only from IDLE and set RUN as the next state.
-After a successful flash operation, a denied transition to RUN falls back to
-STOP. A failed flash operation enters ERROR without attempting RUN.
+Flash actions and bootloader entry are accepted from IDLE or ERROR and enforce
+high impedance with zero phase voltage. Fault polling continues to latch faults
+without preempting these maintenance states. Flash actions from IDLE request
+RUN after success; a denied transition falls back to STOP. Flash actions from
+ERROR preserve faults and return to ERROR while faults remain, or STOP if they
+have been cleared; they never automatically resume RUN. A failed flash operation
+enters ERROR without attempting RUN. Bootloader entry remains available with
+active or latched faults.
 Resulting values and states are available through their corresponding GET commands.
 
 Diagnostic TEXT_REPLY frames and LOG_DATA can arrive between command replies.
@@ -206,7 +228,7 @@ cached.
 
 | Offset | Type | Meaning |
 | --- | --- | --- |
-| 0 | u8 | Protocol version (4) |
+| 0 | u8 | Protocol version (6) |
 | 1–3 | 3 × u8 | Firmware major, minor, patch |
 | 4 | u16 | Signal count |
 | 6 | u16 | Variable count |
@@ -223,11 +245,39 @@ Device-info polling refreshes firmware version and connection health without
 restarting discovery or logging. Changes to capabilities or the definitions
 fingerprint require a new connection initialization.
 
-Protocol 4 retains the command IDs and successful reply layouts from protocol 3,
+Protocol 5 adds encoder source/settings commands and encoder calibration state 20.
+Previous command IDs and successful reply layouts remain unchanged; exact protocol
+version matching is required. Protocol 4 retains the command IDs and successful reply layouts from protocol 3,
 but changes all command-error payloads, including DEFINITIONS_ERROR. Versions 3
 and 4 are not interchangeable. There are no separate firmware-version commands.
 Versions before 3 also use different command IDs: 0x00 is now ENTER_BOOTLOADER,
 not a version request.
+
+### Encoder source and calibration control
+
+GET_ENCODER_INFO has an empty payload. ENCODER_INFO_REPLY contains:
+
+`selected:u8 | flags:u8 | calibration_stage:u8 | error:u8 | progress:u16le | count:u8`
+
+followed by `count` entries: `source_id:u8 | capabilities:u8 | name_length:u8 | ASCII name`.
+Names are printable ASCII, 1-31 bytes; IDs/names are unique and count is 1-8.
+Capability bit 0 indicates calibration support. Flags bits 0-3 indicate valid
+correction, enabled correction, valid alignment, and source health. The selected
+ID can be unavailable in a failed configuration. Progress is 0-1000. Stages are
+0 idle, 1 lock, 2 apply, 3 sample, 4 validate, 5 save, 6 done, 7 failed, 8 cancelled.
+Routine error codes are 0 none, 1 not started, 2 invalid stage, 3 invalid input,
+4 timeout, 5 encoder, 6 current sense, 7 invalid result.
+
+SET_ENCODER_SOURCE accepts one source-ID byte. SET_ENCODER_CORRECTION accepts
+one byte (0/1). Both require stationary IDLE/ERROR and return ACK/structured error;
+GET_ENCODER_INFO reads confirmed settings. Normal flash save persists selection.
+A source initialization failure can leave the chosen source selected but unhealthy.
+
+SET_STATE value 20 requests encoder calibration from fault-free stationary IDLE
+only. ACK confirms acceptance, not completion. Poll encoder info/state for results.
+SET_STATE STOP cancels measurement. Success saves the table and matching zero,
+invalidates anti-cogging and enters STOP. See [Encoder calibration](encoder-calibration.md)
+for motion requirements, source contracts, validation and flash compatibility.
 
 ## Definition pages
 
@@ -282,7 +332,7 @@ of the active/latched device-fault bitmaps and discovered field IDs.
 | 7 | ENCODER_NOT_ALIGNED | Encoder alignment prevents RUN |
 | 8 | ACTIVE_FAULTS | Active faults prevent RUN |
 | 9 | LATCHED_FAULTS | Latched faults prevent RUN |
-| 10 | MUST_BE_IDLE | Flash/bootloader operation requires IDLE |
+| 10 | MUST_BE_IDLE | Flash/bootloader operation requires IDLE or ERROR (legacy code name) |
 | 11 | MUST_BE_STOPPED | IDLE requires the STOP state |
 | 12 | MOTOR_MOVING | Speed prevents entry into IDLE |
 | 13 | LOGGING_ACTIVE | Signal mask cannot change while logging |
@@ -364,8 +414,9 @@ FOC_Diagnostics.h.
 | CHECKLIST | 7 | FLASH_CLEAR | 17 |
 | PID_AUTOTUNE | 8 | BOOTLOADER | 18 |
 | ERROR | 9 | OPENLOOP | 19 |
+| ENCODER_CALIBRATION | 20 | | |
 
-FOC_STATE_COUNT (20) is a sentinel, not a runtime state. Actual state transitions
+FOC_STATE_COUNT (21) is a sentinel, not a runtime state. Actual state transitions
 are guarded by FOC_SetState and the destination transition function. In
 particular, IDLE requires STOP and absolute mechanical speed at most 0.1 rad/s.
 

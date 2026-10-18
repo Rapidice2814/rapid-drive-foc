@@ -1,0 +1,1 @@
+void JumpToBootloader(void);

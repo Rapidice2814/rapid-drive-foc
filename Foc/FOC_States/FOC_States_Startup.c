@@ -10,10 +10,13 @@
 /* FOC_STATE_BOOTLOADER */
 
 FOC_StateTransitionTypeDef FOC_StateBootloader_Transition(FOC_HandleTypeDef* hfoc){
-    if(hfoc->state != FOC_STATE_IDLE){
-        Debug_SendTextResponse("Can only enter FOC_STATE_BOOTLOADER from FOC_STATE_IDLE! Current state: %s\n", FOC_StateToString(hfoc->state));
+    if(hfoc->state != FOC_STATE_IDLE && hfoc->state != FOC_STATE_ERROR){
+        Debug_SendTextResponse("BOOTLOADER requires IDLE or ERROR; current state: %s\n", FOC_StateToString(hfoc->state));
         return FOC_STATETRANSITION_MUST_BE_IDLE;
     }
+
+    DRV8323_SetHighImpedance(&hfoc->hdrv8323);
+    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
 
     WS2812b_SetAllColor(0, 0, 25);
     WS2812b_Send();

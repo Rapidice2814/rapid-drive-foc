@@ -26,7 +26,11 @@ void FOC_CheckErrors(FOC_HandleTypeDef *hfoc){
     hfoc->active_errors = active_errors;
     hfoc->latched_errors |= active_errors;
 
-    if(hfoc->latched_errors){
+    if(FOC_StateIsMaintenance(hfoc->state)){
+        /* Allow fault recovery/storage and firmware updates without motion. */
+        DRV8323_SetHighImpedance(&hfoc->hdrv8323);
+        FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
+    }else if(hfoc->latched_errors){
         FOC_SetState(hfoc, FOC_STATE_ERROR, FOC_STATE_NONE);
     }else if(hfoc->active_errors == 0 && hfoc->state == FOC_STATE_ERROR){
         FOC_SetState(hfoc, FOC_STATE_STOP, FOC_STATE_NONE);

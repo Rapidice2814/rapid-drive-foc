@@ -1,97 +1,151 @@
 #include <math.h>
-
 #include "FOC_Loops.h"
 #include "FOC_Handle.h"
 #include "FOC_USB_Debug.h"
 #include "Cordic.h"
 
-#define ALIGNMENT_STEPS 10
-#define STARTING_PHASE 0.2f //starting phase for the alignment in radians
+#define ALIGNMENT_STEPS 10U
+#define STARTING_PHASE 0.2f
 #define PHASE_STEP (STARTING_PHASE / ALIGNMENT_STEPS)
+#define ALIGNMENT_SETTLE_MS 100U
+#define ALIGNMENT_TIMEOUT_MS 5000U
+
 /**
-* @brief This is alligns the encoder zero to the motor zero (electrical angle).
-* @note 
-* @param None
-* @retval uint8_t: 0 if the loop is not complete, 1 if the loop is complete, 2 if there is an error
-*/
-FOC_LoopStatusTypeDef FOC_Alignment(FOC_HandleTypeDef *hfoc, float magnitude){
+ * @brief Starts a fresh encoder alignment; updates execute in the sample loop.
+ * @param hfoc FOC handle owning the workspace.
+ * @param magnitude Positive alignment voltage magnitude.
+ * @note Accepted configuration is unchanged until successful completion.
+ */
+void FOC_Alignment_Start(FOC_HandleTypeDef *hfoc, float magnitude){
+    if(hfoc->alignment.runtime.active){
+        FOC_Alignment_Finish(hfoc, FOC_LOOP_CANCELLED);
+    }
+    hfoc->alignment = (FOC_AlignmentContextTypeDef){
+        .runtime = {.started_ms = HAL_GetTick(), .status = FOC_LOOP_IN_PROGRESS, .active = 1},
+        .stage = FOC_ALIGNMENT_START,
+        .phase = STARTING_PHASE,
+        .magnitude = magnitude
+    };
+    if(!isfinite(magnitude) || magnitude <= 0.0f){
+        hfoc->alignment.runtime.error = FOC_ROUTINE_ERROR_INVALID_INPUT;
+        FOC_Alignment_Finish(hfoc, FOC_LOOP_ERROR);
+    }
+}
 
-    static uint8_t step = 0;
-    static uint32_t next_step_time = 0;
-    static float phase = 0.0f;
+/**
+ * @brief Removes alignment voltage and retains a terminal result exactly once.
+ * @param hfoc FOC handle owning the routine.
+ * @param result Completion, error, or cancellation; never IN_PROGRESS.
+ * @return Retained terminal status.
+ * @note Cleanup never enables the gate driver or restores motion.
+ */
+FOC_LoopStatusTypeDef FOC_Alignment_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopStatusTypeDef result){
+    FOC_AlignmentContextTypeDef *ctx = &hfoc->alignment;
+    if(!ctx->runtime.active) return ctx->runtime.status;
+    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
+    if(result == FOC_LOOP_COMPLETED && !ctx->candidate_valid){
+        ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
+        result = FOC_LOOP_ERROR;
+    }
+    if(result != FOC_LOOP_COMPLETED && result != FOC_LOOP_CANCELLED && result != FOC_LOOP_ERROR){
+        ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_INPUT;
+        result = FOC_LOOP_ERROR;
+    }
+    if(result == FOC_LOOP_COMPLETED){
+        hfoc->flash_data.encoder.mechanical_offset = ctx->candidate_offset;
+        hfoc->flash_data.encoder.raw_zero = ctx->candidate_raw_zero;
+        hfoc->flash_data.encoder.offset_valid = 1;
+    }
+    ctx->runtime.active = 0;
+    ctx->runtime.status = result;
+    if(result == FOC_LOOP_ERROR) ctx->failed_stage = ctx->stage;
+    ctx->stage = result == FOC_LOOP_COMPLETED ? FOC_ALIGNMENT_DONE :
+                 result == FOC_LOOP_CANCELLED ? FOC_ALIGNMENT_CANCELLED : FOC_ALIGNMENT_FAILED;
+    return result;
+}
 
-    switch(step){
-        case 0:
-            if(HAL_GetTick() >= next_step_time){
-                Debug_SendTextResponse("Starting alignment with %dmV\n", (int)(magnitude * 1000));            
-
-                phase = STARTING_PHASE;
-                step++;
-                next_step_time = HAL_GetTick() + 100; //wait before the next step
-            }
+/**
+ * @brief Executes one bounded alignment stage without blocking or auto-restarting.
+ * @param hfoc FOC handle previously passed to Start.
+ * @return IN_PROGRESS or the retained terminal result.
+ */
+FOC_LoopStatusTypeDef FOC_Alignment_Update(FOC_HandleTypeDef *hfoc){
+    FOC_AlignmentContextTypeDef *ctx = &hfoc->alignment;
+    if(!ctx->runtime.active){
+        if(ctx->stage == FOC_ALIGNMENT_IDLE){
+            ctx->runtime.error = FOC_ROUTINE_ERROR_NOT_STARTED;
+            ctx->runtime.status = FOC_LOOP_ERROR;
+        }
+        return ctx->runtime.status;
+    }
+    uint32_t now = HAL_GetTick();
+    if(FOC_RoutineElapsed(now, ctx->runtime.started_ms, ALIGNMENT_TIMEOUT_MS)){
+        ctx->runtime.error = FOC_ROUTINE_ERROR_TIMEOUT;
+        return FOC_Alignment_Finish(hfoc, FOC_LOOP_ERROR);
+    }
+    switch(ctx->stage){
+        case FOC_ALIGNMENT_START:
+            Debug_SendTextResponse("Starting alignment with %dmV\n", (int)(ctx->magnitude * 1000));
+            ctx->stage = FOC_ALIGNMENT_SWEEP;
+            ctx->runtime.stage_started_ms = now;
             break;
-        case 1:
-            if(HAL_GetTick() >= next_step_time){
-                static uint8_t substep = 0;
-
-                if(substep < ALIGNMENT_STEPS){
-                    ABVoltagesTypeDef ab_voltage; 
-
-                    float cos_phase, sin_phase;
-                    Cordic_CalculateSinCos(phase, &cos_phase, &sin_phase);
-
-                    ab_voltage.alpha = cos_phase * magnitude;
-                    ab_voltage.beta = sin_phase * magnitude;
-
-                    FOC_SetPhaseVoltages(hfoc, InvClarke_transform(ab_voltage));
-                    phase = -phase - (phase > 0 ? -PHASE_STEP : PHASE_STEP);
-                    substep++;
-                    next_step_time = HAL_GetTick() + 100;
-                }else if(substep == ALIGNMENT_STEPS){
-                    FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){magnitude, 0.0f}));
-                    substep++;
-                    next_step_time = HAL_GetTick() + 100;
-                }else{
-                    substep = 0;
-                    step++;
-                    next_step_time = HAL_GetTick() + 100; //wait before the next step
-                }
+        case FOC_ALIGNMENT_SWEEP:
+            if(!FOC_RoutineElapsed(now, ctx->runtime.stage_started_ms, ALIGNMENT_SETTLE_MS)) break;
+            if(ctx->sweep_index < ALIGNMENT_STEPS){
+                float cos_phase, sin_phase;
+                Cordic_CalculateSinCos(ctx->phase, &cos_phase, &sin_phase);
+                ABVoltagesTypeDef voltage = {cos_phase * ctx->magnitude, sin_phase * ctx->magnitude};
+                FOC_SetPhaseVoltages(hfoc, InvClarke_transform(voltage));
+                ctx->phase = -ctx->phase - (ctx->phase > 0 ? -PHASE_STEP : PHASE_STEP);
+                ctx->sweep_index++;
+            }else if(ctx->sweep_index == ALIGNMENT_STEPS){
+                FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){ctx->magnitude, 0.0f}));
+                ctx->sweep_index++;
+            }else{
+                ctx->stage = FOC_ALIGNMENT_SET_ZERO;
             }
+            ctx->runtime.stage_started_ms = now;
             break;
-        case 2:
-            if(HAL_GetTick() >= next_step_time){
-                FOC_StatusTypeDef retval =  FOC_SetEncoderZero(hfoc);
-
-                if(retval != FOC_OK){
-                    FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
+        case FOC_ALIGNMENT_SET_ZERO:
+            if(FOC_RoutineElapsed(now, ctx->runtime.stage_started_ms, ALIGNMENT_SETTLE_MS)){
+                /* The legacy encoder helper writes configuration. Stage its result
+                   and restore the accepted values until the routine completes. */
+                float previous_offset = hfoc->flash_data.encoder.mechanical_offset;
+                float previous_raw_zero = hfoc->flash_data.encoder.raw_zero;
+                uint8_t previous_valid = hfoc->flash_data.encoder.offset_valid;
+                FOC_StatusTypeDef result = FOC_SetEncoderZero(hfoc);
+                ctx->candidate_offset = hfoc->flash_data.encoder.mechanical_offset;
+                ctx->candidate_raw_zero = hfoc->flash_data.encoder.raw_zero;
+                ctx->candidate_valid = result == FOC_OK && isfinite(ctx->candidate_offset);
+                hfoc->flash_data.encoder.mechanical_offset = previous_offset;
+                hfoc->flash_data.encoder.raw_zero = previous_raw_zero;
+                hfoc->flash_data.encoder.offset_valid = previous_valid;
+                if(!ctx->candidate_valid){
+                    ctx->runtime.error = FOC_ROUTINE_ERROR_ENCODER;
                     Debug_SendTextResponse("Error setting encoder zero\n");
-                    step = 0;
-                    return FOC_LOOP_ERROR;
-                }else{
-                    Debug_SendTextResponse("Encoder zero set successfully\n");
-                    Debug_SendTextResponse("Encoder angle mechanical offset: %dmRad\n", (int)(hfoc->flash_data.encoder.mechanical_offset * 1000));
-                    step++;
-                    next_step_time = HAL_GetTick() + 100; //wait before the next step
+                    return FOC_Alignment_Finish(hfoc, FOC_LOOP_ERROR);
                 }
-                // Debug_SendTextResponse("Encoder zero set in %d us\n", (int)execution_time);
-
+                ctx->stage = FOC_ALIGNMENT_RELEASE;
+                ctx->runtime.stage_started_ms = now;
             }
             break;
-        case 3:
-            if(HAL_GetTick() >= next_step_time){
-                FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){0.0f, 0.0f}));
-                
-                step++;
-                next_step_time = HAL_GetTick() + 100; //wait before the next step
+        case FOC_ALIGNMENT_RELEASE:
+            if(FOC_RoutineElapsed(now, ctx->runtime.stage_started_ms, ALIGNMENT_SETTLE_MS)){
+                FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
+                ctx->stage = FOC_ALIGNMENT_WAIT_RELEASE;
+                ctx->runtime.stage_started_ms = now;
+            }
+            break;
+        case FOC_ALIGNMENT_WAIT_RELEASE:
+            if(FOC_RoutineElapsed(now, ctx->runtime.stage_started_ms, ALIGNMENT_SETTLE_MS)){
+                Debug_SendTextResponse("Encoder zero set successfully\n");
+                Debug_SendTextResponse("Encoder angle mechanical offset: %dmRad\n", (int)(ctx->candidate_offset * 1000));
+                return FOC_Alignment_Finish(hfoc, FOC_LOOP_COMPLETED);
             }
             break;
         default:
-            if(HAL_GetTick() >= next_step_time){
-                step = 0;
-                return FOC_LOOP_COMPLETED;
-            }
-            break;
-        }
-
+            ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_STAGE;
+            return FOC_Alignment_Finish(hfoc, FOC_LOOP_ERROR);
+    }
     return FOC_LOOP_IN_PROGRESS;
 }

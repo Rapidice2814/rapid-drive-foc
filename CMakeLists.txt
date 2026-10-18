@@ -47,6 +47,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Core/FOC_USB_Debug.c
 
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_ADC.c
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Encoder.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_CAN.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Flash.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Utils.c
@@ -61,6 +62,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Foc/FOC_States/FOC_States_Storage.c
 
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_Alignment.c
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_EncoderCalibration.c
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Calibration.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_AlignmentTest.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_AntiCogging.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_ControlLoops.c
