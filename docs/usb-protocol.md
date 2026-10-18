@@ -1,4 +1,4 @@
-# USB protocol reference (v6)
+# USB protocol reference (v8)
 
 Calibration control, progress and editable-table payloads are specified in
 [Calibration table transfers](calibration-tables.md).
@@ -74,6 +74,12 @@ or transaction ID. The plotter therefore keeps one command outstanding at a time
 | 0x33 | `MSG_WRITE_CALIBRATION_TABLE` |
 | 0x34 | `MSG_COMMIT_CALIBRATION_UPLOAD` |
 | 0x35 | `MSG_ABORT_CALIBRATION_UPLOAD` |
+| 0x36 | `MSG_GET_CONFIGURATION` |
+| 0x37 | `MSG_CONFIGURATION_REPLY` |
+| 0x38 | `MSG_SET_CONFIGURATION` |
+| 0x39 | `MSG_SET_TARGET` |
+| 0x3A | `MSG_GET_TARGETS` |
+| 0x3B | `MSG_TARGETS_REPLY` |
 
 Response/error IDs occupy 0xFA through 0xFF.
 
@@ -88,7 +94,7 @@ using its discovered type (`f`, `u32`, or `i32`). Empty means zero payload bytes
 | --- | --- | --- | --- |
 | MSG_ENTER_BOOTLOADER | H→D | Empty | Requests BOOTLOADER from IDLE or ERROR; ACK if accepted, ERROR if denied |
 | MSG_GET_DEVICE_INFO | H→D | Empty | DEVICE_INFO_REPLY; see detailed layout below |
-| MSG_DEVICE_INFO_REPLY | D→H | 29 bytes | Protocol/firmware versions, counts, limits, rate, fingerprint, status |
+| MSG_DEVICE_INFO_REPLY | D→H | 34 bytes | Versions, five list counts, limits, rate, fingerprint, status and debug-write capability |
 | MSG_GET_DEFINITIONS | H→D | kind:u8, start:u16 (3 bytes) | DEFINITIONS_REPLY or DEFINITIONS_ERROR |
 | MSG_DEFINITIONS_REPLY | D→H | 7-byte page header and UTF-8 rows | See discovery rules below |
 | MSG_DEFINITIONS_ERROR | D→H | Command-error payload | Explicit discovery failure; includes kind/start in text |
@@ -101,7 +107,7 @@ using its discovered type (`f`, `u32`, or `i32`). Empty means zero payload bytes
 | MSG_SET_PID | H→D | id:u8, Kp:f32, Ki:f32, Kd:f32 (13 bytes) | Applies gains to discovered controller ID, ACK |
 | MSG_GET_PID | H→D | id:u8 (1 byte) | PID_REPLY |
 | MSG_PID_REPLY | D→H | id:u8, Kp:f32, Ki:f32, Kd:f32 (13 bytes) | Current gains |
-| MSG_SET_VAR | H→D | id:u8, value:4 bytes (5 bytes) | Applies typed value, ACK; a value too wide for native integer storage is INVALID_PAYLOAD |
+| MSG_SET_VAR | H→D | id:u8, value:4 bytes (5 bytes) | Development-only raw write; disabled in production; native integer width checked |
 | MSG_GET_VAR | H→D | id:u8 (1 byte) | VAR_REPLY |
 | MSG_VAR_REPLY | D→H | id:u8, value:4 bytes (5 bytes) | Current typed value |
 | MSG_FLASH_SAVE | H→D | Empty | Requests FLASH_SAVE from IDLE or ERROR; ACK or ERROR |
@@ -110,7 +116,7 @@ using its discovered type (`f`, `u32`, or `i32`). Empty means zero payload bytes
 | MSG_SET_STATE | H→D | state:u8 (1 byte) | Requests a state transition; ACK or ERROR |
 | MSG_GET_STATE | H→D | Empty | STATE_REPLY |
 | MSG_STATE_REPLY | D→H | state:u8 (1 byte) | Current state enum |
-| MSG_TEXT_COMMAND | H→D | Bounded command text, up to 123 bytes | Executes legacy text parsing and sends ACK; may also emit TEXT_REPLY |
+| MSG_TEXT_COMMAND | H→D | Bounded command text, up to 123 bytes | Development-only legacy parsing; production returns ERROR |
 | MSG_TEXT_REPLY | D→H | UTF-8/ASCII text bytes | Diagnostic text; no terminating NUL on the wire |
 | MSG_SET_NODE_ID | H→D | node:u8 (1 byte) | Reconfigures CAN address/filters and ACKs; valid node range is 0–15 |
 | MSG_GET_NODE_ID | H→D | Empty | NODE_ID_REPLY |
@@ -123,7 +129,7 @@ using its discovered type (`f`, `u32`, or `i32`). Empty means zero payload bytes
 | MSG_SET_CAN_CYCLIC_RATE | H→D | index:u8, period_ticks:u32 (5 bytes) | Stores the cyclic period and ACKs; zero disables the entry |
 | MSG_GET_CAN_CYCLIC_RATE | H→D | index:u8 (1 byte) | CAN_CYCLIC_REPLY |
 | MSG_CAN_CYCLIC_REPLY | D→H | index:u8, period_ticks:u32 (5 bytes) | Current period, in FOC ticks rather than milliseconds |
-| MSG_SET_CONTROL_MODE | H→D | mode:u8 (1 byte) | Selects mode and ACKs, or INVALID_PAYLOAD for an unsupported mode |
+| MSG_SET_CONTROL_MODE | H→D | mode:u8 (1 byte) | Validates mode, IDLE/RUN, faults and upload state; ACK or structured ERROR |
 | MSG_GET_CONTROL_MODE | H→D | Empty | CONTROL_MODE_REPLY |
 | MSG_CONTROL_MODE_REPLY | D→H | mode:u8 (1 byte) | Current control mode |
 | MSG_UNKNOWN_TYPE (0xFA) | D→H | Command-error payload | Command ID is not supported |
@@ -137,8 +143,10 @@ Payload lengths are checked for the fixed-layout commands above. USB node-ID
 commands validate the range 0–15; USB CAN cyclic-rate commands validate index
 0–8, as listed in the [CAN reference](can-protocol.md#cyclic-replies-and-timing).
 
-The plotter restricts PID and setpoint editors to RUN; the low-level USB
-SET_PID/SET_VAR handlers do not independently enforce that UI restriction.
+Production configuration/target layouts and validation are specified in
+[Validated configuration](configuration.md). SET_PID validates complete gain sets
+in firmware. SET_VAR remains unsafe development access and is disabled, along
+with legacy text commands, in non-debug builds by default.
 Control-mode selection resets the target associated with the newly selected
 mode when the mode changes; it does not enter RUN. Flash actions and bootloader
 entry are state-machine requests: an ACK confirms acceptance, not completion.
@@ -181,6 +189,7 @@ real-time clock. The separately selectable `tick` signal is the FOC tick.
 
 ### Legacy text commands
 
+Legacy text is available only when FOC_ENABLE_DEBUG_WRITES is enabled.
 Legacy parsing is case-sensitive. Raw text requires CR or LF; text inside MSG_TEXT_COMMAND uses
 the frame length and need not have a newline. Unknown commands are ignored,
 and a framed text ACK alone does not prove that the text was recognized.
@@ -211,7 +220,7 @@ Connection initialization follows this sequence:
 1. Device-info request and protocol/status validation.
 2. STOP_LOG.
 3. Loading of validated cached definitions for the reported protocol/fingerprint,
-   or discovery of all three lists.
+   or discovery of all five lists (three/four for protocols 6/7).
 4. Definition and fingerprint validation, with saved names resolved to current IDs.
 5. SET_MASK and GET_MASK.
 6. START_LOG.
@@ -223,12 +232,12 @@ cached.
 ## Device info
 
 `MSG_GET_DEVICE_INFO = 0x01` has no payload.
-`MSG_DEVICE_INFO_REPLY = 0x02` has 29 bytes, with Python layout
-`<BBBBHHHBBIHHQB`:
+`MSG_DEVICE_INFO_REPLY = 0x02` has 34 bytes, with Python layout
+`<BBBBHHHBBIHHQBHHB`. Counts and capability are appended to older layouts:
 
 | Offset | Type | Meaning |
 | --- | --- | --- |
-| 0 | u8 | Protocol version (6) |
+| 0 | u8 | Protocol version (8) |
 | 1–3 | 3 × u8 | Firmware major, minor, patch |
 | 4 | u16 | Signal count |
 | 6 | u16 | Variable count |
@@ -239,15 +248,30 @@ cached.
 | 16 | u16 | Maximum command payload bytes |
 | 18 | u16 | Maximum reply payload bytes |
 | 20 | u64 | Definitions fingerprint |
-| 28 | u8 | Status: 0 valid, 1 duplicate definition names |
+| 28 | u8 | Status: 0 valid, 1 invalid/duplicate definition names |
+| 29 | u16 | CAN cyclic-message count |
+| 31 | u16 | Configuration-field count |
+| 33 | u8 | Raw debug writes/legacy text enabled: 0 no, 1 yes |
 
 Device-info polling refreshes firmware version and connection health without
 restarting discovery or logging. Changes to capabilities or the definitions
 fingerprint require a new connection initialization.
 
-Protocol 5 adds encoder source/settings commands and encoder calibration state 20.
-Previous command IDs and successful reply layouts remain unchanged; exact protocol
-version matching is required. Protocol 4 retains the command IDs and successful reply layouts from protocol 3,
+Protocol 7 adds definition kind 3 (CAN cyclic messages), appends its count to
+device info, and includes its canonical rows in the definitions fingerprint.
+Protocol 8 adds kind 4 configuration metadata, its count, debug-write capability,
+atomic configuration commands and functional targets. The plotter supports
+protocols 6, 7 and 8 explicitly. Protocol 7 retains its 31-byte device-info layout
+and four-list fingerprint, without validated configuration/target writes.
+Protocol 6 retains the 29-byte device-info layout
+and three-list fingerprint; its CAN catalog cannot be discovered, so cyclic-rate
+controls are unavailable rather than populated from a guessed built-in list.
+Node identity, signals, variables and PID access remain available on protocol 6.
+Unknown protocols are rejected; adding entries within a supported list schema
+does not require another protocol bump or a plotter update.
+
+Protocol 5 added encoder source/settings commands and encoder calibration state 20.
+Protocol 6 added calibration table transfer commands. Protocol 4 retains the command IDs and successful reply layouts from protocol 3,
 but changes all command-error payloads, including DEFINITIONS_ERROR. Versions 3
 and 4 are not interchangeable. There are no separate firmware-version commands.
 Versions before 3 also use different command IDs: 0x00 is now ENTER_BOOTLOADER,
@@ -282,7 +306,8 @@ for motion requirements, source contracts, validation and flash compatibility.
 ## Definition pages
 
 `MSG_GET_DEFINITIONS = 0x03` has three bytes: `kind:u8 | start:u16`.
-Kinds are 0 signals, 1 variables, and 2 PID controllers. Start is the zero-based
+Kinds are 0 signals, 1 variables, 2 PID controllers, 3 CAN cyclic messages, and
+4 configuration fields ([metadata layout](configuration.md#catalog-and-absolute-bounds)). Start is the zero-based
 entry index. IDs are assigned by entry order, starting at zero independently
 for each list.
 
@@ -291,13 +316,16 @@ for each list.
 The current firmware bounds each reply payload to 256 bytes, including header.
 Only complete rows are returned. The next page starts at `start + returned`;
 pagination ends when that index equals total. Each page of a nonempty list
-contains at least one row. Empty variable and PID lists return total=returned=0
+contains at least one row. Empty variable, PID and CAN lists return total=returned=0
 for start=0. At least one signal is required.
 
 Signal and variable rows are `id<TAB>type<TAB>name<LF>`.
-PID rows are `id<TAB>name<LF>`. Types are `f`, `u32`, and `i32`; each is four bytes
+PID and CAN cyclic rows are `id<TAB>name<LF>`. Types are `f`, `u32`, and `i32`; each is four bytes
 on the wire. Names are stringified C member paths, up to 127 printable ASCII
-bytes. Tabs, newlines, spaces, and control characters cannot occur in a name.
+bytes. Tabs, newlines, spaces, and control characters cannot occur in a member-path
+name. CAN names are display labels from `FOC_CAN_CYCLIC_LIST`: internal ASCII
+spaces are permitted, but leading/trailing spaces, control characters and
+non-ASCII characters are rejected. Names must be unique within their list.
 Repeated names within a list, repeated/out-of-order IDs, unknown types,
 wrong counts, partial rows, and unexpected kind/start values are invalid.
 A name may occur once in each of multiple lists.
@@ -372,6 +400,7 @@ The input stream has no NUL terminators and consists of:
 1. `signals<LF>` followed by all canonical signal rows.
 2. `variables<LF>` followed by all canonical variable rows.
 3. `pids<LF>` followed by all canonical PID rows.
+4. `can_cyclic<LF>` followed by all canonical CAN cyclic rows (protocol 7).
 
 IDs use ordinary decimal notation without leading zeros; line endings are LF.
 The stream includes kind, order, IDs, wire types, and names. It excludes memory
@@ -386,8 +415,8 @@ initialization. Cache storage locations are documented in the plotter README.
 
 ## Mask and storage limits
 
-The current implementation supports up to 256 signals and 256 variables/PIDs
-per list. Variables and PID IDs are u8; discovery indexes/counts are u16 so a
+The current implementation supports up to 256 entries in each list, including
+CAN cyclic messages. Variables, PID and CAN cyclic IDs are u8; discovery indexes/counts are u16 so a
 full 256-entry list can be represented. Mask bytes are little endian, and all
 unused high bits must be zero. Selected-signal limits are checked independently
 of mask width.

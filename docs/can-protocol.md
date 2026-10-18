@@ -51,7 +51,7 @@ is part of each command's format, including commands without length validation.
 | 0x05 | CAN_SET_ADDRESS | H→D | node:u8, UID:6 bytes (7 bytes) | Changes address according to the UID rules below; no ACK |
 | 0x06 | CAN_GET_ADDRESS | H→D | Empty | Schedules CAN_ADDRESS_REPLY after 1–800 FOC ticks |
 | 0x07 | CAN_ADDRESS_REPLY | D→H | node:u8, UID:6 bytes (7 bytes) | Configured address and device UID bytes |
-| 0x08 | CAN_SET_STATE | H→D | state:u8 (1 byte) | Requests a state transition; see ACK limitation below |
+| 0x08 | CAN_SET_STATE | H→D | state:u8 (1 byte) | Requests a state transition; ACK if accepted, ERROR if denied |
 | 0x09 | CAN_GET_STATE | H→D | Empty | Requests CAN_STATE_REPLY |
 | 0x0A | CAN_STATE_REPLY | D→H | state:u8 (1 byte) | Current FOC state |
 | 0x0B | CAN_SET_CONTROL_MODE | H→D | mode:u8 (1 byte) | Calls FOC_SetControlMode; return status is ignored and no reply is sent |
@@ -65,9 +65,9 @@ is part of each command's format, including commands without length validation.
 | 0x13 | CAN_BUS_VOLTAGE_CURRENT_REPLY | D→H | voltage:f32, current:f32 (8 bytes) | Bus voltage (V), measured bus current (A) |
 | 0x14 | CAN_GET_TEMPERATURES | H→D | Empty | Requests temperatures |
 | 0x15 | CAN_TEMPERATURES_REPLY | D→H | mosfet_temp:f32, motor_temp:f32 (8 bytes) | Temperatures in °C, in this order |
-| 0x16 | CAN_SET_TORQUE | H→D | torque:f32 (4 bytes) | Sets q-current target to torque × configured torque_constant |
+| 0x16 | CAN_SET_TORQUE | H→D | torque:f32 (4 bytes) | Validated target in Nm; Iq = torque / torque_constant (Nm/A) |
 | 0x17 | CAN_GET_TORQUE | H→D | Empty | Requests CAN_TORQUE_REPLY |
-| 0x18 | CAN_TORQUE_REPLY | D→H | target:f32, measured:f32 (8 bytes) | q-current target / torque_constant, measured q-current / torque_constant |
+| 0x18 | CAN_TORQUE_REPLY | D→H | target:f32, measured:f32 (8 bytes) | Target/measured q-current × torque_constant, in Nm |
 | 0x19 | CAN_SET_CURRENT | H→D | q_current:f32 (4 bytes) | Sets q-axis current target (A) |
 | 0x1A | CAN_GET_CURRENT | H→D | Empty | Requests CAN_CURRENT_REPLY |
 | 0x1B | CAN_CURRENT_REPLY | D→H | target:f32, measured:f32 (8 bytes) | q-axis target and measured current (A) |
@@ -80,12 +80,21 @@ is part of each command's format, including commands without length validation.
 | 0x22 | CAN_GET_ERRORS | H→D | Empty | Requests CAN_ERRORS_REPLY |
 | 0x23 | CAN_ERRORS_REPLY | D→H | active:u32, latched:u32 (8 bytes) | Error bitmaps |
 | 0x24 | CAN_CLEAR_LATCHED_ERRORS | H→D | Empty | Clears latched errors; no reply |
-| 0x3E | CAN_ACK | D→H | Empty (declared) | Not implemented in the transmit switch; currently never emitted |
-| 0x3F | CAN_ERROR | D→H | Empty (declared) | Not implemented in the transmit switch; currently never emitted |
+| 0x3E | CAN_ACK | D→H | Empty | State request accepted, not necessarily completed |
+| 0x3F | CAN_ERROR | D→H | Empty | State/control-mode/target request rejected |
 
 State, control-mode, and error-bit values are shared with USB and listed in the
 [shared value reference](usb-protocol.md#shared-state-control-mode-and-error-values).
 Setpoint writes update targets but do not select a control mode or enter RUN.
+Targets and control modes share the USB firmware validation functions; target
+writes require fault-free RUN and matching mode, finite values and configured/
+absolute bounds. Rejected targets leave the previous value unchanged. Successful
+target writes retain the no-ACK behavior to avoid adding traffic to control
+streams; rejected ones emit CAN_ERROR. Detailed reason codes/text are available
+on USB, not in the empty CAN_ERROR payload. Absolute bounds are in FOC_Config.h.
+The torque conversion now consistently uses Nm/A; hosts relying on the former
+inverted conversion must update their units. Configuration catalog discovery and
+atomic grouped writes currently use USB; there is no CAN configuration command.
 
 ## Address assignment
 
@@ -104,15 +113,27 @@ ADDRESS_REPLY:
 - Other nonmatching requests leave the address unchanged.
 
 A device UID targets an individual device; the zero-UID wildcard applies to
-every receiving device. Valid node IDs are 0–15. The filter masks to four bits,
-but the configuration setter stores the entire input byte without range
-validation. Address changes take effect immediately. Persistence uses USB
+every receiving device. Valid node IDs are 0–15; receive length and native setter
+range checks reject invalid addresses. Address changes take effect immediately. Persistence uses USB
 FLASH_SAVE.
 
 ## Cyclic replies and timing
 
 Cyclic periods are configured through USB SET_CAN_CYCLIC_RATE or the stored
 node settings. There is no separate CAN command to set these periods.
+
+`FOC_CAN_CYCLIC_LIST` in `Foc/FOC_Drivers/FOC_CAN.h` defines the cyclic symbols,
+display names and reply commands once. Array order generates the cyclic IDs and
+the scheduler mapping. USB protocol 7 exposes the names/IDs through definition
+kind 3; the CAN tab is built from that catalog at startup or from its validated
+fingerprint cache. Adding a cyclic entry requires no Python catalog update.
+Periods use the sample-clock rate reported by device info, not a host constant.
+
+The existing entries below retain their IDs. New entries should be appended:
+cyclic indexes also address persisted period arrays. Reordering/removing entries
+requires an explicit settings migration or flash-format change. Count changes
+alter the stored record size; old-size records are rejected rather than read
+using a different layout. The current registry refactor preserves flash layout.
 
 | Cyclic index | Selector | Reply |
 | --- | --- | --- |
@@ -133,16 +154,16 @@ backfill missed periods.
 
 ## Current implementation limits
 
-- CAN writes do not emit ACK or ERROR. SET_STATE attempts a response, but the
-  transmit function has no payload cases for either message. Resulting values
-  and states are available through their corresponding GET commands.
+- State changes emit ACK or ERROR; rejected target/control-mode writes emit ERROR.
+  Other successful writes generally have no acknowledgement. These empty replies
+  contain no originating command ID or detailed error reason.
 - REBOOT and ENTER_BOOTLOADER are unimplemented; neither command performs an
   action or produces a reply.
-- Payload-length checks are incomplete for some commands, including SET_ADDRESS
-  and SET_CONTROL_MODE. Malformed frames do not produce a consistent protocol
+- Payload-length checks remain command-specific. Malformed frames do not produce a consistent protocol
   error response.
-- Torque values follow the conversion formulas in the command table. The reply
-  path does not guard against a zero torque_constant.
+- Torque commands require a valid positive Nm/A torque constant; telemetry reports
+  current multiplied by that constant. Debug writes can still corrupt configuration
+  in development builds and are not a supported production interface.
 - FIFO-full replies are dropped and counted in missed_can_messages. There is
   no application-level retry, sequence number, or request correlation.
 - Receive processing polls at most one frame per service call; the FIFO callback

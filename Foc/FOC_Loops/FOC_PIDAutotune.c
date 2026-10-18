@@ -76,7 +76,7 @@ FOC_LoopStatusTypeDef FOC_PIDAutotune_Update(FOC_HandleTypeDef *hfoc){
                 float bandwidth = hfoc->flash_data.controller.current_control_bandwidth;
                 float r = hfoc->flash_data.motor.phase_resistance;
                 float l = hfoc->flash_data.motor.phase_inductance;
-                if(!isfinite(bandwidth) || bandwidth <= 0 || bandwidth > 5000 ||
+                if(!isfinite(bandwidth) || bandwidth < CONFIG_ABS_BANDWIDTH_MIN || bandwidth > CONFIG_ABS_BANDWIDTH_MAX ||
                    !isfinite(r) || r <= 0 || !isfinite(l) || l <= 0){
                     ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_INPUT;
                     return FOC_PIDAutotune_Finish(hfoc, FOC_LOOP_ERROR);

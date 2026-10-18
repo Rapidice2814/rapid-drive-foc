@@ -76,19 +76,30 @@ typedef enum {
     CAN_ERROR = 0x3F // FOC -> PC
 } CAN_CommandTypeDef;
 
-typedef enum {
-    CAN_CYCLIC_HEARTBEAT = 0,
-    CAN_CYCLIC_ENCODER_ESTIMATES = 0x01,
-    CAN_CYCLIC_BUS_VOLTAGE_CURRENT = 0x02,
-    CAN_CYCLIC_TEMPERATURES = 0x03,
-    CAN_CYCLIC_TORQUE = 0x04,
-    CAN_CYCLIC_CURRENT = 0x05,
-    CAN_CYCLIC_SPEED = 0x06,
-    CAN_CYCLIC_POSITION = 0x07,
-    CAN_CYCLIC_ERRORS = 0x08,
+/* Array order supplies USB cyclic IDs and persisted period-array indexes.
+ * Append new entries; reordering changes the meaning of existing flash settings. */
+#define FOC_CAN_CYCLIC_LIST(X) \
+    X(CAN_CYCLIC_HEARTBEAT, "Heartbeat", CAN_HEARTBEAT_REPLY) \
+    X(CAN_CYCLIC_ENCODER_ESTIMATES, "Encoder estimates", CAN_ENCODER_ESTIMATES_REPLY) \
+    X(CAN_CYCLIC_BUS_VOLTAGE_CURRENT, "Bus voltage / current", CAN_BUS_VOLTAGE_CURRENT_REPLY) \
+    X(CAN_CYCLIC_TEMPERATURES, "Temperatures", CAN_TEMPERATURES_REPLY) \
+    X(CAN_CYCLIC_TORQUE, "Torque", CAN_TORQUE_REPLY) \
+    X(CAN_CYCLIC_CURRENT, "Current", CAN_CURRENT_REPLY) \
+    X(CAN_CYCLIC_SPEED, "Speed", CAN_SPEED_REPLY) \
+    X(CAN_CYCLIC_POSITION, "Position", CAN_POSITION_REPLY) \
+    X(CAN_CYCLIC_ERRORS, "Errors", CAN_ERRORS_REPLY)
 
+typedef enum {
+#define CAN_CYCLIC_ENUM(symbol, name, reply) symbol,
+    FOC_CAN_CYCLIC_LIST(CAN_CYCLIC_ENUM)
+#undef CAN_CYCLIC_ENUM
     CAN_CYCLIC_COUNT
 } CAN_CyclicIndexTypeDef;
+_Static_assert(CAN_CYCLIC_COUNT <= 256, "Cyclic IDs must fit in one USB byte");
+#define CAN_CYCLIC_NAME_ASSERT(symbol, name, reply) \
+    _Static_assert(sizeof(name) > 1 && sizeof(name) <= 128, "Cyclic name must contain 1..127 bytes");
+FOC_CAN_CYCLIC_LIST(CAN_CYCLIC_NAME_ASSERT)
+#undef CAN_CYCLIC_NAME_ASSERT
 
 typedef struct FOC_Handle FOC_HandleTypeDef;
 

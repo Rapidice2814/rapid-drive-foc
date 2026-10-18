@@ -6,6 +6,26 @@
 #include "WS2812b_Driver.h"
 #include <math.h>
 
+/**
+ * @brief Validates stationary, fault-free entry to motor-driving setup routines.
+ * @param hfoc Controller with current sensor and bus measurements.
+ * @note CHECKLIST is allowed for startup; manual setup must start from IDLE.
+ *       This check has no output side effects. Output is enabled after cleanup
+ *       of the previous routine, once the state transition has been accepted.
+ */
+static FOC_StateTransitionTypeDef FOC_StateMotorSetup_Validate(FOC_HandleTypeDef *hfoc){
+    if(hfoc->active_errors) return FOC_STATETRANSITION_ACTIVE_FAULTS;
+    if(hfoc->latched_errors) return FOC_STATETRANSITION_LATCHED_FAULTS;
+    if(hfoc->state != FOC_STATE_IDLE && hfoc->state != FOC_STATE_CHECKLIST)
+        return FOC_STATETRANSITION_MUST_BE_IDLE;
+    if(!hfoc->adc_calibrated) return FOC_STATETRANSITION_ADC_NOT_CALIBRATED;
+    if(!isfinite(hfoc->encoder_speed_mechanical) || fabsf(hfoc->encoder_speed_mechanical) > 0.1f)
+        return FOC_STATETRANSITION_MOTOR_MOVING;
+    if(!isfinite(hfoc->adc_values.vbus) || hfoc->adc_values.vbus <= 0.0f)
+        return FOC_STATETRANSITION_DENIED;
+    return FOC_STATETRANSITION_OK;
+}
+
 /** @brief Allows encoder calibration only from stationary, fault-free IDLE. */
 FOC_StateTransitionTypeDef FOC_StateEncoderCalibration_Transition(FOC_HandleTypeDef *hfoc){
     if(hfoc->state != FOC_STATE_IDLE) return FOC_STATETRANSITION_MUST_BE_IDLE;
@@ -60,10 +80,7 @@ void FOC_StateCurrentSensorCalibration(FOC_HandleTypeDef* hfoc){
 /*FOC_STATE_IDENTIFY*/
 
 FOC_StateTransitionTypeDef FOC_StateIdentify_Transition(FOC_HandleTypeDef* hfoc){
-    UNUSED(hfoc);
-
-
-    return FOC_STATETRANSITION_OK;
+    return FOC_StateMotorSetup_Validate(hfoc);
 }
 
 void FOC_StateIdentify(FOC_HandleTypeDef* hfoc){
@@ -98,7 +115,9 @@ void FOC_StatePIDAutotune(FOC_HandleTypeDef* hfoc){
 /*FOC_STATE_ALIGNMENT*/
 
 FOC_StateTransitionTypeDef FOC_StateAlignment_Transition(FOC_HandleTypeDef* hfoc){
-    UNUSED(hfoc);
+    FOC_StateTransitionTypeDef result = FOC_StateMotorSetup_Validate(hfoc);
+    if(result != FOC_STATETRANSITION_OK) return result;
+    if(!hfoc->encoder_runtime.healthy) return FOC_STATETRANSITION_DENIED;
     return FOC_STATETRANSITION_OK;
 }
 
@@ -116,9 +135,10 @@ void FOC_StateAlignment(FOC_HandleTypeDef* hfoc){
 /*FOC_STATE_ALIGNMENT_TEST*/
 
 FOC_StateTransitionTypeDef FOC_StateAlignmentTest_Transition(FOC_HandleTypeDef* hfoc){
-    UNUSED(hfoc);
-
-    
+    FOC_StateTransitionTypeDef result = FOC_StateMotorSetup_Validate(hfoc);
+    if(result != FOC_STATETRANSITION_OK) return result;
+    if(!hfoc->encoder_runtime.healthy || hfoc->flash_data.motor.pole_pairs == 0)
+        return FOC_STATETRANSITION_DENIED;
     return FOC_STATETRANSITION_OK;
 }
 

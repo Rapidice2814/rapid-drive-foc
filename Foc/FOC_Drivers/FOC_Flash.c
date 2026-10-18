@@ -102,8 +102,11 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
     }
 
     for(uint32_t i = 0; i < sizeof(FLASH_DataTypeDef); i += sizeof(uint64_t)){
-        uint64_t data_to_write = 0;
-        memcpy(&data_to_write, ((uint8_t*)pdata) + i, sizeof(uint64_t));
+        /* Registry growth can change record alignment; never read past its end. */
+        uint64_t data_to_write = UINT64_MAX;
+        size_t remaining = sizeof(FLASH_DataTypeDef) - i;
+        memcpy(&data_to_write, ((uint8_t*)pdata) + i,
+               remaining < sizeof(data_to_write) ? remaining : sizeof(data_to_write));
 
         if(HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, STORAGE_FLASH_BASE + i, data_to_write) != HAL_OK){
             goto cleanup;
@@ -170,10 +173,8 @@ FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
         (stored->encoder.correction_source != stored->encoder.source_id || !FOC_EncoderValidateLUT(stored->encoder.correction)))){
         return FLASH_EMPTY;
     }
-    for(uint32_t i = 0; i < sizeof(FLASH_DataTypeDef) / sizeof(uint64_t); i++){
-        uint64_t data64 = *(uint64_t*)(STORAGE_FLASH_BASE + i * sizeof(uint64_t));
-        ((uint64_t*)pdata)[i] = data64;
-    }
+    /* Copy the entire record, including a possible partial final doubleword. */
+    memcpy(pdata, stored, sizeof(*pdata));
 
     if(pdata->contains_data == 1 && pdata->struct_terminator == FLASH_DATA_STRUCT_TERMINATOR){
         return FLASH_OK;
@@ -192,16 +193,8 @@ FLASH_StatusTypeDef FOC_FLASH_CompareData(const FLASH_DataTypeDef *pdata){
         return FLASH_ERROR;
     }
 
-    for(uint32_t i = 0; i < sizeof(FLASH_DataTypeDef) / sizeof(uint64_t); i++){
-        uint64_t data64 = *(uint64_t*)(STORAGE_FLASH_BASE + i * sizeof(uint64_t));
-        uint64_t ram_data = ((const uint64_t*)pdata)[i];
-
-        if(data64 != ram_data){
-            return FLASH_DIFFERENT;
-        }
-    }
-
-    return FLASH_SAME;
+    return memcmp(pdata, (const void *)STORAGE_FLASH_BASE, sizeof(*pdata)) == 0 ?
+        FLASH_SAME : FLASH_DIFFERENT;
 }
 
 /**

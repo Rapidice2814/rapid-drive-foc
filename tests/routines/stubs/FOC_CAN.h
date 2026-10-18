@@ -1,1 +1,1 @@
-#define CAN_CYCLIC_COUNT 9
+#include "../../../Foc/FOC_Drivers/FOC_CAN.h"

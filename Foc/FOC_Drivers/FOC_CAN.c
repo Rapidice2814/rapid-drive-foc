@@ -2,6 +2,7 @@
 #include "FOC_Handle.h"
 #include "Utils.h"
 #include "FOC_Diagnostics.h"
+#include "FOC_Configuration.h"
 #include <math.h>
 #include <string.h>
 
@@ -11,10 +12,10 @@ void FOC_QueueCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command, ui
  * @brief Sets the stored node ID and configures broadcast and addressed receive filters.
  * @param hfoc FOC handle containing the FDCAN peripheral and node settings.
  * @param node_id Requested node ID; callers must supply a four-bit value (0 to 15).
- * @note Returns unchanged without a peripheral. Filter IDs are masked to four bits,
- *       but the supplied byte is stored without range validation.
+ * @note Returns unchanged for an invalid node ID or without a peripheral.
  */
 void FOC_SetNodeId(FOC_HandleTypeDef *hfoc, uint8_t node_id){
+    if(node_id > ID_MASK) return;
     if(hfoc->phfdcan == NULL) return;
     
     
@@ -65,20 +66,22 @@ uint8_t FOC_GetNodeId(FOC_HandleTypeDef *hfoc){
 /**
  * @brief Sets the period of one cyclic CAN reply.
  * @param hfoc FOC handle containing the cyclic-message settings.
- * @param index Valid CAN_CyclicIndexTypeDef; the caller must check the range.
+ * @param index Cyclic index; an unknown index leaves settings unchanged.
  * @param rate Period in FOC ticks, or zero to disable the reply.
  */
 void FOC_SetCyclicRate(FOC_HandleTypeDef *hfoc, CAN_CyclicIndexTypeDef index, uint32_t rate){
+    if((unsigned)index >= CAN_CYCLIC_COUNT) return;
     hfoc->flash_data.node.can_msg_period_ticks[index] = rate;
 }
 
 /**
  * @brief Returns the configured period of one cyclic CAN reply.
  * @param hfoc FOC handle to inspect.
- * @param index Valid CAN_CyclicIndexTypeDef; the caller must check the range.
+ * @param index Cyclic index; an unknown index returns zero.
  * @return Period in FOC ticks, or zero when disabled.
  */
 uint32_t FOC_GetCyclicRate(FOC_HandleTypeDef *hfoc, CAN_CyclicIndexTypeDef index){
+    if((unsigned)index >= CAN_CYCLIC_COUNT) return 0;
     return hfoc->flash_data.node.can_msg_period_ticks[index];
 }
 
@@ -88,7 +91,7 @@ uint32_t missed_can_messages = 0;
  * @brief Builds and submits a supported reply as an 11-bit-ID CAN FD frame.
  * @param hfoc FOC handle supplying the peripheral, source node, and reply values.
  * @param command Reply command selecting the payload layout.
- * @note Unsupported commands, including CAN_ACK and CAN_ERROR, send nothing. A full
+ * @note Unsupported commands send nothing. ACK/ERROR use empty payloads. A full
  *       transmit FIFO drops the reply and increments missed_can_messages.
  * @see docs/can-protocol.md
  */
@@ -107,6 +110,10 @@ void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command)
     uint8_t TxData[64];
 
     switch (command) { //FOC -> PC commands
+        case CAN_ACK:
+        case CAN_ERROR:
+            TxHeader.DataLength = FDCAN_DLC_BYTES_0;
+            break;
         case CAN_VERSION_REPLY:
             TxData[0] = (uint8_t)(FOC_VERSION_MAJOR);
             TxData[1] = (uint8_t)(FOC_VERSION_MINOR);
@@ -149,8 +156,8 @@ void FOC_TransmitCANMessage(FOC_HandleTypeDef *hfoc, CAN_CommandTypeDef command)
             TxHeader.DataLength = FDCAN_DLC_BYTES_8;
             break;
         case CAN_TORQUE_REPLY:
-            write_float_le(&TxData[0], hfoc->dq_current_setpoint.q / hfoc->flash_data.motor.torque_constant); //byte 0-3
-            write_float_le(&TxData[4], hfoc->dq_current.q / hfoc->flash_data.motor.torque_constant); //byte 4-7
+            write_float_le(&TxData[0], hfoc->dq_current_setpoint.q * hfoc->flash_data.motor.torque_constant); // Nm
+            write_float_le(&TxData[4], hfoc->dq_current.q * hfoc->flash_data.motor.torque_constant); // Nm
             TxHeader.DataLength = FDCAN_DLC_BYTES_8;
             break;
         case CAN_CURRENT_REPLY:
@@ -243,6 +250,7 @@ void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
                 FOC_QueueCANMessage(hfoc, CAN_ADDRESS_REPLY, hfoc->random_number % 800 + 1); // Queue the address reply message to be sent after a delay of 1-800 ticks
                 break;
             case CAN_SET_ADDRESS:
+                if(RxHeader.DataLength != FDCAN_DLC_BYTES_7 || RxData[0] > ID_MASK) return;
                 if((memcmp(&RxData[1], &hfoc->uid, 6) == 0) || memcmp(&RxData[1], "\0\0\0\0\0\0", 6) == 0){ // If the UID matches or is 0, set the node ID to the received value
                     FOC_SetNodeId(hfoc, RxData[0]);
                 } else if(RxData[0] == hfoc->flash_data.node.node_id){
@@ -253,7 +261,8 @@ void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
                 FOC_TransmitCANMessage(hfoc, CAN_STATE_REPLY);
                 break;
             case CAN_SET_CONTROL_MODE:
-                FOC_SetControlMode(hfoc, (ControlModeTypeDef)RxData[0]);
+                if(RxHeader.DataLength != FDCAN_DLC_BYTES_1) return;
+                if(FOC_SetValidatedMode(hfoc, RxData[0]).code) FOC_TransmitCANMessage(hfoc, CAN_ERROR);
                 break;
             case CAN_GET_CONTROL_MODE:
                 if(RxHeader.DataLength != FDCAN_DLC_BYTES_0) return;
@@ -303,25 +312,24 @@ void FOC_ProcessCANMessage(FOC_HandleTypeDef *hfoc){
                 if(RxHeader.DataLength != FDCAN_DLC_BYTES_1) return;
                 if(FOC_SetState(hfoc, (FOC_StateTypeDef)RxData[0], FOC_STATE_NONE) != FOC_STATETRANSITION_OK){
                     FOC_TransmitCANMessage(hfoc, CAN_ERROR);
-                }
-                FOC_TransmitCANMessage(hfoc, CAN_ACK);
+                }else FOC_TransmitCANMessage(hfoc, CAN_ACK);
                 break;
             case CAN_SET_TORQUE: //0-3byte float, torque setpoint
                 if(RxHeader.DataLength != FDCAN_DLC_BYTES_4) return;
                 float torque_setpoint = read_float_le(RxData);
-                hfoc->dq_current_setpoint.q = torque_setpoint * hfoc->flash_data.motor.torque_constant;
+                if(FOC_SetTarget(hfoc, FOC_TARGET_TORQUE, torque_setpoint).code) FOC_TransmitCANMessage(hfoc, CAN_ERROR);
                 break;
             case CAN_SET_CURRENT: //0-3byte float, current setpoint
                 if(RxHeader.DataLength != FDCAN_DLC_BYTES_4) return;
-                hfoc->dq_current_setpoint.q = read_float_le(RxData);
+                if(FOC_SetTarget(hfoc, FOC_TARGET_CURRENT_Q, read_float_le(RxData)).code) FOC_TransmitCANMessage(hfoc, CAN_ERROR);
                 break;
             case CAN_SET_SPEED: //0-3byte float, speed setpoint
                 if(RxHeader.DataLength != FDCAN_DLC_BYTES_4) return;
-                hfoc->speed_setpoint = read_float_le(RxData);
+                if(FOC_SetTarget(hfoc, FOC_TARGET_SPEED, read_float_le(RxData)).code) FOC_TransmitCANMessage(hfoc, CAN_ERROR);
                 break;
             case CAN_SET_POSITION: //0-3byte float, position setpoint
             if(RxHeader.DataLength != FDCAN_DLC_BYTES_4) return;
-                hfoc->angle_setpoint = read_float_le(RxData);
+                if(FOC_SetTarget(hfoc, FOC_TARGET_POSITION, read_float_le(RxData)).code) FOC_TransmitCANMessage(hfoc, CAN_ERROR);
                 break;
             default:
                 return;
@@ -350,48 +358,16 @@ void FOC_TransmitCyclicCANMessage(FOC_HandleTypeDef *hfoc){
             continue;
         }
 
-        CAN_CommandTypeDef command = CAN_ERROR;
-        uint8_t command_valid = 1;
-
-        switch((CAN_CyclicIndexTypeDef)i) {
-            case CAN_CYCLIC_HEARTBEAT:
-                command = CAN_HEARTBEAT_REPLY;
-                break;
-            case CAN_CYCLIC_ENCODER_ESTIMATES:
-                command = CAN_ENCODER_ESTIMATES_REPLY;
-                break;
-            case CAN_CYCLIC_BUS_VOLTAGE_CURRENT:
-                command = CAN_BUS_VOLTAGE_CURRENT_REPLY;
-                break;
-            case CAN_CYCLIC_TEMPERATURES:
-                command = CAN_TEMPERATURES_REPLY;
-                break;
-            case CAN_CYCLIC_TORQUE:
-                command = CAN_TORQUE_REPLY;
-                break;
-            case CAN_CYCLIC_CURRENT:
-                command = CAN_CURRENT_REPLY;
-                break;
-            case CAN_CYCLIC_SPEED:
-                command = CAN_SPEED_REPLY;
-                break;
-            case CAN_CYCLIC_POSITION:
-                command = CAN_POSITION_REPLY;
-                break;
-            case CAN_CYCLIC_ERRORS:
-                command = CAN_ERRORS_REPLY;
-                break;
-            default:
-                command_valid = 0;
-                break;
-        }
-
-        if(command_valid == 0) {
-            continue;
-        }
+        static const CAN_CommandTypeDef commands[] = {
+#define CAN_CYCLIC_COMMAND(symbol, name, reply) reply,
+            FOC_CAN_CYCLIC_LIST(CAN_CYCLIC_COMMAND)
+#undef CAN_CYCLIC_COMMAND
+        };
+        _Static_assert(sizeof(commands) / sizeof(commands[0]) == CAN_CYCLIC_COUNT,
+                       "Cyclic scheduler and registry must match");
 
         hfoc->can_msg_last_tick[i] = current_tick;
-        FOC_TransmitCANMessage(hfoc, command);
+        FOC_TransmitCANMessage(hfoc, commands[i]);
     }
 }
 

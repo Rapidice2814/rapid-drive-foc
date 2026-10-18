@@ -50,6 +50,6 @@ FOC_StatusTypeDef FOC_SetEncoderZero(FOC_HandleTypeDef *);
 DRV8323_StatusTypeDef DRV8323_CSACALStart(DRV8323_HandleTypeDef *);
 DRV8323_StatusTypeDef DRV8323_CSACALStop(DRV8323_HandleTypeDef *);
 void DRV8323_SetHighImpedance(DRV8323_HandleTypeDef *);
-void DRV8323_ExitHighImpedance(DRV8323_HandleTypeDef *);
+DRV8323_StatusTypeDef DRV8323_ExitHighImpedance(DRV8323_HandleTypeDef *);
 int DRV8323_CheckFault(DRV8323_HandleTypeDef *);
 #endif

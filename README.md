@@ -18,12 +18,20 @@ of the firmware source tree and STM32 build tools.
   bus settings, payloads, cyclic replies, addressing, and implementation limits.
 - [Calibration controls and editable tables](docs/calibration-tables.md):
   multi-revolution measurements, progress, compensation and USB table transfers.
+- [Validated configuration](docs/configuration.md): discovered settings, absolute
+  bounds, atomic group updates, functional targets and production/debug separation.
 - [Plotter installation and use](https://github.com/Rapidice2814/rapid-drive-plotter#readme).
 
-Current firmware version: **0.3.0**. USB protocol version: **6**. Firmware and
+Current firmware version: **0.3.0**. USB protocol version: **8**. Firmware and
 plotter compatibility is determined by the USB protocol version. Earlier USB
 command IDs from versions before 3 have different meanings: 0x00 is the bootloader
 command, not a version request. CAN command numbering is independent of USB.
+Signals, variables, PID controllers, CAN cyclic-rate entries and configuration metadata are discovered
+by the plotter and cached by definitions fingerprint. Compatible catalog additions
+do not require a plotter update. Absolute bounds are editable as `CONFIG_ABS_*`
+in `Foc/FOC_Core/FOC_Config.h`. The updated plotter also accepts protocols 6 and 7
+without validated configuration/target writes. Protocol 6 also lacks cyclic-rate
+controls because it has no CAN catalog discovery.
 
 [Encoder sources and calibration](docs/encoder-calibration.md) documents source
 selection, linearization, backend integration and flash compatibility. Encoder

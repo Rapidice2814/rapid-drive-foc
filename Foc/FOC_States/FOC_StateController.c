@@ -35,9 +35,21 @@ static FOC_LoopStatusTypeDef FOC_StateFinishRoutine(FOC_HandleTypeDef *hfoc){
 }
 
 /**
- * @brief Initializes migrated routines only after state entry is accepted.
+ * @brief Initializes migrated routines only after state entry and exit cleanup.
+ * @return ERROR if the motor output could not be enabled, otherwise OK.
+ * @note Motor-driving setup starts with zero phase voltage before leaving high
+ *       impedance. Failure latches an operation fault; it never starts a routine.
  */
-static void FOC_StateStartRoutine(FOC_HandleTypeDef *hfoc){
+static FOC_StateTransitionTypeDef FOC_StateStartRoutine(FOC_HandleTypeDef *hfoc){
+    if(hfoc->state == FOC_STATE_ALIGNMENT || hfoc->state == FOC_STATE_IDENTIFY ||
+       hfoc->state == FOC_STATE_ALIGNMENT_TEST){
+        FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
+        if(DRV8323_ExitHighImpedance(&hfoc->hdrv8323) != DRV8323_OK){
+            Debug_SendTextResponse("Motor setup failed: could not enable inverter output.\n");
+            FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
+            return FOC_STATETRANSITION_ERROR;
+        }
+    }
     if(hfoc->state == FOC_STATE_ALIGNMENT || hfoc->state == FOC_STATE_IDENTIFY ||
        hfoc->state == FOC_STATE_ALIGNMENT_TEST || hfoc->state == FOC_STATE_ANTICOGGING){
         WS2812b_SetAllColor(20, 15, 0);
@@ -74,6 +86,7 @@ static void FOC_StateStartRoutine(FOC_HandleTypeDef *hfoc){
         default:
             break;
     }
+    return FOC_STATETRANSITION_OK;
 }
 
 static inline FOC_StateTransitionTypeDef FOC_StateTransition_AlwaysOk(FOC_HandleTypeDef *hfoc){
@@ -194,7 +207,8 @@ FOC_StateTransitionTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDe
     if(state != FOC_STATE_CHECKLIST && hfoc->next_state != FOC_STATE_CHECKLIST){
         hfoc->checklist_step = 0;
     }
-    FOC_StateStartRoutine(hfoc);
+    if(FOC_StateStartRoutine(hfoc) != FOC_STATETRANSITION_OK)
+        return FOC_STATETRANSITION_ERROR;
     return transition_result;
 }
 

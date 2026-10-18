@@ -12,6 +12,7 @@
 #include "FOC_CAN.h"
 #include "FOC_Diagnostics.h"
 #include "FOC_Calibration.h"
+#include "FOC_Configuration.h"
 
 
 /* Single source of truth. Array order supplies all wire IDs and mask bits. */
@@ -59,26 +60,8 @@
     X(pid_speed)                             \
     X(pid_position)                          \
 
-#define VAR_ID_LIST(X)                         \
-    X(f, dq_current_setpoint.d)             \
-    X(f, dq_current_setpoint.q)             \
-    X(f, angle_setpoint)                    \
-    X(f, speed_setpoint)                    \
-    X(f, flash_data.limits.max_dq_current)  \
-    X(f, flash_data.limits.max_dq_voltage)  \
-    X(f, flash_data.limits.vbus_overvoltage_trip_level) \
-    X(f, flash_data.limits.vbus_undervoltage_trip_level) \
-    X(f, flash_data.limits.ibus_overcurrent_trip_level) \
-    X(f, flash_data.limits.motor_temp_trip_level) \
-    X(f, flash_data.limits.mosfet_temp_trip_level) \
-    X(u32, flash_data.motor.pole_pairs) \
-    X(f, flash_data.motor.phase_resistance) \
-    X(f, flash_data.motor.phase_inductance) \
-    X(f, flash_data.motor.torque_constant) \
-    X(u32, flash_data.hfi.hfi_enabled) \
-    X(f, flash_data.hfi.injection_amplitude) \
-    X(f, flash_data.hfi.injection_omega) \
-    X(f, flash_data.controller.current_control_bandwidth) \
+/* Reserved for debug-only data. Functional settings/targets have validated APIs. */
+#define VAR_ID_LIST(X)
 
 
 #define COUNT_VALUE(type, field) + 1
@@ -107,6 +90,12 @@ typedef struct {
 static const DebugDescriptor signal_definitions[] = {FOC_USB_DEBUG_SIGNAL_LIST(VALUE_DESCRIPTOR) {0, NULL, NULL, 0, 0}};
 static const DebugDescriptor variable_definitions[] = {VAR_ID_LIST(VALUE_DESCRIPTOR) {0, NULL, NULL, 0, 0}};
 static const DebugDescriptor pid_definitions[] = {FOC_PID_CONTROLLERS_LIST(PID_DESCRIPTOR) {0, NULL, NULL, 0, 0}};
+#define CAN_DESCRIPTOR(symbol, name, reply) {0, "", name, 0, 0},
+static const DebugDescriptor can_cyclic_definitions[] = {FOC_CAN_CYCLIC_LIST(CAN_DESCRIPTOR) {0, NULL, NULL, 0, 0}};
+#define CONFIG_DEBUG_DESCRIPTOR(symbol, group, type, member, min, max, unit, states, label) {0, #type, #member, 0, 0},
+static const DebugDescriptor configuration_definitions[] = {FOC_CONFIGURATION_FIELDS(CONFIG_DEBUG_DESCRIPTOR)};
+#undef CONFIG_DEBUG_DESCRIPTOR
+#undef CAN_DESCRIPTOR
 #undef VALUE_DESCRIPTOR
 #undef PID_DESCRIPTOR
 
@@ -171,7 +160,7 @@ static uint8_t Debug_WriteRaw(const DebugDescriptor *entry, void *handle, uint32
 
 /**
  * @brief Selects the descriptor table and count for a discovery list.
- * @param kind List selector: 0 signals, 1 variables, or 2 PID controllers.
+ * @param kind List selector: 0 signals, 1 variables, 2 PID controllers, 3 CAN cyclic.
  * @param count Receives the entry count, or zero for an unknown kind.
  * @return Descriptor table, or NULL for an unknown kind.
  */
@@ -180,15 +169,24 @@ static const DebugDescriptor *Debug_Definitions(uint8_t kind, uint16_t *count){
     case 0: *count = SIGNAL_COUNT; return signal_definitions;
     case 1: *count = VAR_COUNT; return variable_definitions;
     case 2: *count = PID_COUNT; return pid_definitions;
+    case 3: *count = CAN_CYCLIC_COUNT; return can_cyclic_definitions;
+    case 4: *count = FOC_CONFIG_FIELD_COUNT; return configuration_definitions;
     default: *count = 0; return NULL;
     }
+}
+
+/** @brief Checks a session ID, including catalogs containing zero entries. */
+static uint8_t Debug_DefinitionIdExists(uint8_t kind, uint8_t id){
+    uint16_t count;
+    const DebugDescriptor *entries = Debug_Definitions(kind, &count);
+    return entries != NULL && id < count;
 }
 
 /**
  * @brief Formats one canonical, newline-terminated discovery row.
  * @param out Destination text buffer.
  * @param capacity Destination capacity, including the terminating NUL.
- * @param kind List selector; PID rows omit the primitive type.
+ * @param kind List selector; PID and CAN cyclic rows omit the primitive type.
  * @param index Automatically assigned list index.
  * @param entry Descriptor whose name and type are serialized.
  * @return snprintf result: required characters excluding NUL, or a negative error.
@@ -196,7 +194,8 @@ static const DebugDescriptor *Debug_Definitions(uint8_t kind, uint16_t *count){
  */
 static int Debug_FormatDefinition(char *out, size_t capacity, uint8_t kind, uint16_t index,
                                   const DebugDescriptor *entry){
-    return kind == 2 ? snprintf(out, capacity, "%u\t%s\n", (unsigned)index, entry->name)
+    if(kind == 4) return FOC_ConfigurationFormat(out, capacity, (uint8_t)index);
+    return kind >= 2 ? snprintf(out, capacity, "%u\t%s\n", (unsigned)index, entry->name)
                      : snprintf(out, capacity, "%u\t%s\t%s\n", (unsigned)index, entry->type, entry->name);
 }
 
@@ -212,23 +211,31 @@ static void Debug_HashText(const char *text){
 }
 
 /**
- * @brief Builds the fingerprint and detects duplicate names within each list.
+ * @brief Builds the fingerprint and validates printable unique names in each list.
  * @note Called during USB setup; invalid definitions prevent configuration and telemetry.
  */
 static void Debug_InitDefinitions(void){
-    static const char *const headings[] = {"signals\n", "variables\n", "pids\n"};
+    static const char *const headings[] = {"signals\n", "variables\n", "pids\n", "can_cyclic\n", "configuration\n"};
     definitions_fingerprint = UINT64_C(14695981039346656037);
     definitions_valid = 1;
-    char line[160];
-    for(uint8_t kind = 0; kind < 3; ++kind){
+    char line[249];
+    for(uint8_t kind = 0; kind < 5; ++kind){
         uint16_t count;
         const DebugDescriptor *entries = Debug_Definitions(kind, &count);
         Debug_HashText(headings[kind]);
         for(uint16_t i = 0; i < count; ++i){
+            size_t length = strlen(entries[i].name);
+            if(!length || length > 127 || entries[i].name[0] == ' ' || entries[i].name[length - 1] == ' ')
+                definitions_valid = 0;
+            for(size_t pos = 0; pos < length; pos++){
+                unsigned char ch = (unsigned char)entries[i].name[pos];
+                if(ch < (kind == 3 ? 32 : 33) || ch > 126) definitions_valid = 0;
+            }
             for(uint16_t j = 0; j < i; ++j){
                 if(strcmp(entries[i].name, entries[j].name) == 0) definitions_valid = 0;
             }
-            Debug_FormatDefinition(line, sizeof(line), kind, i, &entries[i]);
+            int length_written = Debug_FormatDefinition(line, sizeof(line), kind, i, &entries[i]);
+            if(length_written < 0 || (size_t)length_written >= sizeof(line)) definitions_valid = 0;
             Debug_HashText(line);
         }
     }
@@ -492,12 +499,12 @@ static void Debug_ReplyStateTransition(MsgTypeTypeDef command, FOC_StateTypeDef 
 static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload, uint16_t payload_length){
     uint8_t controller_id;
     uint8_t var_id;
-    uint8_t response_payload[29];
+    uint8_t response_payload[34];
 
     if(!definitions_valid && msg_type != MSG_GET_DEVICE_INFO &&
        msg_type != MSG_GET_DEFINITIONS && msg_type != MSG_STOP_LOG){
         Debug_SendCommandError(MSG_ERROR, msg_type, DEBUG_ERR_INVALID_DEFINITIONS,
-            "Driver definitions contain duplicate names.");
+            "Driver definitions contain invalid or duplicate names.");
         return;
     }
     switch ((MsgTypeTypeDef)(msg_type)){
@@ -522,7 +529,10 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         write_u32_le(&response_payload[20], (uint32_t)definitions_fingerprint);
         write_u32_le(&response_payload[24], (uint32_t)(definitions_fingerprint >> 32));
         response_payload[28] = definitions_valid ? 0 : 1;
-        Debug_SendBinaryResponse(MSG_DEVICE_INFO_REPLY, response_payload, 29);
+        write_u16_le(&response_payload[29], CAN_CYCLIC_COUNT);
+        write_u16_le(&response_payload[31], FOC_CONFIG_FIELD_COUNT);
+        response_payload[33] = FOC_ENABLE_DEBUG_WRITES ? 1 : 0;
+        Debug_SendBinaryResponse(MSG_DEVICE_INFO_REPLY, response_payload, 34);
         return;
 
     case MSG_GET_DEFINITIONS: {
@@ -542,15 +552,15 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
                 error == 2 ? DEBUG_ERR_DEFINITION_INDEX : DEBUG_ERR_INVALID_DEFINITIONS,
                 "Definitions request failed: kind=%u, start=%u, reason=%s.",
                 (unsigned)kind, (unsigned)index,
-                error == 1 ? "unknown list" : error == 2 ? "index out of range" : "duplicate names");
+                error == 1 ? "unknown list" : error == 2 ? "index out of range" : "invalid or duplicate names");
             return;
         }
         uint8_t page[DEFINITION_PAGE_BYTES];
         uint16_t used = 7, returned = 0;
-        char line[160];
+        char line[249];
         for(uint16_t i = index; i < count; ++i){
             int n = Debug_FormatDefinition(line, sizeof(line), kind, i, &entries[i]);
-            if(n < 0 || (size_t)used + (size_t)n > sizeof(page)) break;
+            if(n < 0 || (size_t)n >= sizeof(line) || (size_t)used + (size_t)n > sizeof(page)) break;
             memcpy(&page[used], line, (size_t)n);
             used += (uint16_t)n;
             ++returned;
@@ -628,7 +638,12 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
                 "Unknown variable/PID ID %u.", (unsigned)payload[0]);
             return;
         }
-        PID_SetGains((PIDControllerTypeDef*)((uint8_t*)&hfoc + pid_definitions[controller_id].offset), new_gains);
+        FOC_ConfigResult pid_result = FOC_SetValidatedPID(&hfoc,
+            (PIDControllerTypeDef*)((uint8_t*)&hfoc + pid_definitions[controller_id].offset), new_gains);
+        if(pid_result.code){
+            Debug_SendCommandError(MSG_ERROR, msg_type, pid_result.code, "%s", pid_result.message);
+            break;
+        }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
 
@@ -652,6 +667,11 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         break;
 
     case MSG_SET_VAR:
+        if(!FOC_ENABLE_DEBUG_WRITES){
+            Debug_SendCommandError(MSG_ERROR, msg_type, DEBUG_ERR_INVALID_STATE,
+                "Raw debug variable writes are disabled in this firmware. Use validated configuration or target commands.");
+            break;
+        }
         if(payload_length != 5){
             Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH,
                 "Invalid payload length: received %u bytes.", (unsigned)payload_length);
@@ -659,7 +679,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         }
 
         var_id = payload[0];
-        if(var_id >= VAR_COUNT){
+        if(!Debug_DefinitionIdExists(1, var_id)){
             Debug_SendCommandError(MSG_UNKNOWN_ID, msg_type, DEBUG_ERR_UNKNOWN_ID,
                 "Unknown variable/PID ID %u.", (unsigned)payload[0]);
             return;
@@ -683,7 +703,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         var_id = payload[0];
         response_payload[0] = var_id;
 
-        if(var_id >= VAR_COUNT){
+        if(!Debug_DefinitionIdExists(1, var_id)){
             Debug_SendCommandError(MSG_UNKNOWN_ID, msg_type, DEBUG_ERR_UNKNOWN_ID,
                 "Unknown variable/PID ID %u.", (unsigned)payload[0]);
             return;
@@ -691,6 +711,59 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         uint32_t current = Debug_ReadRaw(&variable_definitions[var_id], &hfoc);
         write_u32_le(&response_payload[1], current);
         Debug_SendBinaryResponse(MSG_VAR_REPLY, response_payload, 5);
+        break;
+
+    case MSG_GET_CONFIGURATION: {
+        if(payload_length != 1 || payload[0] >= FOC_CONFIG_GROUP_COUNT){
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_UNKNOWN_ID, "Expected one known configuration group ID.");
+            break;
+        }
+        uint8_t reply[2 + FOC_CONFIG_FIELD_COUNT * 5], count = 0;
+        reply[0] = payload[0];
+        for(uint8_t id = 0; id < FOC_CONFIG_FIELD_COUNT; id++){
+            if(FOC_ConfigurationGroup(id) != payload[0]) continue;
+            reply[2 + count * 5] = id;
+            write_u32_le(&reply[3 + count * 5], FOC_ConfigurationRead(&hfoc, id));
+            count++;
+        }
+        reply[1] = count;
+        Debug_SendBinaryResponse(MSG_CONFIGURATION_REPLY, reply, 2 + count * 5);
+        break;
+    }
+    case MSG_SET_CONFIGURATION: {
+        if(payload_length < 7 || payload[1] > FOC_CONFIG_FIELD_COUNT || payload_length != 2u + 5u * payload[1]){
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH, "Expected group, count, and unique field/value pairs.");
+            break;
+        }
+        FOC_ConfigUpdate updates[FOC_CONFIG_FIELD_COUNT];
+        for(uint8_t i = 0; i < payload[1]; i++){
+            updates[i].id = payload[2 + i * 5]; updates[i].raw = read_u32_le(&payload[3 + i * 5]);
+        }
+        FOC_ConfigResult result = FOC_ConfigurationSet(&hfoc, payload[0], updates, payload[1]);
+        if(result.code) Debug_SendCommandError(MSG_ERROR, msg_type, result.code, "%s", result.message);
+        else Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+    }
+    case MSG_SET_TARGET: {
+        if(payload_length != 5){
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH, "Expected target operation and one float.");
+            break;
+        }
+        FOC_ConfigResult result = FOC_SetTarget(&hfoc, payload[0], read_float_le(&payload[1]));
+        if(result.code) Debug_SendCommandError(MSG_ERROR, msg_type, result.code, "%s", result.message);
+        else Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+    }
+    case MSG_GET_TARGETS:
+        if(payload_length){
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH, "Target read has no payload.");
+            break;
+        }
+        memcpy(response_payload, &hfoc.dq_current_setpoint.d, 4);
+        memcpy(response_payload + 4, &hfoc.dq_current_setpoint.q, 4);
+        memcpy(response_payload + 8, &hfoc.speed_setpoint, 4);
+        memcpy(response_payload + 12, &hfoc.angle_setpoint, 4);
+        Debug_SendBinaryResponse(MSG_TARGETS_REPLY, response_payload, 16);
         break;
 
     case MSG_FLASH_SAVE:
@@ -859,6 +932,10 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         Debug_SendBinaryResponse(MSG_STATE_REPLY, response_payload, 1);
         break;
     case MSG_TEXT_COMMAND:
+        if(!FOC_ENABLE_DEBUG_WRITES){
+            Debug_SendCommandError(MSG_ERROR, msg_type, DEBUG_ERR_INVALID_STATE, "Legacy text/debug commands are disabled in this firmware.");
+            break;
+        }
         Debug_ExecuteTextCommand((const char*)payload, payload_length);
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
         break;
@@ -965,10 +1042,9 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
                 "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
-        ControlModeTypeDef new_mode = (ControlModeTypeDef)payload[0];
-        if(FOC_SetControlMode(&hfoc, new_mode) != 0){
-            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_OUT_OF_RANGE,
-                "Unsupported control mode %u.", (unsigned)payload[0]);
+        FOC_ConfigResult mode_result = FOC_SetValidatedMode(&hfoc, payload[0]);
+        if(mode_result.code){
+            Debug_SendCommandError(MSG_ERROR, msg_type, mode_result.code, "%s", mode_result.message);
             break;
         }
         Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
@@ -1000,6 +1076,10 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
  *       Unknown text is ignored; the caller acknowledges framed text commands.
  */
 static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
+    if(!FOC_ENABLE_DEBUG_WRITES){
+        Debug_SendTextResponse("Legacy text/debug commands are disabled. Use validated binary commands.\n");
+        return;
+    }
     /* Legacy commands use sscanf and look ahead by one byte. */
     char terminated[RX_USB_BUF_SIZE + 2] = {0};
     if(length > RX_USB_BUF_SIZE) return;
