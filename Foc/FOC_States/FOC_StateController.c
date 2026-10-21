@@ -204,6 +204,13 @@ FOC_StateTransitionTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDe
     
     hfoc->previous_state = hfoc->state;
     hfoc->state = state;
+    if(state != FOC_STATE_RUN && (hfoc->hfi.active || hfoc->hfi.feedback_source)){
+        if(hfoc->hfi.feedback_source){
+            PID_Reset(&hfoc->pid_current_d); PID_Reset(&hfoc->pid_current_q);
+            PID_Reset(&hfoc->pid_speed); PID_Reset(&hfoc->pid_position);
+        }
+        FOC_HFI_Init(hfoc);
+    }
     if(state != FOC_STATE_CHECKLIST && hfoc->next_state != FOC_STATE_CHECKLIST){
         hfoc->checklist_step = 0;
     }

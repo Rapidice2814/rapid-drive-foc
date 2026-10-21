@@ -43,9 +43,9 @@ X(7, "Other absolute encoder", OtherEncoder_Init, OtherEncoder_Read, 1)
 
 The plotter discovers names/IDs/capabilities from the driver. No Python source
 list needs changing. Tests build a second mock backend through this same registry.
-HFI estimation is not implemented here. An electrical-only HFI estimator requires
-a mechanical adapter resolving pole ambiguity, or a separate commutation-angle
-interface; it cannot directly replace absolute mechanical position feedback.
+The physical encoder backend is separate from the experimental [HFI feedback](hfi.md)
+selector. HFI seeds electrical polarity and mechanical origin from this aligned
+encoder, which remains sampled independently as a safety reference.
 
 Selection requires stationary IDLE/ERROR (absolute speed <= 0.1 rad/s). Changing
 sources invalidates alignment, correction, and anti-cogging, resets estimator

@@ -20,9 +20,11 @@ of the firmware source tree and STM32 build tools.
   multi-revolution measurements, progress, compensation and USB table transfers.
 - [Validated configuration](docs/configuration.md): discovered settings, absolute
   bounds, atomic group updates, functional targets and production/debug separation.
+- [Experimental HFI](docs/hfi.md): encoder/HFI angle comparison, feedback selection,
+  estimator limits and safety guards.
 - [Plotter installation and use](https://github.com/Rapidice2814/rapid-drive-plotter#readme).
 
-Current firmware version: **0.3.0**. USB protocol version: **8**. Firmware and
+Current firmware version: **0.3.0**. USB protocol version: **9**. Firmware and
 plotter compatibility is determined by the USB protocol version. Earlier USB
 command IDs from versions before 3 have different meanings: 0x00 is the bootloader
 command, not a version request. CAN command numbering is independent of USB.

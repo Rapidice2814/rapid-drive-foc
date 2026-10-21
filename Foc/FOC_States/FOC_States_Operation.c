@@ -43,6 +43,7 @@ FOC_StateTransitionTypeDef FOC_StateRun_Transition(FOC_HandleTypeDef* hfoc){
 
 void FOC_StateRun(FOC_HandleTypeDef* hfoc){
     Current_Loop(hfoc);
+    if(hfoc->state != FOC_STATE_RUN) return;
     if(++hfoc->run_loop_divider >= SPEED_LOOP_CLOCK_DIVIDER){//runs at CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER
         hfoc->run_loop_divider = 0;
         Speed_Loop(hfoc); 

@@ -32,6 +32,121 @@ static void config_ready(FOC_HandleTypeDef *h){
     h->flash_data.encoder.calibration_voltage = 0.5f;
 }
 
+/** @brief Supplies a zero-target controller for deterministic carrier-response tests. */
+static void hfi_ready(FOC_HandleTypeDef *h){
+    config_ready(h);
+    h->state = FOC_STATE_RUN;
+    h->adc_calibrated = h->encoder_runtime.healthy = h->flash_data.encoder.offset_valid = 1;
+    h->adc_values.vbus = 24;
+    h->flash_data.hfi.hfi_enabled = 1;
+    h->flash_data.hfi.injection_omega = HFI_INJECTION_OMEGA;
+    h->flash_data.hfi.injection_amplitude = 0.2f;
+    FOC_HFI_Init(h);
+    /* Current feedback filtering must be initialized, not silently bypassed. */
+    if(!h->dq_current_d_filter.is_initialized || !h->dq_current_q_filter.is_initialized) abort();
+    FOC_HFI_Update(h, 0, 0);
+}
+
+/** @brief Analytical sampled inductive positive/negative sequence response.
+ * @note Generated from imposed rotor angle and carrier voltage, never the HFI estimate.
+ */
+static uint8_t hfi_sample(FOC_HandleTypeDef *h, float physical_angle, float speed, float saliency){
+    float phase = h->hfi.injection_phase + h->flash_data.hfi.injection_omega / CURRENT_LOOP_FREQUENCY * 0.5f;
+    float sign = h->flash_data.motor.direction ? -1 : 1;
+    h->encoder_angle_electrical = sign * physical_angle;
+    normalize_angle_0_2pi(&h->encoder_angle_electrical);
+    h->encoder_angle_mechanical_unwrapped = 12.0f + sign * physical_angle / h->flash_data.motor.pole_pairs;
+    h->encoder_speed_electrical = sign * speed;
+    h->encoder_speed_mechanical = sign * speed / h->flash_data.motor.pole_pairs;
+    return FOC_HFI_Update(h, sinf(phase) - saliency * sinf(2 * physical_angle - phase),
+                            -cosf(phase) + saliency * cosf(2 * physical_angle - phase));
+}
+
+int test_hfi_estimates_saliency_axis_and_preserves_encoder_origin(void){
+    for(unsigned reverse = 0; reverse < 2; reverse++){
+        FOC_HandleTypeDef h = {0}; hfi_ready(&h);
+        h.flash_data.motor.direction = reverse;
+        for(unsigned i = 0; i < 3200; i++) CHECK(hfi_sample(&h, 3.7f, 0, 0.2f));
+        CHECK(h.hfi.seeded && h.hfi.valid && h.hfi.locked);
+        CHECK(fabsf(h.hfi.error_electrical) < 0.01f && fabsf(h.hfi.error_mechanical) < 0.002f);
+        CHECK(fabsf(h.hfi.saliency_ratio - 0.2f) < 0.005f);
+        CHECK(FOC_HFI_SelectFeedback(&h, FOC_FEEDBACK_HFI));
+        CHECK(FOC_FeedbackElectricalAngle(&h) == h.hfi.angle_electrical);
+        CHECK(FOC_FeedbackMechanicalAngle(&h) == h.hfi.angle_mechanical_unwrapped);
+        CHECK(h.encoder_angle_mechanical_unwrapped != 0);
+    }
+    return 0;
+}
+
+int test_hfi_tracks_across_electrical_wrap_without_readjusting_to_encoder(void){
+    FOC_HandleTypeDef h = {0}; hfi_ready(&h);
+    float theta = 6.2f;
+    for(unsigned i = 0; i < 3200; i++) CHECK(hfi_sample(&h, theta, 0, 0.2f));
+    CHECK(h.hfi.valid);
+    for(unsigned i = 0; i < 3200; i++){
+        theta += 4.0f / CURRENT_LOOP_FREQUENCY;
+        CHECK(hfi_sample(&h, theta, 4, 0.2f));
+    }
+    CHECK(h.hfi.valid && fabsf(h.hfi.error_electrical) < 0.1f);
+    CHECK(fabsf(h.hfi.speed_mechanical - 4.0f / h.flash_data.motor.pole_pairs) < 0.05f);
+    /* Reference-only bias must appear in error, not be fed back into the observer. */
+    float before = h.hfi.angle_electrical;
+    float phase = h.hfi.injection_phase + h.flash_data.hfi.injection_omega / CURRENT_LOOP_FREQUENCY * 0.5f;
+    h.encoder_angle_electrical += 0.1f;
+    CHECK(FOC_HFI_Update(&h, sinf(phase) - 0.2f * sinf(2 * theta - phase),
+                              -cosf(phase) + 0.2f * cosf(2 * theta - phase)));
+    float change = h.hfi.angle_electrical - before; normalize_angle_pm_pi(&change);
+    CHECK(fabsf(change) < 0.01f);
+    return 0;
+}
+
+int test_hfi_rejects_no_saliency_and_wrong_axis_without_false_lock(void){
+    for(unsigned wrong_axis = 0; wrong_axis < 2; wrong_axis++){
+        FOC_HandleTypeDef h = {0}; hfi_ready(&h);
+        for(unsigned i = 0; i < 3200; i++) CHECK(hfi_sample(&h, 0.4f, 0, wrong_axis ? -0.2f : 0));
+        CHECK(!h.hfi.locked && !h.hfi.valid);
+        CHECK(!FOC_HFI_SelectFeedback(&h, FOC_FEEDBACK_HFI));
+        CHECK(!h.hfi.feedback_source);
+    }
+    return 0;
+}
+
+int test_hfi_selection_guards_loss_stop_and_independent_handles(void){
+    FOC_HandleTypeDef h = {0}, other = {0}; hfi_ready(&h); hfi_ready(&other);
+    for(unsigned i = 0; i < 3200; i++) CHECK(hfi_sample(&h, 0.4f, 0, 0.2f));
+    CHECK(h.hfi.valid && !other.hfi.seeded && !other.hfi.samples);
+    h.dq_current_setpoint.q = 1;
+    CHECK(!FOC_HFI_SelectFeedback(&h, 1)); h.dq_current_setpoint.q = 0;
+    h.encoder_speed_mechanical = 1;
+    CHECK(!FOC_HFI_SelectFeedback(&h, 1)); h.encoder_speed_mechanical = 0;
+    CHECK(!FOC_HFI_SelectFeedback(&h, 2));
+    CHECK(FOC_HFI_SelectFeedback(&h, 1));
+    CHECK(!FOC_HFI_Update(&h, NAN, 0));
+    FOC_SetError(&h, FOC_ERROR_HFI_FAULT);
+    CHECK(h.state == FOC_STATE_ERROR && h.hdrv8323.high_impedance && !h.hfi.feedback_source);
+    CHECK(h.latched_errors & FOC_ERROR_HFI_FAULT);
+    h.latched_errors = h.active_errors = 0; hfi_ready(&h);
+    h.hfi.feedback_source = FOC_FEEDBACK_HFI;
+    CHECK(FOC_SetState(&h, FOC_STATE_STOP, FOC_STATE_NONE) == FOC_STATETRANSITION_OK);
+    CHECK(!h.hfi.feedback_source && !h.hfi.active && !h.hfi.valid);
+    hfi_ready(&h);
+    h.hfi.feedback_source = FOC_FEEDBACK_HFI;
+    h.flash_data.hfi.hfi_enabled = 0;
+    CHECK(!FOC_HFI_Update(&h, 0, 0)); /* Never silently fall back live. */
+    return 0;
+}
+
+int test_hfi_overcurrent_and_invalid_frequency_never_continue_injection(void){
+    FOC_HandleTypeDef h = {0}; hfi_ready(&h);
+    CHECK(!FOC_HFI_Update(&h, h.flash_data.limits.max_dq_current * 2, 0));
+    CHECK(!h.hfi.injection_alpha && !h.hfi.injection_beta);
+    FOC_HFI_Init(&h);
+    h.flash_data.hfi.injection_omega = CURRENT_LOOP_FREQUENCY * M_2PIF;
+    CHECK(FOC_HFI_Update(&h, 0, 0));
+    CHECK(!h.hfi.active && !h.hfi.valid && !h.hfi.injection_alpha && !h.hfi.injection_beta);
+    return 0;
+}
+
 int test_configuration_schema_is_bounded_unique_and_matches_absolute_limits(void){
     char row[249];
     for(uint8_t id = 0; id < FOC_CONFIG_FIELD_COUNT; id++){

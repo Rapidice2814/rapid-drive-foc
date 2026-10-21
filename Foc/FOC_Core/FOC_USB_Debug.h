@@ -79,6 +79,9 @@ typedef enum {
     MSG_SET_TARGET = 0x39,
     MSG_GET_TARGETS = 0x3A,
     MSG_TARGETS_REPLY = 0x3B,
+    MSG_SET_FEEDBACK_SOURCE = 0x3C,
+    MSG_GET_HFI_INFO = 0x3D,
+    MSG_HFI_INFO_REPLY = 0x3E,
 
     MSG_UNKNOWN_TYPE = 0xFA,
     MSG_INVALID_PAYLOAD = 0xFB,
@@ -113,7 +116,7 @@ typedef enum {
     DEBUG_ERR_INTERNAL = 20
 } Debug_ErrorCodeTypeDef;
 
-#define DEBUG_PROTOCOL_VERSION 8
+#define DEBUG_PROTOCOL_VERSION 9
 #define DEBUG_ERROR_MESSAGE_BYTES 160u
 
 Debug_StatusTypeDef FOC_USB_Setup();

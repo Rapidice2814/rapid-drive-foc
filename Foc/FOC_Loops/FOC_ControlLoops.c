@@ -6,17 +6,24 @@
 #include "FOC_USB_Debug.h"
 
 #include "FOC_HFI.h"
+#include "FOC_Diagnostics.h"
 
 
 void Current_Loop(FOC_HandleTypeDef *hfoc){
     float encoder_angle_electrical, setpoint_q, setpoint_d;
+    hfoc->ab_current = Clarke_transform(hfoc->adc_values.phase_current);
+    if(!FOC_HFI_Update(hfoc, hfoc->ab_current.alpha, hfoc->ab_current.beta)){
+        Debug_SendTextResponse("HFI safety stop: lost valid feedback, reference disagreement, or injection current exceeded limit.\n");
+        FOC_SetError(hfoc, FOC_ERROR_HFI_FAULT);
+        return;
+    }
 
     if(hfoc->flash_data.motor.direction == 1){
-        encoder_angle_electrical = 2 * M_PI - hfoc->encoder_angle_electrical;
+        encoder_angle_electrical = 2 * M_PI - FOC_FeedbackElectricalAngle(hfoc);
         setpoint_q = -hfoc->dq_current_setpoint.q;
         setpoint_d = -hfoc->dq_current_setpoint.d;
     }else{
-        encoder_angle_electrical = hfoc->encoder_angle_electrical;
+        encoder_angle_electrical = FOC_FeedbackElectricalAngle(hfoc);
         setpoint_q = hfoc->dq_current_setpoint.q;
         setpoint_d = hfoc->dq_current_setpoint.d;
     }
@@ -34,7 +41,6 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
     setpoint_q = constrainf(setpoint_q, -hfoc->flash_data.limits.max_dq_current, hfoc->flash_data.limits.max_dq_current);
 
 
-    hfoc->ab_current = Clarke_transform(hfoc->adc_values.phase_current);
     hfoc->dq_current = Park_transform(hfoc->ab_current, encoder_angle_electrical);
 
     hfoc->dq_current_filtered.d = biquad_filter_update(&hfoc->dq_current_d_filter, hfoc->dq_current.d);
@@ -43,12 +49,10 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
     // hfoc->dq_voltage.d = PID_Update(&hfoc->pid_current_d, setpoint_d, hfoc->dq_current_filtered.d);
     // hfoc->dq_voltage.q = PID_Update(&hfoc->pid_current_q, setpoint_q, hfoc->dq_current_filtered.q);
     
-    hfoc->dq_voltage.d = PID_Update(&hfoc->pid_current_d, setpoint_d, hfoc->dq_current.d);
-    hfoc->dq_voltage.q = PID_Update(&hfoc->pid_current_q, setpoint_q, hfoc->dq_current.q);
-
-    if(hfoc->flash_data.hfi.hfi_enabled == 1){
-        hfoc->dq_voltage.d += FOC_HFI_GetInjectedVoltage(hfoc);
-    }
+    hfoc->dq_voltage.d = PID_Update(&hfoc->pid_current_d, setpoint_d,
+        hfoc->hfi.active ? hfoc->dq_current_filtered.d : hfoc->dq_current.d);
+    hfoc->dq_voltage.q = PID_Update(&hfoc->pid_current_q, setpoint_q,
+        hfoc->hfi.active ? hfoc->dq_current_filtered.q : hfoc->dq_current.q);
 
     if(hfoc->flash_data.controller.current_PID_FF_enabled == 1){
         if(hfoc->flash_data.motor.torque_constant != 0 && 
@@ -57,14 +61,27 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
             hfoc->flash_data.motor.phase_resistance != 0){
 
                 float lambda = (2.0f/3.0f) * hfoc->flash_data.motor.torque_constant / (float)hfoc->flash_data.motor.pole_pairs;
-                hfoc->dq_voltage.d += -hfoc->encoder_speed_electrical * hfoc->flash_data.motor.phase_inductance * hfoc->dq_current.q;
-                hfoc->dq_voltage.q +=  hfoc->encoder_speed_electrical * (hfoc->flash_data.motor.phase_inductance * hfoc->dq_current.d + lambda);
+                float speed = FOC_FeedbackMechanicalSpeed(hfoc) * hfoc->flash_data.motor.pole_pairs;
+                hfoc->dq_voltage.d += -speed * hfoc->flash_data.motor.phase_inductance * hfoc->dq_current.q;
+                hfoc->dq_voltage.q += speed * (hfoc->flash_data.motor.phase_inductance * hfoc->dq_current.d + lambda);
                 
             } 
     }
 
 
     hfoc->ab_voltage = InvPark_transform(hfoc->dq_voltage, encoder_angle_electrical);
+    if(hfoc->hfi.active){
+        /* Reserve carrier headroom so clipping cannot corrupt the demodulation. */
+        float limit = fminf(hfoc->flash_data.limits.max_dq_voltage, hfoc->adc_values.vbus * M_1_SQRT3F);
+        float available = fmaxf(0, limit - hfoc->flash_data.hfi.injection_amplitude);
+        float magnitude = hypotf(hfoc->ab_voltage.alpha, hfoc->ab_voltage.beta);
+        if(magnitude > available && magnitude > 0){
+            hfoc->ab_voltage.alpha *= available / magnitude;
+            hfoc->ab_voltage.beta *= available / magnitude;
+        }
+        hfoc->ab_voltage.alpha += hfoc->hfi.injection_alpha;
+        hfoc->ab_voltage.beta += hfoc->hfi.injection_beta;
+    }
     PhaseVoltagesTypeDef phase_voltage = InvClarke_transform(hfoc->ab_voltage);
     FOC_SetPhaseVoltages(hfoc, phase_voltage);
 
@@ -73,11 +90,11 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
 void Speed_Loop(FOC_HandleTypeDef *hfoc){
     
     if(hfoc->flash_data.controller.control_mode == CONTROL_MODE_SPEED){
-        hfoc->dq_current_setpoint.q = PID_Update(&hfoc->pid_speed, hfoc->speed_setpoint, hfoc->encoder_speed_mechanical);
+        hfoc->dq_current_setpoint.q = PID_Update(&hfoc->pid_speed, hfoc->speed_setpoint, FOC_FeedbackMechanicalSpeed(hfoc));
     }
 
     if(hfoc->flash_data.controller.control_mode == CONTROL_MODE_POSITION){
-        hfoc->dq_current_setpoint.q = PID_Update(&hfoc->pid_position, hfoc->angle_setpoint, hfoc->encoder_angle_mechanical_unwrapped);
+        hfoc->dq_current_setpoint.q = PID_Update(&hfoc->pid_position, hfoc->angle_setpoint, FOC_FeedbackMechanicalAngle(hfoc));
     }
 }
 
@@ -103,7 +120,8 @@ uint8_t FOC_SetControlMode(FOC_HandleTypeDef *hfoc, ControlModeTypeDef mode){
             break;
         case CONTROL_MODE_POSITION:
             hfoc->flash_data.controller.control_mode = CONTROL_MODE_POSITION;
-            hfoc->angle_setpoint = 0.0f;
+            /* HFI experiments must not jump to mechanical zero on mode entry. */
+            hfoc->angle_setpoint = hfoc->hfi.feedback_source == FOC_FEEDBACK_HFI ? FOC_FeedbackMechanicalAngle(hfoc) : 0.0f;
             Debug_SendTextResponse("Enabled position PID, disabled speed PID\n");
             break;
         default:

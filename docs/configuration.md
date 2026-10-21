@@ -13,7 +13,8 @@ member keys such as `limits.max_dq_current` are the persistent identity. IDs are
 valid only for the discovered fingerprint. Groups currently cover Limits,
 Motor, Controller, HFI injection, and Encoder calibration voltage. Communication,
 encoder source/compensation, PID gains, calibration and storage retain their
-dedicated commands. HFI injection settings do not implement an HFI angle source.
+dedicated commands. Protocol 9 adds experimental encoder-seeded HFI feedback;
+its operating limits and comparison procedure are documented in [HFI](hfi.md).
 
 Absolute min/max bounds live in `Foc/FOC_Core/FOC_Config.h` as `CONFIG_ABS_*`.
 Electrical/temperature ceilings reference the board constants in the same file.

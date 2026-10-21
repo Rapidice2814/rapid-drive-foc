@@ -142,6 +142,7 @@ FOC_ConfigResult FOC_ConfigurationSet(FOC_HandleTypeDef *h, uint8_t group,
         if(changed[i]) memcpy((uint8_t*)&h->flash_data + fields[i].offset, &candidate[i], fields[i].size);
     }
     if(any_changed){
+        FOC_HFI_Init(h);
         h->flash_data.controller.anticogging_data_valid = 0;
         h->flash_data.controller.anticogging_FF_enabled = 0;
         if(group == FOC_CONFIG_MOTOR && (changed[FOC_CONFIG_POLE_PAIRS] || changed[FOC_CONFIG_DIRECTION])){

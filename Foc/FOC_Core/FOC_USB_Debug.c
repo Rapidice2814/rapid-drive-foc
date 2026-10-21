@@ -53,6 +53,15 @@
     X(f,  hfi.i_beta_l_raw)                 \
     X(f,  hfi.i_alpha_l_filtered)           \
     X(f,  hfi.i_beta_l_filtered)            \
+    X(f,  hfi.angle_axis_mod_pi)            \
+    X(f,  hfi.angle_electrical)             \
+    X(f,  hfi.angle_mechanical_unwrapped)   \
+    X(f,  hfi.speed_mechanical)             \
+    X(f,  hfi.error_electrical)             \
+    X(f,  hfi.error_mechanical)             \
+    X(f,  hfi.signal_amplitude)             \
+    X(f,  hfi.saliency_ratio)               \
+    X(u32, hfi.status)                     \
 
 #define FOC_PID_CONTROLLERS_LIST(X)             \
     X(pid_current_d)                         \
@@ -764,6 +773,30 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         memcpy(response_payload + 8, &hfoc.speed_setpoint, 4);
         memcpy(response_payload + 12, &hfoc.angle_setpoint, 4);
         Debug_SendBinaryResponse(MSG_TARGETS_REPLY, response_payload, 16);
+        break;
+
+    case MSG_SET_FEEDBACK_SOURCE:
+        if(payload_length != 1){
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH, "Expected feedback source: 0 encoder, 1 experimental HFI.");
+            break;
+        }
+        if(!FOC_HFI_SelectFeedback(&hfoc, payload[0]))
+            Debug_SendCommandError(MSG_ERROR, msg_type, DEBUG_ERR_INVALID_STATE,
+                "Feedback switch requires fault-free stationary zero-current open-loop RUN. HFI additionally requires enabled injection and valid lock; encoder remains required.");
+        else Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+    case MSG_GET_HFI_INFO:
+        if(payload_length){
+            Debug_SendCommandError(MSG_INVALID_PAYLOAD, msg_type, DEBUG_ERR_INVALID_LENGTH, "HFI info has no payload.");
+            break;
+        }
+        response_payload[0] = hfoc.hfi.feedback_source;
+        response_payload[1] = (uint8_t)hfoc.hfi.status;
+        memcpy(response_payload + 2, &hfoc.hfi.angle_electrical, 4);
+        memcpy(response_payload + 6, &hfoc.hfi.signal_amplitude, 4);
+        memcpy(response_payload + 10, &hfoc.hfi.error_electrical, 4);
+        memcpy(response_payload + 14, &hfoc.hfi.speed_mechanical, 4);
+        Debug_SendBinaryResponse(MSG_HFI_INFO_REPLY, response_payload, 18);
         break;
 
     case MSG_FLASH_SAVE:

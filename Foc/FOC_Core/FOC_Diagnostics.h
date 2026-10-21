@@ -29,6 +29,7 @@ typedef struct FOC_Handle FOC_HandleTypeDef;
 
 /* Failed calibration, identification, tuning, or storage operation. */
 #define FOC_ERROR_OPERATION_FAILED (1u << 15)
+#define FOC_ERROR_HFI_FAULT (1u << 16) // Experimental feedback lost validity or injection current exceeded limit.
 
 void FOC_CheckErrors(FOC_HandleTypeDef *hfoc);
 void FOC_ClearLatchedErrors(FOC_HandleTypeDef *hfoc);
