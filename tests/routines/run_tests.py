@@ -1,6 +1,7 @@
 """Compile real C routines for ARM and execute them without target hardware."""
 import argparse
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -13,21 +14,30 @@ from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0, UC_AR
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compiler", default=shutil.which("arm-none-eabi-gcc"))
+    parser.add_argument("--optimized", action="store_true",
+                        help="Exercise size optimization and LTO; preserve test entry points")
     args = parser.parse_args()
     if args.compiler is None:
         parser.error("Supply --compiler with the path to arm-none-eabi-gcc")
     here = Path(__file__).resolve().parent
     root = here.parents[1]
+    test_names = re.findall(r"^int (test_\w+)\(void\)", (here / "test_routines.c").read_text(), re.MULTILINE)
+    if not test_names:
+        raise AssertionError("No compiled-C test entry points found")
     with tempfile.TemporaryDirectory(prefix="foc-routines-") as directory:
         elf_path = Path(directory) / "routines.elf"
         subprocess.run([
             args.compiler, "-mcpu=cortex-m3", "-mthumb", "-mfloat-abi=soft",
-            "-std=gnu11", "-O1", "-Wall", "-Wextra", "-Werror", "-fno-builtin",
+            "-std=gnu11", *(["-Oz", "-flto", "-fno-fast-math"] if args.optimized else ["-O1"]),
+            "-Wall", "-Wextra", "-Werror", "-fno-builtin",
+            # LTO otherwise internalizes test functions that only the emulator calls.
+            *([f"-Wl,--undefined={name}" for name in test_names] if args.optimized else []),
             "-nostdlib", "-Wl,-Ttext=0x10000,-Tdata=0x40000,-e,test_alignment_success",
             "-I" + str(here / "stubs"), "-I" + str(root / "Foc/FOC_Loops"),
             "-I" + str(root / "Foc/FOC_States"), "-I" + str(root / "Foc/Utils"),
             "-I" + str(root / "Foc/FOC_Core"),
             "-I" + str(root / "Foc/FOC_Drivers"),
+            "-I" + str(root / "Foc/Hardware_Drivers"),
             "-include", str(here / "stubs/encoder_sources.h"),
             "-include", str(here / "stubs/FOC_Handle.h"),
             str(here / "test_routines.c"),
@@ -35,6 +45,7 @@ def main():
             str(root / "Foc/FOC_Loops/FOC_CurrentSensorCalibration.c"),
             str(root / "Foc/FOC_Loops/FOC_EncoderCalibration.c"),
             str(root / "Foc/FOC_Drivers/FOC_Encoder.c"),
+            str(root / "Foc/Hardware_Drivers/AS5047P_Driver.c"),
             str(root / "Foc/FOC_Drivers/FOC_Calibration.c"),
             str(root / "Foc/FOC_Loops/FOC_MotorIdentification.c"),
             str(root / "Foc/FOC_Loops/FOC_PIDAutotune.c"),
@@ -48,7 +59,6 @@ def main():
             str(root / "Foc/FOC_States/FOC_States_Operation.c"),
             str(root / "Foc/FOC_Core/FOC_Diagnostics.c"),
             str(root / "Foc/FOC_Core/FOC_Configuration.c"),
-            str(root / "Foc/FOC_Drivers/FOC_HFI.c"),
             str(root / "Foc/Utils/Filters.c"),
             "-Wl,--start-group", "-lm", "-lc", "-lgcc", "-lnosys", "-Wl,--end-group", "-o", str(elf_path),
         ], check=True)
@@ -56,7 +66,9 @@ def main():
             elf = ELFFile(stream)
             segments = [(s["p_vaddr"], s.data()) for s in elf.iter_segments() if s["p_type"] == "PT_LOAD"]
             tests = {s.name: s["st_value"] for s in elf.get_section_by_name(".symtab").iter_symbols()
-                     if s.name.startswith("test_") and s["st_info"]["type"] == "STT_FUNC"}
+                     if s.name in test_names and s["st_info"]["type"] == "STT_FUNC"}
+        if set(tests) != set(test_names):
+            raise AssertionError("Compiler/linker did not retain every test entry point")
         for name, entry in sorted(tests.items()):
             cpu = Uc(UC_ARCH_ARM, UC_MODE_THUMB)
             cpu.mem_map(0x10000, 0x100000)

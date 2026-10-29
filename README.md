@@ -20,11 +20,9 @@ of the firmware source tree and STM32 build tools.
   multi-revolution measurements, progress, compensation and USB table transfers.
 - [Validated configuration](docs/configuration.md): discovered settings, absolute
   bounds, atomic group updates, functional targets and production/debug separation.
-- [Experimental HFI](docs/hfi.md): encoder/HFI angle comparison, feedback selection,
-  estimator limits and safety guards.
 - [Plotter installation and use](https://github.com/Rapidice2814/rapid-drive-plotter#readme).
 
-Current firmware version: **0.3.0**. USB protocol version: **9**. Firmware and
+Current firmware version: **0.3.0**. USB protocol version: **11**. Firmware and
 plotter compatibility is determined by the USB protocol version. Earlier USB
 command IDs from versions before 3 have different meanings: 0x00 is the bootloader
 command, not a version request. CAN command numbering is independent of USB.
@@ -114,6 +112,32 @@ Debug_Clang and Release_Clang presets also exist for ST Arm Clang, but are an
 alternative setup. The commands above use GCC. Each toolchain uses a separate
 build directory.
 
+All C sources, including application code, STM32 HAL and USB middleware, use
+`-Oz` and link-time optimization (LTO). This policy applies to both Debug and
+Release. `-Oz` prioritizes flash size while retaining most `-O2` optimizations;
+it is not a guarantee of the fastest execution for every routine. Function/data
+sections and linker garbage collection remove unused code. Precompiled runtime
+libraries retain their vendor build settings.
+
+Debug retains `-g3` symbols, but optimized code may inline functions and remove
+local variables, limiting source-level stepping. Release omits debug information.
+Fast-math remains disabled because fault validation depends on NaN/Inf checks.
+The GCC toolchain keeps configuration flags separate from the project-wide
+optimization policy so CMake's default Release `-O3` cannot override `-Oz`.
+
+The compiled-C regression suite supports the same optimization policy:
+
+```powershell
+python tests/routines/run_tests.py --optimized --compiler arm-none-eabi-gcc
+python tests/routines/check_build_optimization.py build/Release
+```
+
+These checks require the routine-test Python dependencies (`pyelftools` and
+`unicorn`). The build check verifies every C compile command, the reset vector,
+application bounds and the retained NOLOAD configuration reservation. Execution
+time and the 8 kHz sample deadline still require hardware measurement after a
+compiler/optimization change.
+
 Both linker scripts reserve 112 KiB for application flash and 16 KiB at
 0x0801C000 for persistent configuration, with 32 KiB RAM. The .permanent
 section is NOLOAD. A full chip erase removes saved configuration.
@@ -190,7 +214,7 @@ are documented in the plotter README.
 | --- | --- |
 | Foc/FOC_Core | Main handle, configuration, diagnostics, and USB discovery/telemetry |
 | Foc/FOC_Drivers | ADC, CAN, flash, USB transport, and supporting driver logic |
-| Foc/FOC_Loops | Current/speed/position control, identification, calibration, and HFI-related loops |
+| Foc/FOC_Loops | Current/speed/position control, identification, calibration and operational loops |
 | Foc/FOC_States | Startup, operation, stop/idle/fault, calibration, and storage state handling |
 | Foc/Hardware_Drivers | DRV8323, AS5047P, and WS2812B interfaces |
 | Foc/Utils and Foc/Sequencers | Numeric helpers, PID/filter code, timing, sounds, and lights |

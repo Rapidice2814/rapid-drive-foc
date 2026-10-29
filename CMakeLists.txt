@@ -27,6 +27,17 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 # Enable CMake support for ASM and C languages
 enable_language(C ASM)
 
+# Apply the same size-first optimization to application, HAL and USB code.
+# Keep IEEE NaN/Inf checks: fast-math is incompatible with fault validation.
+# CMake validates IPO support during generation. Its hosted check_ipo_supported
+# link probe is not suitable for this bare-metal startup/linker script.
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+add_compile_options(
+    $<$<COMPILE_LANGUAGE:C>:-Oz>
+    $<$<COMPILE_LANGUAGE:C>:-fno-fast-math>
+)
+add_link_options(-Oz -fno-fast-math)
+
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
 
@@ -52,7 +63,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_CAN.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Flash.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Utils.c
-    ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_HFI.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_USB.c
 
     ${CMAKE_SOURCE_DIR}/Foc/FOC_States/FOC_StateController.c

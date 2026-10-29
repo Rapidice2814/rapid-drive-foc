@@ -11,10 +11,9 @@ No control ISR observes a partially committed configuration group.
 `Foc/FOC_Core/FOC_Configuration.h` define the catalog. Array order supplies IDs;
 member keys such as `limits.max_dq_current` are the persistent identity. IDs are
 valid only for the discovered fingerprint. Groups currently cover Limits,
-Motor, Controller, HFI injection, and Encoder calibration voltage. Communication,
+Motor, Controller, and Encoder calibration voltage. Communication,
 encoder source/compensation, PID gains, calibration and storage retain their
-dedicated commands. Protocol 9 adds experimental encoder-seeded HFI feedback;
-its operating limits and comparison procedure are documented in [HFI](hfi.md).
+dedicated commands.
 
 Absolute min/max bounds live in `Foc/FOC_Core/FOC_Config.h` as `CONFIG_ABS_*`.
 Electrical/temperature ceilings reference the board constants in the same file.
@@ -63,7 +62,7 @@ updates cannot be split into independent writes without losing atomicity.
 
 Cross-field checks require undervoltage < overvoltage and the voltage limit <=
 undervoltage / sqrt(3), preserving the modulation envelope throughout the permitted
-bus-voltage range. HFI/calibration voltage
+bus-voltage range. Encoder calibration voltage
 not exceeding the configured d/q voltage limit, and valid positive R/L before
 enabling current feed-forward. At first boot, unchanged zero/unmeasured R/L may
 remain while other motor settings are configured; explicit R/L writes must be

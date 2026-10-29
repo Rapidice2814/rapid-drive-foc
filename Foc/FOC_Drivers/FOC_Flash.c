@@ -11,7 +11,8 @@
 
 // this variable is used to force the linker to include the .permanent section, which is where the flash data is stored. 
 // The actual data is read and written directly from flash using the FOC_FLASH_ReadData and FOC_FLASH_WriteData functions, so this variable is not used directly in the code.
-__attribute((section(".permanent"))) FLASH_DataTypeDef flash_data_storage; 
+/* KEEP in the linker script cannot retain an object already discarded by LTO. */
+__attribute__((used, section(".permanent"))) FLASH_DataTypeDef flash_data_storage;
 
 static_assert(sizeof(FLASH_DataTypeDef) % 8 == 0, "struct not aligned to 8 bytes"); // Ensure that the struct size is a multiple of 8 bytes, as required by the flash programming algorithm.
 static_assert(sizeof(FLASH_DataTypeDef) <= FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAGES, "struct size exceeds flash storage size");
@@ -47,11 +48,6 @@ static const FLASH_DataTypeDef flash_data_default_values = {
         .motor_temp_trip_level = MOTOR_MAX_TEMP,
         .max_dq_voltage = VOLTAGE_LIMIT * M_1_SQRT3F,
         .max_dq_current = MAX_DQ_CURRENT
-    },
-    .hfi = {
-        .hfi_enabled = 0,
-        .injection_amplitude = HFI_INJECTION_AMPLITUDE,
-        .injection_omega = HFI_INJECTION_OMEGA
     },
 };
 

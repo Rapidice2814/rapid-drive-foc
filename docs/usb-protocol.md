@@ -1,4 +1,4 @@
-# USB protocol reference (v9)
+# USB protocol reference (v11)
 
 Calibration control, progress and editable-table payloads are specified in
 [Calibration table transfers](calibration-tables.md).
@@ -80,9 +80,6 @@ or transaction ID. The plotter therefore keeps one command outstanding at a time
 | 0x39 | `MSG_SET_TARGET` |
 | 0x3A | `MSG_GET_TARGETS` |
 | 0x3B | `MSG_TARGETS_REPLY` |
-| 0x3C | `MSG_SET_FEEDBACK_SOURCE` |
-| 0x3D | `MSG_GET_HFI_INFO` |
-| 0x3E | `MSG_HFI_INFO_REPLY` |
 
 Response/error IDs occupy 0xFA through 0xFF.
 
@@ -264,9 +261,10 @@ Protocol 7 adds definition kind 3 (CAN cyclic messages), appends its count to
 device info, and includes its canonical rows in the definitions fingerprint.
 Protocol 8 adds kind 4 configuration metadata, its count, debug-write capability,
 atomic configuration commands and functional targets. The plotter supports
-protocols 6, 7, 8 and 9 explicitly. Protocol 9 retains protocol 8's device-info
-and catalog layouts and adds the runtime HFI feedback/status commands described
-in [HFI](hfi.md). Protocol 7 retains its 31-byte device-info layout
+protocols 6 through 11 explicitly. Protocol 11 retains protocol 8's five-catalog
+and device-info layout; command IDs 0x3C–0x3F are unassigned and are not reused.
+The current encoder source IDs and DMA behavior are described in
+[Encoder sources](encoder-calibration.md). Protocol 7 retains its 31-byte layout
 and four-list fingerprint, without validated configuration/target writes.
 Protocol 6 retains the 29-byte device-info layout
 and three-list fingerprint; its CAN catalog cannot be discovered, so cyclic-rate
@@ -481,7 +479,6 @@ the separate open-loop voltage routine.
 | 13 | FOC_ERROR_IBUS_OC |
 | 14 | FOC_ERROR_ENCODER_FAULT |
 | 15 | FOC_ERROR_OPERATION_FAILED |
-| 16 | FOC_ERROR_HFI_FAULT |
 
 ERROR requires at least one latched fault. Active faults are reevaluated from
 the hardware/measurements and latched automatically. State-changing requests

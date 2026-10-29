@@ -48,11 +48,14 @@
 
 
 static uint8_t is_even_parity(uint16_t data);
+/* Only one encoder may own the shared SPI peripheral at a time. */
+static AS5047P_HandleTypeDef * volatile dma_owner;
 static uint16_t AS5047P_TransmitCommand(AS5047P_HandleTypeDef *has5047p, uint16_t address14Bits, uint8_t rwBit);
 static uint16_t AS5047P_TransmitData(AS5047P_HandleTypeDef *has5047p, uint16_t address14Bits);
 
 
 AS5047P_StatusTypeDef AS5047P_SetPins(AS5047P_HandleTypeDef *has5047p, SPI_HandleTypeDef *hspi, GPIO_TypeDef *slave_select_port, uint16_t slave_select_pin){
+    has5047p->setup_complete = has5047p->pins_set = 0;
 	has5047p->hspi = hspi;
     has5047p->slave_select_port = slave_select_port;
     has5047p->slave_select_pin = slave_select_pin;
@@ -82,6 +85,8 @@ AS5047P_StatusTypeDef AS5047P_Init(AS5047P_HandleTypeDef *has5047p){
 
     if((settings1_ret & 0x3FFF) != SETTINGS1_SETTINGS) return AS5047P_ERROR; //if the settings are not set correctly, return error
     if((settings2_ret & 0x3FFF) != SETTINGS2_SETTINGS) return AS5047P_ERROR; //if the settings are not set correctly, return error
+    if((settings1_ret & 0x4000) || (settings2_ret & 0x4000) ||
+       !is_even_parity(settings1_ret) || !is_even_parity(settings2_ret)) return AS5047P_ERROR;
 
 
     has5047p->setup_complete = 1;
@@ -89,12 +94,14 @@ AS5047P_StatusTypeDef AS5047P_Init(AS5047P_HandleTypeDef *has5047p){
 }
 
 AS5047P_StatusTypeDef AS5047P_GetAngle(AS5047P_HandleTypeDef *has5047p, uint16_t *angle){
-    if(has5047p->pins_set == 0) return AS5047P_ERROR; //if the pins are not set, return error
+    if(!angle || !has5047p->pins_set || !has5047p->setup_complete) return AS5047P_ERROR;
 
-    AS5047P_TransmitCommand(has5047p, ANGLECOM, 1);
+    if(AS5047P_TransmitCommand(has5047p, ANGLECOM, 1) == 0xFFFF) return AS5047P_ERROR;
     uint16_t ret = AS5047P_TransmitCommand(has5047p, NOP, 1);
-
+    if((ret & 0x4000) || !is_even_parity(ret)) return AS5047P_ERROR;
     *angle = (ret & 0x3FFF);
+    has5047p->dma_angle = *angle;
+    has5047p->dma_ready = 1; /* Prime the first control sample during setup. */
 
     return AS5047P_OK;
 }
@@ -167,11 +174,11 @@ static uint16_t AS5047P_TransmitCommand(AS5047P_HandleTypeDef *has5047p, uint16_
     }
 
 
+    if(HAL_SPI_GetState(has5047p->hspi) != HAL_SPI_STATE_READY) return 0xFFFF;
 	HAL_GPIO_WritePin(has5047p->slave_select_port, has5047p->slave_select_pin, 0);
-	HAL_SPI_TransmitReceive(has5047p->hspi, (uint8_t*)&command, (uint8_t*)&received, 1, 100);
+    HAL_StatusTypeDef result = HAL_SPI_TransmitReceive(has5047p->hspi, (uint8_t*)&command, (uint8_t*)&received, 1, 1);
 	HAL_GPIO_WritePin(has5047p->slave_select_port, has5047p->slave_select_pin, 1);
-
-	return received;
+	return result == HAL_OK ? received : 0xFFFF;
 }
 
 static uint16_t AS5047P_TransmitData(AS5047P_HandleTypeDef *has5047p, uint16_t data14Bits){
@@ -184,11 +191,88 @@ static uint16_t AS5047P_TransmitData(AS5047P_HandleTypeDef *has5047p, uint16_t d
         command |= 0x8000; // Set the parity bit
     }
 
+    if(HAL_SPI_GetState(has5047p->hspi) != HAL_SPI_STATE_READY) return 0xFFFF;
 	HAL_GPIO_WritePin(has5047p->slave_select_port, has5047p->slave_select_pin, 0);
-	HAL_SPI_TransmitReceive(has5047p->hspi, (uint8_t*)&command, (uint8_t*)&received, 1, 100);
+    HAL_StatusTypeDef result = HAL_SPI_TransmitReceive(has5047p->hspi, (uint8_t*)&command, (uint8_t*)&received, 1, 1);
 	HAL_GPIO_WritePin(has5047p->slave_select_port, has5047p->slave_select_pin, 1);
+	return result == HAL_OK ? received : 0xFFFF;
+}
 
-	return received;
+/** @brief Releases DMA ownership before a stopped source change/reinitialization. */
+void AS5047P_StopAngleDMA(AS5047P_HandleTypeDef *encoder){
+    if(dma_owner == encoder || (!dma_owner && encoder->pins_set && encoder->hspi &&
+                               HAL_SPI_GetState(encoder->hspi) != HAL_SPI_STATE_READY)){
+        /* Detach first so an abort/error callback cannot restart the second frame. */
+        dma_owner = NULL;
+        HAL_SPI_Abort(encoder->hspi);
+        HAL_GPIO_WritePin(encoder->slave_select_port, encoder->slave_select_pin, GPIO_PIN_SET);
+    }
+    encoder->dma_stage = encoder->dma_ready = encoder->dma_error = 0;
+}
+
+/** @brief Begins an ANGLECOM command and NOP-response pair without blocking. */
+AS5047P_StatusTypeDef AS5047P_RequestAngleDMA(AS5047P_HandleTypeDef *encoder){
+    encoder->dma_ready = 0;
+    if(!encoder->setup_complete || !encoder->hspi || !encoder->hspi->hdmarx || !encoder->hspi->hdmatx ||
+       dma_owner || HAL_SPI_GetState(encoder->hspi) != HAL_SPI_STATE_READY){
+        encoder->dma_error = 1;
+        return AS5047P_ERROR;
+    }
+    encoder->dma_ready = encoder->dma_error = 0;
+    encoder->dma_tx = 0xFFFF; /* Read ANGLECOM, even parity. */
+    encoder->dma_stage = 1;
+    dma_owner = encoder;
+    HAL_GPIO_WritePin(encoder->slave_select_port, encoder->slave_select_pin, GPIO_PIN_RESET);
+    if(HAL_SPI_TransmitReceive_DMA(encoder->hspi, (uint8_t*)&encoder->dma_tx, (uint8_t*)&encoder->dma_rx, 1) != HAL_OK){
+        dma_owner = NULL;
+        encoder->dma_stage = 0; encoder->dma_error = 1;
+        HAL_GPIO_WritePin(encoder->slave_select_port, encoder->slave_select_pin, GPIO_PIN_SET);
+        return AS5047P_ERROR;
+    }
+    return AS5047P_OK;
+}
+
+/** @brief Returns only a validated result completed since the latest request. */
+AS5047P_StatusTypeDef AS5047P_GetAngleDMA(AS5047P_HandleTypeDef *encoder, uint16_t *angle){
+    if(!angle || !encoder->dma_ready || encoder->dma_error) return AS5047P_ERROR;
+    *angle = encoder->dma_angle;
+    return AS5047P_OK;
+}
+
+/** @brief Finishes the command frame, then clocks and validates its response. */
+void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *spi){
+    AS5047P_HandleTypeDef *encoder = dma_owner;
+    if(!encoder || encoder->hspi != spi) return;
+    HAL_GPIO_WritePin(encoder->slave_select_port, encoder->slave_select_pin, GPIO_PIN_SET);
+    if(encoder->dma_stage == 1){
+        encoder->dma_stage = 2;
+        encoder->dma_tx = 0; /* NOP, even parity; receive the ANGLECOM response. */
+        /* At <=170 MHz, 64 NOP cycles alone exceed the 350 ns CS-high minimum. */
+        for(unsigned i = 0; i < 64; i++) __NOP();
+        HAL_GPIO_WritePin(encoder->slave_select_port, encoder->slave_select_pin, GPIO_PIN_RESET);
+        if(HAL_SPI_TransmitReceive_DMA(spi, (uint8_t*)&encoder->dma_tx, (uint8_t*)&encoder->dma_rx, 1) == HAL_OK) return;
+        encoder->dma_error = 1;
+        HAL_GPIO_WritePin(encoder->slave_select_port, encoder->slave_select_pin, GPIO_PIN_SET);
+    }else{
+        uint16_t frame = encoder->dma_rx;
+        encoder->dma_error = (frame & 0x4000) || !is_even_parity(frame);
+        if(!encoder->dma_error){
+            encoder->dma_angle = frame & 0x3FFF;
+            encoder->dma_ready = 1;
+        }
+    }
+    encoder->dma_stage = 0;
+    dma_owner = NULL;
+}
+
+/** @brief Rejects an incomplete DMA result and releases encoder chip select. */
+void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *spi){
+    AS5047P_HandleTypeDef *encoder = dma_owner;
+    if(!encoder || encoder->hspi != spi) return;
+    encoder->dma_error = 1;
+    encoder->dma_ready = encoder->dma_stage = 0;
+    dma_owner = NULL;
+    HAL_GPIO_WritePin(encoder->slave_select_port, encoder->slave_select_pin, GPIO_PIN_SET);
 }
 
 

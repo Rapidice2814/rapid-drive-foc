@@ -68,6 +68,8 @@ extern DMA_HandleTypeDef hdma_usart3_rx;
 extern DMA_HandleTypeDef hdma_usart3_tx;
 extern UART_HandleTypeDef huart3;
 /* USER CODE BEGIN EV */
+extern DMA_HandleTypeDef hdma_spi2_rx;
+extern DMA_HandleTypeDef hdma_spi2_tx;
 
 /* USER CODE END EV */
 
@@ -393,5 +395,9 @@ void TIM7_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+/** @brief Dispatches SPI2 receive DMA completion/error events. */
+void DMA1_Channel6_IRQHandler(void){HAL_DMA_IRQHandler(&hdma_spi2_rx);}
+/** @brief Dispatches SPI2 transmit DMA errors. */
+void DMA2_Channel1_IRQHandler(void){HAL_DMA_IRQHandler(&hdma_spi2_tx);}
 
 /* USER CODE END 1 */

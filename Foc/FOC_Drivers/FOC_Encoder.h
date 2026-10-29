@@ -5,13 +5,17 @@
 #define FOC_ENCODER_LUT_SIZE 128U
 #define FOC_ENCODER_SOURCE_MAX 8U
 #ifndef FOC_ENCODER_SOURCE_LIST
-#define FOC_ENCODER_SOURCE_LIST(X) X(0, "AS5047P timer", FOC_EncoderInitTimer, FOC_EncoderReadTimer, 1)
+#define FOC_ENCODER_SOURCE_LIST(X) \
+    X(0, "Internal AS5047P quadrature", FOC_EncoderInitTimer, FOC_EncoderReadTimer, 1) \
+    X(1, "Internal AS5047P SPI DMA", FOC_EncoderInitSPI, FOC_EncoderReadSPI, 1) \
+    X(2, "External AS5047P SPI DMA", FOC_EncoderInitExternalSPI, FOC_EncoderReadSPI, 1) \
+    X(3, "External AS5047P quadrature", FOC_EncoderInitExternalTimer, FOC_EncoderReadTimer, 1)
 #endif
 typedef struct FOC_Handle FOC_HandleTypeDef;
 
 /* Stable source IDs are persisted. Add a descriptor/reader, not plotter code.
    Readers provide absolute mechanical radians in [0, 2pi), independent of zero.
-   Electrical-only estimators (e.g. HFI) need an explicit mechanical adapter. */
+   All sources share the same calibration, unwrapping and speed pipeline. */
 typedef uint8_t (*FOC_EncoderReader)(FOC_HandleTypeDef *, float *);
 typedef struct {
     uint8_t id;
@@ -30,6 +34,10 @@ const FOC_EncoderSourceTypeDef *FOC_EncoderSources(unsigned *count);
 const FOC_EncoderSourceTypeDef *FOC_EncoderSource(uint8_t id);
 uint8_t FOC_EncoderReadTimer(FOC_HandleTypeDef *hfoc, float *angle);
 uint8_t FOC_EncoderInitTimer(FOC_HandleTypeDef *hfoc);
+uint8_t FOC_EncoderInitSPI(FOC_HandleTypeDef *hfoc);
+uint8_t FOC_EncoderInitExternalSPI(FOC_HandleTypeDef *hfoc);
+uint8_t FOC_EncoderInitExternalTimer(FOC_HandleTypeDef *hfoc);
+uint8_t FOC_EncoderReadSPI(FOC_HandleTypeDef *hfoc, float *angle);
 uint8_t FOC_EncoderInitialize(FOC_HandleTypeDef *hfoc);
 uint8_t FOC_EncoderReadRaw(FOC_HandleTypeDef *hfoc, float *angle);
 float FOC_EncoderLUT(const float *table, float angle);

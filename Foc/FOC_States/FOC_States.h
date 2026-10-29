@@ -56,6 +56,7 @@ typedef enum
     FOC_STATE_COUNT
 } FOC_StateTypeDef;
 
+
 /**
  * @brief Identifies maintenance states that must execute with outputs disabled.
  * @note Fault polling still latches faults but does not preempt these actions.

@@ -117,6 +117,11 @@ static void FOC_StateChecklist(FOC_HandleTypeDef* hfoc){
                 requested = FOC_STATE_CURRENT_SENSOR_CALIBRATION;
             break;
         case 1:
+            if(!hfoc->encoder_runtime.healthy){
+                /* Missing encoder is not a request for automatic sensorless motion. */
+                FOC_SetState(hfoc, FOC_STATE_STOP, FOC_STATE_NONE);
+                return;
+            }
             if(hfoc->flash_data.encoder.offset_valid != 1)
                 requested = FOC_STATE_ALIGNMENT;
             break;
@@ -204,13 +209,6 @@ FOC_StateTransitionTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDe
     
     hfoc->previous_state = hfoc->state;
     hfoc->state = state;
-    if(state != FOC_STATE_RUN && (hfoc->hfi.active || hfoc->hfi.feedback_source)){
-        if(hfoc->hfi.feedback_source){
-            PID_Reset(&hfoc->pid_current_d); PID_Reset(&hfoc->pid_current_q);
-            PID_Reset(&hfoc->pid_speed); PID_Reset(&hfoc->pid_position);
-        }
-        FOC_HFI_Init(hfoc);
-    }
     if(state != FOC_STATE_CHECKLIST && hfoc->next_state != FOC_STATE_CHECKLIST){
         hfoc->checklist_step = 0;
     }

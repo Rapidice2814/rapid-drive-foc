@@ -7,7 +7,8 @@
 #include "Utils.h"
 #include "FOC_Config.h"
 #include "FOC_Flash.h"
-#include "FOC_HFI.h"
+#include "Filters.h"
+#include "AS5047P_Driver.h"
 typedef struct {float a, b, c;} PhaseCurrentsTypeDef;
 typedef PhaseCurrentsTypeDef PhaseVoltagesTypeDef;
 typedef struct {float alpha, beta;} ABVoltagesTypeDef;
@@ -19,12 +20,12 @@ struct FOC_Handle {
     FOC_StateTypeDef state, previous_state, next_state;
     uint32_t active_errors, latched_errors;
     uint8_t adc_calibrated;
-    HFITypeDef hfi;
     BiquadFilter dq_current_d_filter, dq_current_q_filter;
     FOC_AlignmentContextTypeDef alignment;
     FOC_CurrentCalibrationContextTypeDef current_calibration;
     FOC_EncoderCalibrationContextTypeDef encoder_calibration;
     FOC_EncoderRuntimeTypeDef encoder_runtime;
+    AS5047P_HandleTypeDef has5047p;
     volatile uint32_t *pencoder_count;
     FOC_IdentificationContextTypeDef identification;
     FOC_PIDAutotuneContextTypeDef pid_autotune;

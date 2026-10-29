@@ -170,6 +170,8 @@ static uint16_t DRV8323_TransmitCommand(DRV8323_HandleTypeDef *hdrv8323, uint8_t
 
 	command = ((uint16_t)(rwBit & 0x01)<<15) | ((uint16_t)(address4Bits & 0x0F) << 11) | (data11Bits & 0x7FF);
 
+    /* Never assert a second chip select during an encoder DMA transaction. */
+    if(HAL_SPI_GetState(hdrv8323->hspi) != HAL_SPI_STATE_READY) return 0xFFFF;
 	HAL_GPIO_WritePin(hdrv8323->slave_select_port, hdrv8323->slave_select_pin, 0);
 	HAL_SPI_TransmitReceive(hdrv8323->hspi, (uint8_t*)&command, (uint8_t*)&received, 1, 100);
 	HAL_GPIO_WritePin(hdrv8323->slave_select_port, hdrv8323->slave_select_pin, 1);

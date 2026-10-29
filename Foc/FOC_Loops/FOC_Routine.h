@@ -171,7 +171,6 @@ typedef struct {
     uint16_t forward_count[FOC_ENCODER_LUT_SIZE], reverse_count[FOC_ENCODER_LUT_SIZE];
     float reference_raw, last_raw, raw_relative, voltage, max_disagreement;
     uint16_t step, progress;
-    uint32_t saved_hfi;
     uint8_t direction, samples, saved_anticog_ff, saved_current_ff;
     uint8_t saved_anticog_valid, source, candidate_valid;
     uint8_t pole_pairs, motor_direction, revolutions;

@@ -66,28 +66,6 @@
 #define MAX_DQ_CURRENT 5.0f //[A]
 
 
-/* HFI Parameters */
-#define HFI_INJECTION_OMEGA (1000.0 * M_2PIF)
-#define HFI_INJECTION_AMPLITUDE 0.2f
-
-#define HFI_CURRENT_LPF_CUTOFF_FREQ 200.0f // [Hz], cutoff frequency of the low-pass filter for the HFI currents
-/* Experimental rotating-carrier HFI; defaults favor comparison, not speed. */
-#define HFI_DEMOD_LPF_HZ 40.0f
-#define HFI_SALIENCY_POLARITY 1.0f // +1 for Ld < Lq, -1 for Ld > Lq
-#define HFI_DEMOD_PHASE_CORRECTION 0.0f // carrier rad; tune only for measured ADC/PWM delay
-#define HFI_PLL_KP 88.85766f
-#define HFI_PLL_KI 3947.8418f
-#define HFI_MIN_SIGNAL_AMPS 0.002f
-#define HFI_MIN_SALIENCY_RATIO 0.02f
-#define HFI_MAX_SALIENCY_RATIO 0.8f
-#define HFI_MAX_ELECTRICAL_SPEED 50.0f // rad/s; no high-speed BEMF handoff
-#define HFI_MAX_REFERENCE_ERROR 0.35f // electrical rad, including mechanical cycle-slip check
-#define HFI_MAX_TRACKING_ERROR 0.25f // electrical rad
-#define HFI_SETTLE_SECONDS 0.2f
-#define HFI_LOCK_SECONDS 0.1f
-#define HFI_CURRENT_TRIP_FACTOR 1.1f // immediate trip relative to configured d/q current limit
-
-
 /* Absolute production-API bounds. These are board/firmware capabilities, not
  * editable runtime limits. Widening them requires hardware review/rebuild.
  * Runtime settings must fit these ranges and satisfy cross-field validators. */
@@ -110,10 +88,6 @@
 #define CONFIG_ABS_TORQUE_CONSTANT_MAX 1000.0f         // Nm/A
 #define CONFIG_ABS_BANDWIDTH_MIN 0.001f                // rad/s
 #define CONFIG_ABS_BANDWIDTH_MAX 5000.0f               // rad/s
-#define CONFIG_ABS_HFI_AMPLITUDE_MIN 0.0f              // V, zero disables injection amplitude
-#define CONFIG_ABS_HFI_AMPLITUDE_MAX CONFIG_ABS_VOLTAGE_MAX // V
-#define CONFIG_ABS_HFI_OMEGA_MIN 3141.5927f            // rad/s (500 Hz)
-#define CONFIG_ABS_HFI_OMEGA_MAX 12566.371f            // rad/s (2000 Hz; at most sample_rate/4)
 #define CONFIG_ABS_PID_GAIN_MIN 0.0f                  // units depend on controller/gain
 #define CONFIG_ABS_PID_GAIN_MAX 1000000.0f             // numerical bound, not a stability guarantee
 #define CONFIG_ABS_SPEED_TARGET_MIN (-10000.0f)       // rad/s

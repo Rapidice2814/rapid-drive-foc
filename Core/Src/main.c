@@ -143,6 +143,9 @@ int main(void)
   MX_CORDIC_Init();
   MX_USB_Device_Init();
   /* USER CODE BEGIN 2 */
+  /* Deselect both encoders before driver setup uses their shared SPI bus. */
+  HAL_GPIO_WritePin(AS_NCS_GPIO_Port, AS_NCS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(AS_NCS_EXT_GPIO_Port, AS_NCS_EXT_Pin, GPIO_PIN_SET);
   FOC_Setup();
   /* USER CODE END 2 */
 
@@ -972,7 +975,8 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(PWM_AUX_GPIO_Port, PWM_AUX_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, DEBUG_LED1_Pin|DEBUG_LED0_Pin|PB2_Pin|AS_NCS_EXT_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, DEBUG_LED1_Pin|DEBUG_LED0_Pin|PB2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(AS_NCS_EXT_GPIO_Port, AS_NCS_EXT_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(AS_NCS_GPIO_Port, AS_NCS_Pin, GPIO_PIN_SET);

@@ -22,12 +22,43 @@ IDs, printable ASCII names (1-31 bytes), initialization callbacks, read callback
 and calibration capability. IDs/names must be unique; at most eight sources are
 supported. IDs are persisted and must not change meaning across releases.
 
-Production source 0 is `AS5047P timer`. Its backend initializes the sensor and
-seeds the quadrature counter from the absolute SPI angle. Normal sampling retains
-the 4096-count timer path; no per-sample SPI transactions are introduced. Only the
-selected source is initialized. Failed sensor initialization leaves USB available
-in ERROR; applying that source again retries setup. Flash load initializes the
-stored source too.
+The saved `flash_data.encoder.source_id` selects one of four backends:
+
+| ID | Angle source | SPI select | Runtime input |
+| --- | --- | --- | --- |
+| 0 (default) | Internal AS5047P quadrature | AS_NCS | ENC_A/ENC_B, TIM3 |
+| 1 | Internal AS5047P SPI DMA | AS_NCS | 14-bit SPI angle |
+| 2 | External AS5047P SPI DMA | AS_NCS_EXT | 14-bit SPI angle |
+| 3 | External AS5047P quadrature | AS_NCS_EXT | ENC_A/ENC_B, TIM3 |
+
+Quadrature setup uses blocking SPI to configure the selected sensor and seed
+TIM3 from its absolute angle; runtime reads the existing 4096-count timer.
+External quadrature shares PB4/PB5 with internal quadrature. Only the selected
+sensor may drive these inputs: firmware selection cannot disconnect two wired
+output drivers. Both encoder chip selects are deasserted before shared SPI setup.
+
+SPI-only setup uses blocking configuration and an initial angle. Runtime uses
+SPI2 receive DMA1 channel 6 and transmit DMA2 channel 1, normal 16-bit transfers.
+Two frames (ANGLECOM followed by NOP) produce each validated 14-bit angle; no
+blocking SPI read occurs in the runtime angle reader. The first frame's callback
+starts the response frame after the required chip-select-high gap. DMA buffers
+belong to the encoder handle, never to a returning stack frame.
+
+The next transfer is scheduled at the end of the ADC/control iteration, after
+foreground shared-bus work. The following iteration uses the completed sample,
+so SPI feedback has approximately one sample of acquisition latency. Missing,
+failed or invalid-parity/error-flag replies mark the source unhealthy; RUN
+latches the encoder fault and disables output instead of reusing stale data.
+There is no timeout-based blocking wait in the angle reader. Runtime DMA IRQs
+are below the existing ADC/DMA priority. Bus ownership and chip selects prevent
+simultaneous encoder/gate-driver transfers. Source changes abort outstanding DMA
+before rebinding the chip select. DMA wiring/IRQ additions live in CubeMX USER
+sections, preserving them during regeneration.
+
+Only the selected source is initialized. Failed initialization leaves USB
+available for recovery; applying the source again retries setup. Flash load
+initializes the stored source. Format 2 layout and CRC offsets are unchanged;
+12 unused bytes remain reserved, so existing format-2 records stay readable.
 
 Readers return a healthy absolute mechanical angle in radians, independent of
 stored zero/correction. Initialization/read callbacks must not enable motor
@@ -43,9 +74,6 @@ X(7, "Other absolute encoder", OtherEncoder_Init, OtherEncoder_Read, 1)
 
 The plotter discovers names/IDs/capabilities from the driver. No Python source
 list needs changing. Tests build a second mock backend through this same registry.
-The physical encoder backend is separate from the experimental [HFI feedback](hfi.md)
-selector. HFI seeds electrical polarity and mechanical origin from this aligned
-encoder, which remains sampled independently as a safety reference.
 
 Selection requires stationary IDLE/ERROR (absolute speed <= 0.1 rad/s). Changing
 sources invalidates alignment, correction, and anti-cogging, resets estimator
@@ -66,7 +94,7 @@ The Start/Update/Finish routine commands a stator field independently of the
 encoder position PID. It locks for 300 ms, then steps through 1-8 mechanical
 revolutions in each direction (default three), using 1024 positions per revolution. Each position
 settles for 10 ms before eight ADC-synchronous samples are accumulated. Signed
-unwrapping tracks complete turns. HFI and current/anti-cogging feedforward are
+unwrapping tracks complete turns. Current/anti-cogging feedforward are
 temporarily disabled; the old correction is bypassed, not overwritten.
 
 Default excitation is 0.5 V (`flash_data.encoder.calibration_voltage`). Voltage
@@ -111,3 +139,5 @@ The simulator exercises permissions, progress, cancellation and simulated saves,
 not encoder physics. Executable C tests use the real calibration/provider code
 with injected periodic angle error, including interpolation/wraparound, source
 initialization/recovery, cancellation, CRC validation, and RAM rollback.
+
+SPI frame/parity behavior follows the [AS5047P datasheet](https://look.ams-osram.com/m/d05ee39221f9857/original/AS5047P-DS000324.pdf).

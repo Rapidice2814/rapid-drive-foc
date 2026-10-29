@@ -63,6 +63,9 @@ extern DMA_HandleTypeDef hdma_usart3_tx;
 /* USER CODE END ExternalFunctions */
 
 /* USER CODE BEGIN 0 */
+/* Dedicated SPI2 channels; ADC/UART/TIM retain DMA1 channels 1 through 5. */
+DMA_HandleTypeDef hdma_spi2_rx;
+DMA_HandleTypeDef hdma_spi2_tx;
 
 /* USER CODE END 0 */
 
@@ -602,6 +605,33 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi)
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
     /* USER CODE BEGIN SPI2_MspInit 1 */
+    __HAL_RCC_DMA2_CLK_ENABLE();
+    hdma_spi2_rx.Instance = DMA1_Channel6;
+    hdma_spi2_rx.Init.Request = DMA_REQUEST_SPI2_RX;
+    hdma_spi2_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
+    hdma_spi2_rx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_spi2_rx.Init.MemInc = DMA_MINC_DISABLE;
+    hdma_spi2_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
+    hdma_spi2_rx.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
+    hdma_spi2_rx.Init.Mode = DMA_NORMAL;
+    hdma_spi2_rx.Init.Priority = DMA_PRIORITY_HIGH;
+    if(HAL_DMA_Init(&hdma_spi2_rx) != HAL_OK) Error_Handler();
+    __HAL_LINKDMA(hspi, hdmarx, hdma_spi2_rx);
+    hdma_spi2_tx.Instance = DMA2_Channel1;
+    hdma_spi2_tx.Init.Request = DMA_REQUEST_SPI2_TX;
+    hdma_spi2_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+    hdma_spi2_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_spi2_tx.Init.MemInc = DMA_MINC_DISABLE;
+    hdma_spi2_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
+    hdma_spi2_tx.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
+    hdma_spi2_tx.Init.Mode = DMA_NORMAL;
+    hdma_spi2_tx.Init.Priority = DMA_PRIORITY_HIGH;
+    if(HAL_DMA_Init(&hdma_spi2_tx) != HAL_OK) Error_Handler();
+    __HAL_LINKDMA(hspi, hdmatx, hdma_spi2_tx);
+    HAL_NVIC_SetPriority(DMA1_Channel6_IRQn, 1, 0);
+    HAL_NVIC_EnableIRQ(DMA1_Channel6_IRQn);
+    HAL_NVIC_SetPriority(DMA2_Channel1_IRQn, 1, 0);
+    HAL_NVIC_EnableIRQ(DMA2_Channel1_IRQn);
 
     /* USER CODE END SPI2_MspInit 1 */
 
@@ -633,6 +663,10 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef* hspi)
     HAL_GPIO_DeInit(GPIOB, GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15);
 
     /* USER CODE BEGIN SPI2_MspDeInit 1 */
+    HAL_DMA_DeInit(hspi->hdmarx);
+    HAL_DMA_DeInit(hspi->hdmatx);
+    HAL_NVIC_DisableIRQ(DMA1_Channel6_IRQn);
+    HAL_NVIC_DisableIRQ(DMA2_Channel1_IRQn);
 
     /* USER CODE END SPI2_MspDeInit 1 */
   }

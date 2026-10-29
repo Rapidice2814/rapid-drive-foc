@@ -127,9 +127,6 @@ FOC_ConfigResult FOC_ConfigurationSet(FOC_HandleTypeDef *h, uint8_t group,
         return reject(DEBUG_ERR_OUT_OF_RANGE, "Bus undervoltage trip must be below overvoltage trip.");
     if(group == FOC_CONFIG_LIMITS && VALUE(MAX_VOLTAGE) > VALUE(UNDERVOLTAGE) * M_1_SQRT3F)
         return reject(DEBUG_ERR_OUT_OF_RANGE, "Voltage limit must fit undervoltage trip / sqrt(3) across the permitted bus range.");
-    if((group == FOC_CONFIG_LIMITS || group == FOC_CONFIG_HFI) &&
-       (!isfinite(VALUE(HFI_AMPLITUDE)) || VALUE(HFI_AMPLITUDE) > VALUE(MAX_VOLTAGE)))
-        return reject(DEBUG_ERR_OUT_OF_RANGE, "HFI injection amplitude must not exceed the configured voltage limit.");
     if((group == FOC_CONFIG_LIMITS || group == FOC_CONFIG_ENCODER) &&
        (!isfinite(VALUE(CAL_VOLTAGE)) || VALUE(CAL_VOLTAGE) > VALUE(MAX_VOLTAGE)))
         return reject(DEBUG_ERR_OUT_OF_RANGE, "Encoder calibration voltage must not exceed the configured voltage limit.");
@@ -142,7 +139,6 @@ FOC_ConfigResult FOC_ConfigurationSet(FOC_HandleTypeDef *h, uint8_t group,
         if(changed[i]) memcpy((uint8_t*)&h->flash_data + fields[i].offset, &candidate[i], fields[i].size);
     }
     if(any_changed){
-        FOC_HFI_Init(h);
         h->flash_data.controller.anticogging_data_valid = 0;
         h->flash_data.controller.anticogging_FF_enabled = 0;
         if(group == FOC_CONFIG_MOTOR && (changed[FOC_CONFIG_POLE_PAIRS] || changed[FOC_CONFIG_DIRECTION])){

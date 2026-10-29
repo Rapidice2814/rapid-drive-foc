@@ -60,7 +60,36 @@ uint8_t FOC_EncoderInitTimer(FOC_HandleTypeDef *handle){
     return HAL_TIM_Base_Start(&htim3) == HAL_OK;
 }
 
+/** @brief Configures one physical encoder; runtime SPI reads are DMA-only. */
+static uint8_t encoder_init_spi(FOC_HandleTypeDef *handle, GPIO_TypeDef *port, uint16_t pin){
+    handle->pencoder_count = NULL;
+    if(HAL_TIM_Base_Stop(&htim3) != HAL_OK) return 0;
+    HAL_GPIO_WritePin(AS_NCS_GPIO_Port, AS_NCS_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(AS_NCS_EXT_GPIO_Port, AS_NCS_EXT_Pin, GPIO_PIN_SET);
+    uint16_t initial;
+    return AS5047P_SetPins(&handle->has5047p, &hspi2, port, pin) == AS5047P_OK &&
+           AS5047P_Init(&handle->has5047p) == AS5047P_OK &&
+           AS5047P_GetAngle(&handle->has5047p, &initial) == AS5047P_OK;
+}
+/** @brief Selects the internal chip's SPI-only DMA backend. */
+uint8_t FOC_EncoderInitSPI(FOC_HandleTypeDef *handle){
+    return encoder_init_spi(handle, AS_NCS_GPIO_Port, AS_NCS_Pin);
+}
+/** @brief Selects the external chip on CubeMX's AS_NCS_EXT pin. */
+uint8_t FOC_EncoderInitExternalSPI(FOC_HandleTypeDef *handle){
+    return encoder_init_spi(handle, AS_NCS_EXT_GPIO_Port, AS_NCS_EXT_Pin);
+}
+/** @brief Seeds the shared ENC_A/ENC_B timer from the external chip over SPI. */
+uint8_t FOC_EncoderInitExternalTimer(FOC_HandleTypeDef *handle){
+    if(!encoder_init_spi(handle, AS_NCS_EXT_GPIO_Port, AS_NCS_EXT_Pin) ||
+       FOC_SetEncoderPointer(handle, &htim3.Instance->CNT) != FOC_OK) return 0;
+    return HAL_TIM_Base_Start(&htim3) == HAL_OK;
+}
+
 void FOC_Setup(){
+    /* Both encoder selects must be inactive before any shared-bus access. */
+    HAL_GPIO_WritePin(AS_NCS_GPIO_Port, AS_NCS_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(AS_NCS_EXT_GPIO_Port, AS_NCS_EXT_Pin, GPIO_PIN_SET);
 
     FOC_Init(&hfoc); 
 
@@ -126,6 +155,9 @@ void FOC_Setup(){
 
     PID_Init(&hfoc.pid_speed, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_speed, 0);
     PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_position, 0);
+    /* Filtered currents remain available for diagnostics; PID uses raw d/q. */
+    biquad_filter_init(&hfoc.dq_current_d_filter, BIQUAD_LOW_PASS, 200.0f, CURRENT_LOOP_FREQUENCY, 0.70710678f);
+    biquad_filter_init(&hfoc.dq_current_q_filter, BIQUAD_LOW_PASS, 200.0f, CURRENT_LOOP_FREQUENCY, 0.70710678f);
 
 
     /* USB Debug */
@@ -141,7 +173,9 @@ void FOC_Setup(){
     Debug_SendTextResponse("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);
     HAL_GPIO_WritePin(DEBUG_LED0_GPIO_Port, DEBUG_LED0_Pin, GPIO_PIN_SET);
 
-    FOC_HFI_Init(&hfoc);
+    if((hfoc.flash_data.encoder.source_id == 1 || hfoc.flash_data.encoder.source_id == 2) && encoder_ready)
+        AS5047P_RequestAngleDMA(&hfoc.has5047p);
+
 }
 
 
@@ -158,7 +192,8 @@ void FOC_Loop(){
         float ibus = CalculateBusCurrent(hfoc.adc_values.phase_current, hfoc.phase_voltage, hfoc.adc_values.vbus);
         hfoc.ibus = 0.99f * hfoc.ibus + 0.01f * ibus;
 
-        if(FOC_UpdateEncoder(&hfoc, CURRENT_LOOP_FREQUENCY) != FOC_OK){
+        if(FOC_UpdateEncoder(&hfoc, CURRENT_LOOP_FREQUENCY) != FOC_OK &&
+           hfoc.state == FOC_STATE_RUN){
             FOC_SetError(&hfoc, FOC_ERROR_ENCODER_FAULT);
         }
 
@@ -177,6 +212,10 @@ void FOC_Loop(){
         calculate_execution_time(&hfoc.execution_time.usb_debug_max, usb_debug_start_time);
         
         FOC_IncrementTick(&hfoc);
+        /* Schedule only after all foreground setup/driver/USB work. The next
+           sample consumes the result; callbacks never execute control code. */
+        if((hfoc.flash_data.encoder.source_id == 1 || hfoc.flash_data.encoder.source_id == 2) && hfoc.encoder_runtime.initialized)
+            AS5047P_RequestAngleDMA(&hfoc.has5047p);
     }
 
     calculate_execution_time(&hfoc.execution_time.loop_max, start_time);

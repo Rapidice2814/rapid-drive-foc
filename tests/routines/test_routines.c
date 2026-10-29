@@ -27,124 +27,7 @@ static void config_ready(FOC_HandleTypeDef *h){
     h->flash_data.motor.pole_pairs = 11;
     h->flash_data.motor.torque_constant = 0.02f;
     h->flash_data.controller.current_control_bandwidth = 500;
-    h->flash_data.hfi.injection_amplitude = 0.2f;
-    h->flash_data.hfi.injection_omega = 1000;
     h->flash_data.encoder.calibration_voltage = 0.5f;
-}
-
-/** @brief Supplies a zero-target controller for deterministic carrier-response tests. */
-static void hfi_ready(FOC_HandleTypeDef *h){
-    config_ready(h);
-    h->state = FOC_STATE_RUN;
-    h->adc_calibrated = h->encoder_runtime.healthy = h->flash_data.encoder.offset_valid = 1;
-    h->adc_values.vbus = 24;
-    h->flash_data.hfi.hfi_enabled = 1;
-    h->flash_data.hfi.injection_omega = HFI_INJECTION_OMEGA;
-    h->flash_data.hfi.injection_amplitude = 0.2f;
-    FOC_HFI_Init(h);
-    /* Current feedback filtering must be initialized, not silently bypassed. */
-    if(!h->dq_current_d_filter.is_initialized || !h->dq_current_q_filter.is_initialized) abort();
-    FOC_HFI_Update(h, 0, 0);
-}
-
-/** @brief Analytical sampled inductive positive/negative sequence response.
- * @note Generated from imposed rotor angle and carrier voltage, never the HFI estimate.
- */
-static uint8_t hfi_sample(FOC_HandleTypeDef *h, float physical_angle, float speed, float saliency){
-    float phase = h->hfi.injection_phase + h->flash_data.hfi.injection_omega / CURRENT_LOOP_FREQUENCY * 0.5f;
-    float sign = h->flash_data.motor.direction ? -1 : 1;
-    h->encoder_angle_electrical = sign * physical_angle;
-    normalize_angle_0_2pi(&h->encoder_angle_electrical);
-    h->encoder_angle_mechanical_unwrapped = 12.0f + sign * physical_angle / h->flash_data.motor.pole_pairs;
-    h->encoder_speed_electrical = sign * speed;
-    h->encoder_speed_mechanical = sign * speed / h->flash_data.motor.pole_pairs;
-    return FOC_HFI_Update(h, sinf(phase) - saliency * sinf(2 * physical_angle - phase),
-                            -cosf(phase) + saliency * cosf(2 * physical_angle - phase));
-}
-
-int test_hfi_estimates_saliency_axis_and_preserves_encoder_origin(void){
-    for(unsigned reverse = 0; reverse < 2; reverse++){
-        FOC_HandleTypeDef h = {0}; hfi_ready(&h);
-        h.flash_data.motor.direction = reverse;
-        for(unsigned i = 0; i < 3200; i++) CHECK(hfi_sample(&h, 3.7f, 0, 0.2f));
-        CHECK(h.hfi.seeded && h.hfi.valid && h.hfi.locked);
-        CHECK(fabsf(h.hfi.error_electrical) < 0.01f && fabsf(h.hfi.error_mechanical) < 0.002f);
-        CHECK(fabsf(h.hfi.saliency_ratio - 0.2f) < 0.005f);
-        CHECK(FOC_HFI_SelectFeedback(&h, FOC_FEEDBACK_HFI));
-        CHECK(FOC_FeedbackElectricalAngle(&h) == h.hfi.angle_electrical);
-        CHECK(FOC_FeedbackMechanicalAngle(&h) == h.hfi.angle_mechanical_unwrapped);
-        CHECK(h.encoder_angle_mechanical_unwrapped != 0);
-    }
-    return 0;
-}
-
-int test_hfi_tracks_across_electrical_wrap_without_readjusting_to_encoder(void){
-    FOC_HandleTypeDef h = {0}; hfi_ready(&h);
-    float theta = 6.2f;
-    for(unsigned i = 0; i < 3200; i++) CHECK(hfi_sample(&h, theta, 0, 0.2f));
-    CHECK(h.hfi.valid);
-    for(unsigned i = 0; i < 3200; i++){
-        theta += 4.0f / CURRENT_LOOP_FREQUENCY;
-        CHECK(hfi_sample(&h, theta, 4, 0.2f));
-    }
-    CHECK(h.hfi.valid && fabsf(h.hfi.error_electrical) < 0.1f);
-    CHECK(fabsf(h.hfi.speed_mechanical - 4.0f / h.flash_data.motor.pole_pairs) < 0.05f);
-    /* Reference-only bias must appear in error, not be fed back into the observer. */
-    float before = h.hfi.angle_electrical;
-    float phase = h.hfi.injection_phase + h.flash_data.hfi.injection_omega / CURRENT_LOOP_FREQUENCY * 0.5f;
-    h.encoder_angle_electrical += 0.1f;
-    CHECK(FOC_HFI_Update(&h, sinf(phase) - 0.2f * sinf(2 * theta - phase),
-                              -cosf(phase) + 0.2f * cosf(2 * theta - phase)));
-    float change = h.hfi.angle_electrical - before; normalize_angle_pm_pi(&change);
-    CHECK(fabsf(change) < 0.01f);
-    return 0;
-}
-
-int test_hfi_rejects_no_saliency_and_wrong_axis_without_false_lock(void){
-    for(unsigned wrong_axis = 0; wrong_axis < 2; wrong_axis++){
-        FOC_HandleTypeDef h = {0}; hfi_ready(&h);
-        for(unsigned i = 0; i < 3200; i++) CHECK(hfi_sample(&h, 0.4f, 0, wrong_axis ? -0.2f : 0));
-        CHECK(!h.hfi.locked && !h.hfi.valid);
-        CHECK(!FOC_HFI_SelectFeedback(&h, FOC_FEEDBACK_HFI));
-        CHECK(!h.hfi.feedback_source);
-    }
-    return 0;
-}
-
-int test_hfi_selection_guards_loss_stop_and_independent_handles(void){
-    FOC_HandleTypeDef h = {0}, other = {0}; hfi_ready(&h); hfi_ready(&other);
-    for(unsigned i = 0; i < 3200; i++) CHECK(hfi_sample(&h, 0.4f, 0, 0.2f));
-    CHECK(h.hfi.valid && !other.hfi.seeded && !other.hfi.samples);
-    h.dq_current_setpoint.q = 1;
-    CHECK(!FOC_HFI_SelectFeedback(&h, 1)); h.dq_current_setpoint.q = 0;
-    h.encoder_speed_mechanical = 1;
-    CHECK(!FOC_HFI_SelectFeedback(&h, 1)); h.encoder_speed_mechanical = 0;
-    CHECK(!FOC_HFI_SelectFeedback(&h, 2));
-    CHECK(FOC_HFI_SelectFeedback(&h, 1));
-    CHECK(!FOC_HFI_Update(&h, NAN, 0));
-    FOC_SetError(&h, FOC_ERROR_HFI_FAULT);
-    CHECK(h.state == FOC_STATE_ERROR && h.hdrv8323.high_impedance && !h.hfi.feedback_source);
-    CHECK(h.latched_errors & FOC_ERROR_HFI_FAULT);
-    h.latched_errors = h.active_errors = 0; hfi_ready(&h);
-    h.hfi.feedback_source = FOC_FEEDBACK_HFI;
-    CHECK(FOC_SetState(&h, FOC_STATE_STOP, FOC_STATE_NONE) == FOC_STATETRANSITION_OK);
-    CHECK(!h.hfi.feedback_source && !h.hfi.active && !h.hfi.valid);
-    hfi_ready(&h);
-    h.hfi.feedback_source = FOC_FEEDBACK_HFI;
-    h.flash_data.hfi.hfi_enabled = 0;
-    CHECK(!FOC_HFI_Update(&h, 0, 0)); /* Never silently fall back live. */
-    return 0;
-}
-
-int test_hfi_overcurrent_and_invalid_frequency_never_continue_injection(void){
-    FOC_HandleTypeDef h = {0}; hfi_ready(&h);
-    CHECK(!FOC_HFI_Update(&h, h.flash_data.limits.max_dq_current * 2, 0));
-    CHECK(!h.hfi.injection_alpha && !h.hfi.injection_beta);
-    FOC_HFI_Init(&h);
-    h.flash_data.hfi.injection_omega = CURRENT_LOOP_FREQUENCY * M_2PIF;
-    CHECK(FOC_HFI_Update(&h, 0, 0));
-    CHECK(!h.hfi.active && !h.hfi.valid && !h.hfi.injection_alpha && !h.hfi.injection_beta);
-    return 0;
 }
 
 int test_configuration_schema_is_bounded_unique_and_matches_absolute_limits(void){
@@ -302,6 +185,36 @@ static FOC_HandleTypeDef *output_enable_handle;
 static unsigned current_ticks, speed_ticks;
 static char anticog_failure_text[1024];
 static unsigned anticog_failure_reports;
+static SPI_HandleTypeDef test_spi;
+static GPIO_TypeDef test_cs;
+static uint16_t *pending_rx;
+static unsigned dma_calls, blocking_calls;
+static int fail_dma;
+static uint16_t last_dma_command;
+
+HAL_SPI_StateTypeDef HAL_SPI_GetState(SPI_HandleTypeDef *spi){return spi->state;}
+HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *spi, uint8_t *tx, uint8_t *rx, uint16_t size, uint32_t timeout){
+    UNUSED(spi); UNUSED(tx); UNUSED(size); UNUSED(timeout); blocking_calls++;
+    *(uint16_t*)rx = 0;
+    return HAL_OK;
+}
+HAL_StatusTypeDef HAL_SPI_TransmitReceive_DMA(SPI_HandleTypeDef *spi, uint8_t *tx, uint8_t *rx, uint16_t size){
+    UNUSED(size); dma_calls++;
+    if(fail_dma) return HAL_ERROR;
+    last_dma_command = *(uint16_t*)tx;
+    pending_rx = (uint16_t*)rx;
+    spi->state = HAL_SPI_STATE_BUSY_TX_RX;
+    return HAL_OK;
+}
+HAL_StatusTypeDef HAL_SPI_Abort(SPI_HandleTypeDef *spi){spi->state = HAL_SPI_STATE_READY; pending_rx = NULL; return HAL_OK;}
+void HAL_GPIO_WritePin(GPIO_TypeDef *port, uint16_t pin, GPIO_PinState state){
+    if(state) port->value |= pin; else port->value &= ~pin;
+}
+static void complete_dma(uint16_t frame){
+    *pending_rx = frame;
+    test_spi.state = HAL_SPI_STATE_READY;
+    HAL_SPI_TxRxCpltCallback(&test_spi);
+}
 
 /* Freestanding ARM tests deliberately avoid libc and any MCU peripherals. */
 void *memset(void *dest, int c, size_t count){
@@ -391,6 +304,18 @@ uint8_t FOC_EncoderInitTimer(FOC_HandleTypeDef *h){
     h->pencoder_count = &counter;
     return 1;
 }
+uint8_t FOC_EncoderInitSPI(FOC_HandleTypeDef *h){
+    h->has5047p.hspi = &test_spi;
+    h->has5047p.slave_select_port = &test_cs;
+    h->has5047p.slave_select_pin = 1;
+    h->has5047p.pins_set = h->has5047p.setup_complete = 1;
+    h->has5047p.dma_angle = 2048; h->has5047p.dma_ready = 1;
+    return !fail_source_init;
+}
+uint8_t FOC_EncoderInitExternalSPI(FOC_HandleTypeDef *h){
+    uint8_t ok = FOC_EncoderInitSPI(h); h->has5047p.slave_select_pin = 2; return ok;
+}
+uint8_t FOC_EncoderInitExternalTimer(FOC_HandleTypeDef *h){return FOC_EncoderInitTimer(h);}
 
 /* Only the controller is under test here; unrelated states are inert. */
 #define STATE_STUB(name) \
@@ -404,6 +329,8 @@ FOC_StateTransitionTypeDef FOC_StateError_Transition(FOC_HandleTypeDef *h){
 void FOC_StateError(FOC_HandleTypeDef *h){UNUSED(h);}
 
 static void reset(void){
+    test_spi = (SPI_HandleTypeDef){.hdmarx = &test_cs, .hdmatx = &test_cs};
+    test_cs.value = 3; dma_calls = blocking_calls = 0; fail_dma = 0; pending_rx = NULL;
     now = starts = stops = commits = voltages = encoder_calls = 0;
     fail_start = fail_stop = fail_encoder = 0;
     current_ticks = speed_ticks = 0;
@@ -632,6 +559,7 @@ int test_completed_state_continuations(void){
     for(unsigned i = 0; i < 3; i++){
         reset(); FOC_HandleTypeDef h = {0};
         h.flash_data.encoder.offset_valid = i != 2;
+        h.encoder_runtime.healthy = i != 2;
         FOC_SetState(&h, FOC_STATE_CURRENT_SENSOR_CALIBRATION, destinations[i]);
         FOC_StateLoop(&h); now++; FOC_StateLoop(&h); now++;
         complete_calibration(&h);
@@ -679,6 +607,7 @@ int test_maintenance_entry_rules(void){
             reset(); FOC_HandleTypeDef h = {0};
             h.state = fault ? FOC_STATE_ERROR : FOC_STATE_IDLE;
             h.adc_calibrated = 1; h.flash_data.encoder.offset_valid = 1;
+            h.encoder_runtime.healthy = 1;
             h.latched_errors = fault ? FOC_ERROR_OPERATION_FAILED : 0;
             CHECK(FOC_SetState(&h, actions[i], FOC_STATE_RUN) == FOC_STATETRANSITION_OK);
             CHECK(h.state == actions[i] && h.hdrv8323.high_impedance);
@@ -997,6 +926,7 @@ int test_open_loop_and_run_dividers_are_per_handle(void){
     CHECK(FOC_OpenLoop(&a, 1, 1, 0) == 1 && a.phase_voltage.a == 0);
     a.adc_calibrated = b.adc_calibrated = 1;
     a.flash_data.encoder.offset_valid = b.flash_data.encoder.offset_valid = 1;
+    a.encoder_runtime.healthy = b.encoder_runtime.healthy = 1;
     FOC_SetState(&a, FOC_STATE_RUN, FOC_STATE_NONE);
     FOC_SetState(&b, FOC_STATE_RUN, FOC_STATE_NONE);
     for(unsigned i = 0; i < SPEED_LOOP_CLOCK_DIVIDER - 1; i++) FOC_StateLoop(&a);
@@ -1257,7 +1187,7 @@ int test_encoder_source_selection_and_history_reset(void){
     reset(); FOC_HandleTypeDef h = {0};
     unsigned count;
     const FOC_EncoderSourceTypeDef *sources = FOC_EncoderSources(&count);
-    CHECK(count == 2 && sources[1].id == 7);
+    CHECK(count == 5 && sources[4].id == 7);
     CHECK(FOC_EncoderSource(7) != NULL && FOC_EncoderSource(99) == NULL);
     h.state = FOC_STATE_IDLE;
     h.flash_data.encoder.offset_valid = h.flash_data.encoder.correction_valid = 1;
@@ -1316,7 +1246,6 @@ static void seed_encoder_calibration(FOC_HandleTypeDef *h){
     h->flash_data.limits.max_dq_current = 5;
     h->flash_data.limits.max_dq_voltage = 1;
     h->flash_data.motor.pole_pairs = 11;
-    h->flash_data.hfi.hfi_enabled = 1;
     h->flash_data.controller.anticogging_FF_enabled = 1;
     h->flash_data.controller.current_PID_FF_enabled = 1;
     h->flash_data.controller.anticogging_data_valid = 1;
@@ -1327,7 +1256,7 @@ static void seed_encoder_calibration(FOC_HandleTypeDef *h){
 int test_encoder_calibration_sweep_and_persistence(void){
     reset(); FOC_HandleTypeDef h = {0}; seed_encoder_calibration(&h);
     FOC_EncoderCalibration_Start(&h);
-    CHECK(!h.flash_data.hfi.hfi_enabled && h.encoder_runtime.bypass_correction);
+    CHECK(h.encoder_runtime.bypass_correction);
     now += 300;
     FOC_EncoderCalibration_Update(&h);
     CHECK(h.encoder_calibration.revolutions == 3);
@@ -1346,7 +1275,7 @@ int test_encoder_calibration_sweep_and_persistence(void){
     CHECK(h.flash_data.encoder.correction_valid && h.flash_data.encoder.correction_enabled);
     CHECK(h.flash_data.encoder.correction_source == 7 && h.flash_data.encoder.offset_valid);
     CHECK(h.hdrv8323.high_impedance && h.phase_voltage.a == 0 && !h.encoder_runtime.bypass_correction);
-    CHECK(h.flash_data.hfi.hfi_enabled && h.flash_data.controller.current_PID_FF_enabled);
+    CHECK(h.flash_data.controller.current_PID_FF_enabled);
     CHECK(!h.flash_data.controller.anticogging_data_valid && !h.encoder_runtime.history_valid);
     float before = 0, after = 0;
     for(unsigned i = 0; i < 128; i++){
@@ -1372,7 +1301,7 @@ int test_encoder_calibration_cancellation_preserves_old_table(void){
         h.encoder_calibration.stage = (FOC_EncoderCalibrationStageTypeDef)stage;
         CHECK(FOC_EncoderCalibration_Finish(&h, FOC_LOOP_CANCELLED) == FOC_LOOP_CANCELLED);
         CHECK(!flash_calls && h.flash_data.encoder.correction[0] == 0.001f && h.flash_data.encoder.correction_valid);
-        CHECK(h.flash_data.controller.anticogging_data_valid && h.flash_data.hfi.hfi_enabled);
+        CHECK(h.flash_data.controller.anticogging_data_valid);
         CHECK(h.hdrv8323.high_impedance && !h.encoder_runtime.bypass_correction);
         FOC_EncoderCalibration_Start(&h);
         CHECK(h.encoder_calibration.step == 0 && !h.encoder_calibration.forward_count[0]);
@@ -1394,7 +1323,7 @@ int test_encoder_calibration_flash_failure_rolls_back_ram(void){
     CHECK(flash_calls == 1 && h.flash_data.encoder.correction[0] == 0.001f);
     CHECK(h.flash_data.encoder.raw_zero == 1 && h.flash_data.encoder.mechanical_offset == 1.001f);
     CHECK(h.flash_data.encoder.correction_valid && h.flash_data.controller.anticogging_data_valid);
-    CHECK(h.flash_data.hfi.hfi_enabled && h.hdrv8323.high_impedance);
+    CHECK(h.hdrv8323.high_impedance);
     return 0;
 }
 
@@ -1481,7 +1410,7 @@ int test_encoder_calibration_state_guards_and_fault_cleanup(void){
     CHECK(h.encoder_calibration.runtime.active);
     FOC_SetError(&h, 0x4000);
     CHECK(h.state == FOC_STATE_ERROR && !h.encoder_calibration.runtime.active && h.hdrv8323.high_impedance);
-    CHECK(h.flash_data.hfi.hfi_enabled && h.flash_data.controller.anticogging_data_valid && !flash_calls);
+    CHECK(h.flash_data.controller.anticogging_data_valid && !flash_calls);
     return 0;
 }
 
@@ -1495,5 +1424,92 @@ int test_encoder_initialization_failure_is_recoverable(void){
     CHECK(FOC_EncoderSelect(&h, 7));
     CHECK(h.encoder_runtime.initialized && h.encoder_runtime.healthy);
     CHECK(FOC_EncoderUpdate(&h, 8000) && h.encoder_speed_mechanical == 0);
+    return 0;
+}
+
+int test_checklist_without_encoder_stops_without_automatic_alignment(void){
+    reset(); FOC_HandleTypeDef h = {0}; config_ready(&h); h.adc_calibrated = 1; h.hdrv8323.high_impedance = 1;
+    h.state = FOC_STATE_CHECKLIST; h.checklist_step = 1;
+    FOC_StateLoop(&h);
+    CHECK(h.state == FOC_STATE_STOP && !h.latched_errors && h.hdrv8323.high_impedance);
+    FOC_StateLoop(&h);
+    CHECK(h.state == FOC_STATE_IDLE);
+    CHECK(FOC_SetState(&h, FOC_STATE_RUN, FOC_STATE_NONE) == FOC_STATETRANSITION_ENCODER_NOT_ALIGNED);
+    CHECK(h.hdrv8323.high_impedance);
+    return 0;
+}
+
+static uint16_t encoder_frame(uint16_t value){
+    uint16_t parity = value;
+    for(unsigned shift = 1; shift < 16; shift <<= 1) parity ^= parity >> shift;
+    return value | ((parity & 1) ? 0x8000 : 0);
+}
+
+int test_spi_dma_two_frames_validate_angle_and_selected_cs(void){
+    for(unsigned source = 1; source <= 2; source++){
+        reset(); FOC_HandleTypeDef h = {0}; config_ready(&h);
+        CHECK(FOC_EncoderSelect(&h, source));
+        CHECK(h.flash_data.encoder.source_id == source && h.encoder_runtime.healthy);
+        CHECK(!h.flash_data.encoder.offset_valid && !h.flash_data.encoder.correction_valid);
+        CHECK(AS5047P_RequestAngleDMA(&h.has5047p) == AS5047P_OK);
+        CHECK(dma_calls == 1 && blocking_calls == 0 && last_dma_command == 0xFFFF);
+        CHECK(!(test_cs.value & source) && (test_cs.value & (3 ^ source)));
+        float angle;
+        CHECK(!FOC_EncoderReadSPI(&h, &angle)); /* Never reuse a stale result. */
+        complete_dma(0);
+        CHECK(dma_calls == 2 && last_dma_command == 0 && !h.has5047p.dma_ready);
+        complete_dma(encoder_frame(4096));
+        CHECK(test_cs.value == 3 && h.has5047p.dma_ready && !h.has5047p.dma_error);
+        CHECK(FOC_EncoderReadSPI(&h, &angle) && fabsf(angle - M_PIF * 0.5f) < 1e-6f);
+        CHECK(FOC_EncoderUpdate(&h, 8000) && h.encoder_speed_mechanical == 0);
+        CHECK(FOC_EncoderSetZero(&h)); /* Multiple readers may share this sample. */
+        CHECK(AS5047P_RequestAngleDMA(&h.has5047p) == AS5047P_OK);
+        CHECK(FOC_EncoderSelect(&h, 0)); /* Aborts before changing the source. */
+        CHECK(test_cs.value == 3 && test_spi.state == HAL_SPI_STATE_READY);
+        HAL_SPI_TxRxCpltCallback(&test_spi); /* Late callback cannot restart DMA. */
+        CHECK(!h.has5047p.dma_stage);
+    }
+    return 0;
+}
+
+int test_spi_dma_invalid_frame_start_error_and_bus_ownership(void){
+    const uint16_t bad[] = {0xFFFF, 1, 0xC000}; /* No response, parity, error flag. */
+    for(unsigned i = 0; i < 6; i++){
+        reset(); FOC_HandleTypeDef h = {0}; config_ready(&h);
+        CHECK(FOC_EncoderSelect(&h, 1));
+        if(i == 3) fail_dma = 1;
+        AS5047P_StatusTypeDef result = AS5047P_RequestAngleDMA(&h.has5047p);
+        if(i == 3) CHECK(result != AS5047P_OK);
+        else{
+            CHECK(result == AS5047P_OK);
+            if(i == 4){fail_dma = 1; complete_dma(0);}
+            else if(i == 5){HAL_SPI_ErrorCallback(&test_spi);}
+            else{complete_dma(0); complete_dma(bad[i]);}
+        }
+        CHECK(h.has5047p.dma_error && !h.has5047p.dma_ready && test_cs.value == 3);
+        CHECK(!FOC_EncoderUpdate(&h, 8000) && !h.encoder_runtime.healthy);
+        AS5047P_StopAngleDMA(&h.has5047p);
+    }
+    reset(); FOC_HandleTypeDef a = {0}, b = {0}; config_ready(&a); config_ready(&b);
+    CHECK(FOC_EncoderSelect(&a, 1) && FOC_EncoderSelect(&b, 2));
+    CHECK(AS5047P_RequestAngleDMA(&a.has5047p) == AS5047P_OK);
+    CHECK(AS5047P_RequestAngleDMA(&b.has5047p) != AS5047P_OK);
+    CHECK((test_cs.value & 2) && !(test_cs.value & 1));
+    AS5047P_StopAngleDMA(&a.has5047p);
+    return 0;
+}
+
+int test_encoder_sources_and_legacy_flash_reservation(void){
+    CHECK(FOC_EncoderSource(0)->read == FOC_EncoderReadTimer);
+    CHECK(FOC_EncoderSource(1)->read == FOC_EncoderReadSPI);
+    CHECK(FOC_EncoderSource(2)->read == FOC_EncoderReadSPI);
+    CHECK(FOC_EncoderSource(3)->read == FOC_EncoderReadTimer);
+    CHECK(sizeof(FLASH_DataTypeDef) == 8712 && offsetof(FLASH_DataTypeDef, crc) == 8704);
+    FLASH_DataTypeDef data = {0};
+    memset(data.reserved, 0xA5, sizeof(data.reserved)); /* Earlier records may contain any bytes. */
+    data.magic = FOC_FLASH_MAGIC; data.format_version = 2; data.stored_size = sizeof(data);
+    data.contains_data = 1; data.struct_terminator = FLASH_DATA_STRUCT_TERMINATOR;
+    data.crc = FOC_FlashCRC(&data, offsetof(FLASH_DataTypeDef, crc));
+    CHECK(FOC_FLASH_RecordValid(&data));
     return 0;
 }

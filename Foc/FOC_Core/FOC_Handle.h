@@ -11,8 +11,8 @@
 #include "FOC_Utils.h"
 #include "FOC_ADC.h"
 #include "Timing.h"
-#include "FOC_HFI.h"
 #include "FOC_Routine.h"
+#include "Filters.h"
 
 typedef struct FOC_Handle {
 
@@ -92,8 +92,6 @@ typedef struct FOC_Handle {
     float angle_setpoint; //mechanical position setpoint [rad]
     float speed_setpoint; //mechanical speed setpoint [rad/s]
 
-    /* HFI */
-    HFITypeDef hfi;
 
     /* PWM */
     uint32_t max_ccr; //max pwm value

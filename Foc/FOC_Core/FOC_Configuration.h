@@ -9,7 +9,7 @@
 /* Order supplies session-local IDs. Keys, not IDs, identify saved settings. */
 #define FOC_CONFIGURATION_GROUPS(X) \
     X(LIMITS, "Limits") X(MOTOR, "Motor") X(CONTROLLER, "Controller") \
-    X(HFI, "HFI") X(ENCODER, "Encoder")
+    X(ENCODER, "Encoder")
 #define CONFIG_GROUP_ENUM(symbol, label) FOC_CONFIG_##symbol,
 typedef enum {FOC_CONFIGURATION_GROUPS(CONFIG_GROUP_ENUM) FOC_CONFIG_GROUP_COUNT} FOC_ConfigGroup;
 #undef CONFIG_GROUP_ENUM
@@ -30,9 +30,6 @@ typedef enum {FOC_CONFIGURATION_GROUPS(CONFIG_GROUP_ENUM) FOC_CONFIG_GROUP_COUNT
  X(TORQUE_CONSTANT,MOTOR,f,motor.torque_constant,CONFIG_ABS_TORQUE_CONSTANT_MIN,CONFIG_ABS_TORQUE_CONSTANT_MAX,"Nm/A",CONFIG_IDLE,"Torque constant") \
  X(BANDWIDTH,CONTROLLER,f,controller.current_control_bandwidth,CONFIG_ABS_BANDWIDTH_MIN,CONFIG_ABS_BANDWIDTH_MAX,"rad/s",CONFIG_IDLE,"Current-control bandwidth") \
  X(CURRENT_FF,CONTROLLER,bool,controller.current_PID_FF_enabled,0,1,"-",CONFIG_IDLE,"Current feed-forward") \
- X(HFI_ENABLED,HFI,bool,hfi.hfi_enabled,0,1,"-",CONFIG_IDLE,"Enable HFI injection") \
- X(HFI_AMPLITUDE,HFI,f,hfi.injection_amplitude,CONFIG_ABS_HFI_AMPLITUDE_MIN,CONFIG_ABS_HFI_AMPLITUDE_MAX,"V",CONFIG_IDLE,"Injection amplitude") \
- X(HFI_OMEGA,HFI,f,hfi.injection_omega,CONFIG_ABS_HFI_OMEGA_MIN,CONFIG_ABS_HFI_OMEGA_MAX,"rad/s",CONFIG_IDLE,"Injection angular frequency") \
  X(CAL_VOLTAGE,ENCODER,f,encoder.calibration_voltage,CONFIG_ABS_VOLTAGE_MIN,CONFIG_ABS_VOLTAGE_MAX,"V",CONFIG_IDLE,"Calibration voltage")
 
 #define CONFIG_IDLE (1u << FOC_STATE_IDLE)

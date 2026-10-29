@@ -77,13 +77,6 @@ struct FLASH_DriverParameters {
     uint32_t can_msg_period_ticks[CAN_CYCLIC_COUNT]; // [ticks], how often the FOC driver sends messages over CAN. 0 disables the message. The order of the messages is defined in FOC_CAN.h
 };
 
-struct FLASH_HFIParameters {
-    uint8_t hfi_enabled; // boolean, whether HFI is enabled or not
-    float injection_amplitude; // [V], the amplitude of the injected voltage
-    float injection_omega; // [rad/s], the frequency of the injected voltage
-};
-
-
 #define FLASH_DATA_STRUCT_TERMINATOR 0xDEADBEEF // this is used to detect if the struct is correctly read from flash
 
 typedef struct {
@@ -98,7 +91,7 @@ typedef struct {
     struct FLASH_ControllerParameters controller; // controller parameters
     struct FLASH_Limits limits; // limits
     struct FLASH_DriverParameters node; // driver parameters
-    struct FLASH_HFIParameters hfi; // HFI parameters
+    uint8_t reserved[12]; // Reserved bytes preserve the version-2 settings layout.
 
     uint8_t filler[4]; // Keep the CRC/terminator tail and record 8-byte aligned.
 

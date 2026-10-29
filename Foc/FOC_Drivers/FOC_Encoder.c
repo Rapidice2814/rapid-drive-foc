@@ -31,6 +31,13 @@ uint8_t FOC_EncoderReadTimer(FOC_HandleTypeDef *hfoc, float *angle){
     *angle = (float)(*hfoc->pencoder_count % ENCODER_PULSES_PER_ROTATION) * (M_2PIF / ENCODER_PULSES_PER_ROTATION);
     return 1;
 }
+/** @brief Returns a completed DMA angle without blocking or starting a transfer. */
+uint8_t FOC_EncoderReadSPI(FOC_HandleTypeDef *hfoc, float *angle){
+    uint16_t count;
+    if(AS5047P_GetAngleDMA(&hfoc->has5047p, &count) != AS5047P_OK) return 0;
+    *angle = count * (M_2PIF / 16384.0f);
+    return 1;
+}
 /** @brief Validates and normalizes a backend's absolute mechanical angle. */
 uint8_t FOC_EncoderReadRaw(FOC_HandleTypeDef *hfoc, float *angle){
     const FOC_EncoderSourceTypeDef *source = FOC_EncoderSource(hfoc->flash_data.encoder.source_id);
@@ -40,6 +47,7 @@ uint8_t FOC_EncoderReadRaw(FOC_HandleTypeDef *hfoc, float *angle){
 }
 /** @brief Initializes only the selected backend, including after source/load changes. */
 uint8_t FOC_EncoderInitialize(FOC_HandleTypeDef *hfoc){
+    AS5047P_StopAngleDMA(&hfoc->has5047p);
     const FOC_EncoderSourceTypeDef *source = FOC_EncoderSource(hfoc->flash_data.encoder.source_id);
     hfoc->encoder_runtime.healthy = hfoc->encoder_runtime.initialized = 0;
     FOC_EncoderResetHistory(hfoc);

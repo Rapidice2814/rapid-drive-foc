@@ -12,7 +12,7 @@ FOC_StateTransitionTypeDef FOC_StateRun_Transition(FOC_HandleTypeDef* hfoc){
         Debug_SendTextResponse("Cannot enter RUN state because ADC is not calibrated!\n");
         return FOC_STATETRANSITION_ADC_NOT_CALIBRATED;
     }
-    if(hfoc->flash_data.encoder.offset_valid != 1){
+    if(!hfoc->encoder_runtime.healthy || hfoc->flash_data.encoder.offset_valid != 1){
         Debug_SendTextResponse("Cannot enter RUN state because encoder is not aligned!\n");
         return FOC_STATETRANSITION_ENCODER_NOT_ALIGNED;
     }
@@ -63,8 +63,12 @@ FOC_StateTransitionTypeDef FOC_StateStop_Transition(FOC_HandleTypeDef* hfoc){
 }
 
 void FOC_StateStop(FOC_HandleTypeDef* hfoc){
-    Current_Loop(hfoc);
-    if(fabsf(hfoc->encoder_speed_mechanical) > 0.1f) return; //wait until the motor is stopped before transitioning to IDLE state
+    if(!hfoc->hdrv8323.high_impedance && hfoc->encoder_runtime.healthy) Current_Loop(hfoc);
+    else{
+        FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
+        DRV8323_SetHighImpedance(&hfoc->hdrv8323);
+    }
+    if(hfoc->encoder_runtime.healthy && fabsf(hfoc->encoder_speed_mechanical) > 0.1f) return;
     FOC_SetState(hfoc, FOC_STATE_IDLE, FOC_STATE_NONE);
 }
 
@@ -75,7 +79,7 @@ FOC_StateTransitionTypeDef FOC_StateIdle_Transition(FOC_HandleTypeDef* hfoc){
         Debug_SendTextResponse("Can only enter IDLE state from STOP state! Current state: %s\n", FOC_StateToString(hfoc->state));
         return FOC_STATETRANSITION_MUST_BE_STOPPED;
     }
-    if(fabsf(hfoc->encoder_speed_mechanical) > 0.1f){
+    if(hfoc->encoder_runtime.healthy && fabsf(hfoc->encoder_speed_mechanical) > 0.1f){
         Debug_SendTextResponse("Cannot enter IDLE state because motor is not stopped! Speed: %dmRad/s\n", (int)(hfoc->encoder_speed_mechanical * 1000.0f));
         return FOC_STATETRANSITION_MOTOR_MOVING;
     }

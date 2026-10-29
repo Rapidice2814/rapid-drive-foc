@@ -28,12 +28,13 @@ set(TARGET_FLAGS "-mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard ")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${TARGET_FLAGS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic -fdata-sections -ffunction-sections")
-if(CMAKE_BUILD_TYPE MATCHES Debug)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Og -g3")
-endif()
-if(CMAKE_BUILD_TYPE MATCHES Release)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Oz -g0")
-endif()
+# Optimization is applied project-wide in CMakeLists.txt, after configuration
+# flags. Keep debug information independent of optimization and avoid the
+# default Release -O3 overriding the project's size policy.
+set(CMAKE_C_FLAGS_DEBUG "-g3")
+set(CMAKE_C_FLAGS_RELEASE "-g0 -DNDEBUG")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "-g -DNDEBUG")
+set(CMAKE_C_FLAGS_MINSIZEREL "-g0 -DNDEBUG")
 
 set(CMAKE_ASM_FLAGS "${CMAKE_C_FLAGS} -x assembler-with-cpp -MMD -MP")
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -fno-rtti -fno-exceptions -fno-threadsafe-statics")

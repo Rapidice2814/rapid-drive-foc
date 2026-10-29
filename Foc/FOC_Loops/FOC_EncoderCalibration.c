@@ -36,7 +36,6 @@ void FOC_EncoderCalibration_Start(FOC_HandleTypeDef *hfoc){
         .revolutions = hfoc->calibration_revolutions[0] ? hfoc->calibration_revolutions[0] : 3,
         .pole_pairs = hfoc->flash_data.motor.pole_pairs,
         .motor_direction = hfoc->flash_data.motor.direction,
-        .saved_hfi = hfoc->flash_data.hfi.hfi_enabled,
         .saved_anticog_ff = hfoc->flash_data.controller.anticogging_FF_enabled,
         .saved_current_ff = hfoc->flash_data.controller.current_PID_FF_enabled,
         .saved_anticog_valid = hfoc->flash_data.controller.anticogging_data_valid
@@ -55,7 +54,6 @@ void FOC_EncoderCalibration_Start(FOC_HandleTypeDef *hfoc){
     }
     hfoc->encoder_runtime.bypass_correction = 1;
     FOC_EncoderResetHistory(hfoc);
-    hfoc->flash_data.hfi.hfi_enabled = 0;
     hfoc->flash_data.controller.anticogging_FF_enabled = 0;
     hfoc->flash_data.controller.current_PID_FF_enabled = 0;
     FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
@@ -74,7 +72,6 @@ FOC_LoopStatusTypeDef FOC_EncoderCalibration_Finish(FOC_HandleTypeDef *hfoc, FOC
     FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
     DRV8323_SetHighImpedance(&hfoc->hdrv8323);
     hfoc->encoder_runtime.bypass_correction = 0;
-    hfoc->flash_data.hfi.hfi_enabled = ctx->saved_hfi;
     hfoc->flash_data.controller.anticogging_FF_enabled = ctx->saved_anticog_ff;
     hfoc->flash_data.controller.current_PID_FF_enabled = ctx->saved_current_ff;
     if(result == FOC_LOOP_COMPLETED && !ctx->candidate_valid) result = FOC_LOOP_ERROR;
@@ -205,7 +202,6 @@ FOC_LoopStatusTypeDef FOC_EncoderCalibration_Update(FOC_HandleTypeDef *hfoc){
             hfoc->flash_data.encoder.offset_valid = 1;
             hfoc->flash_data.controller.anticogging_data_valid = 0;
             /* Persist normal settings, not temporary calibration disable flags. */
-            hfoc->flash_data.hfi.hfi_enabled = ctx->saved_hfi;
             hfoc->flash_data.controller.anticogging_FF_enabled = ctx->saved_anticog_ff;
             hfoc->flash_data.controller.current_PID_FF_enabled = ctx->saved_current_ff;
             if(FOC_FLASH_WriteData(&hfoc->flash_data) != FLASH_OK){
