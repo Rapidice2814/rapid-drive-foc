@@ -21,6 +21,8 @@ static_assert(sizeof(FLASH_DataTypeDef) <= FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAG
 // static const FLASH_DataTypeDef flash_data_default_values = {0};
 static const FLASH_DataTypeDef flash_data_default_values = {
     .encoder = {.calibration_voltage = 0.5f},
+    .anticogging_position_gains = {10.0f, 20.0f, 0.2f},
+    .filler = {0xAC, 0x51},
     .motor = {
         .torque_constant = MOTOR_TORQUE_CONSTANT,
         .pole_pairs = MOTOR_POLE_PAIRS,
@@ -171,6 +173,8 @@ FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
     }
     /* Copy the entire record, including a possible partial final doubleword. */
     memcpy(pdata, stored, sizeof(*pdata));
+    FOC_FLASH_InitAntiCogGains(pdata);
+    pdata->crc = FOC_FlashCRC(pdata, offsetof(FLASH_DataTypeDef, crc));
 
     if(pdata->contains_data == 1 && pdata->struct_terminator == FLASH_DATA_STRUCT_TERMINATOR){
         return FLASH_OK;

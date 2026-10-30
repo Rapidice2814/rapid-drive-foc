@@ -24,6 +24,9 @@ void FOC_PIDAutotune_Start(FOC_HandleTypeDef *hfoc){
 FOC_LoopStatusTypeDef FOC_PIDAutotune_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopStatusTypeDef result){
     FOC_PIDAutotuneContextTypeDef *ctx = &hfoc->pid_autotune;
     if(!ctx->runtime.active) return ctx->runtime.status;
+    if(result == FOC_LOOP_CANCELLED && (hfoc->active_errors || hfoc->latched_errors)){
+        ctx->runtime.detail = "Interrupted by fault; see active/latched flags";
+    }
     if(result == FOC_LOOP_COMPLETED && !ctx->candidate_valid){
         ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
         result = FOC_LOOP_ERROR;
@@ -41,6 +44,7 @@ FOC_LoopStatusTypeDef FOC_PIDAutotune_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopSt
     if(result == FOC_LOOP_ERROR) ctx->failed_stage = ctx->stage;
     ctx->runtime.active = 0;
     ctx->runtime.status = result;
+    FOC_ReportRoutineResult(hfoc, "Current PI tuning", &ctx->runtime, (unsigned)ctx->stage);
     ctx->stage = result == FOC_LOOP_COMPLETED ? FOC_PID_TUNE_DONE :
                  result == FOC_LOOP_CANCELLED ? FOC_PID_TUNE_CANCELLED : FOC_PID_TUNE_FAILED;
     return result;
@@ -79,6 +83,7 @@ FOC_LoopStatusTypeDef FOC_PIDAutotune_Update(FOC_HandleTypeDef *hfoc){
                 if(!isfinite(bandwidth) || bandwidth < CONFIG_ABS_BANDWIDTH_MIN || bandwidth > CONFIG_ABS_BANDWIDTH_MAX ||
                    !isfinite(r) || r <= 0 || !isfinite(l) || l <= 0){
                     ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_INPUT;
+                    ctx->runtime.detail = "Invalid R/L or current-control bandwidth; measure motor parameters first";
                     return FOC_PIDAutotune_Finish(hfoc, FOC_LOOP_ERROR);
                 }
                 ctx->candidate_kp = l * bandwidth;
@@ -86,6 +91,7 @@ FOC_LoopStatusTypeDef FOC_PIDAutotune_Update(FOC_HandleTypeDef *hfoc){
                 ctx->candidate_valid = isfinite(ctx->candidate_kp) && isfinite(ctx->candidate_ki);
                 if(!ctx->candidate_valid){
                     ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
+                    ctx->runtime.detail = "Computed PI gains are non-finite";
                     return FOC_PIDAutotune_Finish(hfoc, FOC_LOOP_ERROR);
                 }
                 Debug_SendTextResponse("PID gains tuned successfully\n");

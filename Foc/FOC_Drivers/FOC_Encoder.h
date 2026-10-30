@@ -27,6 +27,7 @@ typedef struct {
 
 typedef struct {
     float raw_angle;
+    float speed_pll_angle; /* Wrapped prediction; never used for commutation. */
     uint8_t healthy, history_valid, bypass_correction, initialized;
 } FOC_EncoderRuntimeTypeDef;
 

@@ -76,7 +76,7 @@ void Speed_Loop(FOC_HandleTypeDef *hfoc){
     }
 
     if(hfoc->flash_data.controller.control_mode == CONTROL_MODE_POSITION){
-        hfoc->dq_current_setpoint.q = PID_Update(&hfoc->pid_position, hfoc->angle_setpoint, hfoc->encoder_angle_mechanical_unwrapped);
+        hfoc->dq_current_setpoint.q = PID_Update(hfoc->state == FOC_STATE_ANTICOGGING ? &hfoc->pid_anticogging : &hfoc->pid_position, hfoc->angle_setpoint, hfoc->encoder_angle_mechanical_unwrapped);
     }
 }
 

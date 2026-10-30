@@ -34,6 +34,9 @@ void FOC_AlignmentTest_Start(FOC_HandleTypeDef *hfoc, float magnitude){
 FOC_LoopStatusTypeDef FOC_AlignmentTest_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopStatusTypeDef result){
     FOC_AlignmentTestContextTypeDef *ctx = &hfoc->alignment_test;
     if(!ctx->runtime.active) return ctx->runtime.status;
+    if(result == FOC_LOOP_CANCELLED && (hfoc->active_errors || hfoc->latched_errors)){
+        ctx->runtime.detail = "Interrupted by fault; see active/latched flags";
+    }
     FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
     if(result == FOC_LOOP_COMPLETED && !ctx->candidate_valid){
         ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
@@ -47,6 +50,7 @@ FOC_LoopStatusTypeDef FOC_AlignmentTest_Finish(FOC_HandleTypeDef *hfoc, FOC_Loop
     if(result == FOC_LOOP_ERROR) ctx->failed_stage = ctx->stage;
     ctx->runtime.active = 0;
     ctx->runtime.status = result;
+    FOC_ReportRoutineResult(hfoc, "Encoder direction test", &ctx->runtime, (unsigned)ctx->stage);
     ctx->stage = result == FOC_LOOP_COMPLETED ? FOC_ALIGNMENT_TEST_DONE :
                  result == FOC_LOOP_CANCELLED ? FOC_ALIGNMENT_TEST_CANCELLED : FOC_ALIGNMENT_TEST_FAILED;
     return result;
@@ -85,6 +89,7 @@ FOC_LoopStatusTypeDef FOC_AlignmentTest_Update(FOC_HandleTypeDef *hfoc){
         case FOC_ALIGNMENT_TEST_ROTATE: {
             if(!isfinite(hfoc->encoder_angle_electrical) || !isfinite(hfoc->encoder_speed_electrical)){
                 ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
+                ctx->runtime.detail = "Encoder electrical angle or speed is non-finite";
                 return FOC_AlignmentTest_Finish(hfoc, FOC_LOOP_ERROR);
             }
             float diff = ctx->candidate_direction == 1 ?
@@ -133,6 +138,7 @@ FOC_LoopStatusTypeDef FOC_AlignmentTest_Update(FOC_HandleTypeDef *hfoc){
                 ctx->wait_ms = 1;
             }else{
                 ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
+                ctx->runtime.detail = "CW/CCW tracking error exceeds 0.3 rad after direction retries";
                 return FOC_AlignmentTest_Finish(hfoc, FOC_LOOP_ERROR);
             }
             break;

@@ -28,8 +28,12 @@ typedef struct {
     uint32_t stage_started_ms;
     FOC_LoopStatusTypeDef status;
     FOC_RoutineErrorTypeDef error;
+    const char *detail; /* Static reason at the failing check; never persisted. */
     uint8_t active;
 } FOC_RoutineRuntimeTypeDef;
+
+void FOC_ReportRoutineResult(FOC_HandleTypeDef *hfoc, const char *name,
+                            FOC_RoutineRuntimeTypeDef *runtime, unsigned stage);
 
 typedef enum {
     FOC_ALIGNMENT_IDLE,
@@ -149,6 +153,12 @@ typedef struct {
     uint32_t wait_ms, point_started_ms;
     uint16_t sample_index, report_index;
     float filtered_current;
+    float turn_base, current_mean, current_m2, position_min, position_max, speed_sum;
+    float window_error_max, window_command_max;
+    float last_error, last_span, last_speed, last_std, last_mean;
+    uint32_t window_started_ms;
+    uint16_t window_samples;
+    uint8_t approaching;
     uint8_t divider, direction, hold_count, report_direction;
     uint8_t gains_saved, candidate_valid, revolution, revolutions, saved_ff;
     uint16_t progress;

@@ -20,7 +20,11 @@ bit 1 enabled, bit 2 measuring, bit 3 any table upload active. Progress is 0-100
 Stages 0-8 are idle, starting/locking, positioning/applying, measuring,
 reporting/validating, finishing/saving, complete, failed, cancelled.
 
-Revolutions are 1-8 **per direction**, default three. Settings are runtime-only.
+Revolutions are 1-8 **per direction**, default one. Settings are runtime-only.
+Successful encoder and anti-cogging calibration leave compensation disabled.
+Explicit ENABLE_CALIBRATION is required to activate the new table; encoder
+calibration persists its table with correction disabled. The plotter sends this
+command directly on a user checkbox click and reads back the accepted state.
 START requires stationary, healthy, aligned, fault-free IDLE and calibrated ADCs.
 Encoder calibration additionally requires a calibratable source and known motor
 direction/pole count. STOP cancels; success stops rather than starting RUN.
@@ -28,25 +32,42 @@ Encoder calibration saves all settings to flash; anti-cogging results remain in
 RAM until FLASH_SAVE. Enable/disable requires stationary IDLE/ERROR; enabling
 also requires valid data. Changing encoder coordinates invalidates anti-cogging.
 
-Anti-cogging settles at 1000 positions per mechanical revolution in each direction
-and averages repeated settled-current measurements into separate forward/reverse
-tables. A point watchdog is 10 s; the overall watchdog is 600 s multiplied by the
-configured revolution count. Cancellation/failure leaves its in-place table
-invalid. PID gains are restored and outputs disabled on termination. Calibration
-must run unloaded; this estimates compensation current, not a direct torque or
-independently measured position-error trace.
+Anti-cogging holds 1000 positions per mechanical revolution in each direction.
+It uses a separate `pid_anticogging` controller, default Kp=10, Ki=20, Kd=0.2,
+editable in Calibration > Anti-cogging. Normal position gains are unchanged.
+Kp must be positive and all gains finite/nonnegative. Controller and measurement checks share continuous
+unwrapped mechanical targets. A pre-position one bin before each sweep ensures
+the initial recorded point is approached from that sweep's direction; repeated
+revolutions continue through the wrap instead of jumping back to zero.
 
-Terminal failures send a detailed `MSG_TEXT_REPLY` to the plotter terminal after
-motor excitation is removed. Timeout code 4 distinguishes point settling timeout
-from overall calibration timeout in the text. Diagnostics include failed stage,
-direction, revolution, table bin, progress, elapsed/limit times, target and
-wrapped/unwrapped positions, wrapped settling error, unwrapped PID error, speed,
-filtered q-axis current, pre-cleanup current command, hold count and fault masks.
-Positions are in milliradians, errors in microradians, speed in microradians/s,
-and currents in milliamps; nonfinite/out-of-range measurements display `invalid`.
-Settling still requires absolute wrapped error below 0.005 rad and absolute speed
-below 0.001 rad/s for 11 consecutive checks. Calibration status packets retain
-the existing error codes and layout; detailed text does not require a protocol change.
+After each target change, allow 50 ms before sampling. Accept a 100 ms window
+with at least 32 divided-loop samples only if all of these hold:
+
+- Maximum absolute position error <=0.005 rad.
+- Measured position range <=0.004 rad over the entire window.
+- Mean absolute estimated speed <=0.05 rad/s.
+- Measured q-current standard deviation <=max(0.02 A, 5% of its absolute mean).
+- Current command remains below 95% of the configured current limit.
+
+These starting thresholds are compile-time settings in FOC_Config.h; they need
+motor validation. Position spread and current statistics reject oscillation;
+the speed threshold allows some estimator noise rather than requiring an
+instantaneous near-zero reading. Failed windows are discarded and restarted.
+Each accepted bin stores the arithmetic mean of its measured q-current samples,
+then averages over requested revolutions. No samples from previous positions
+carry over. Forward and reverse tables remain separate; downloaded plots show
+their RMS/peak disagreement, which can include friction/hysteresis.
+
+Point timeout is 10 s; overall timeout is 1800 s (30 minutes) times the revolution count.
+Failure/cancellation leaves the partial table invalid and disabled. Success also
+leaves compensation disabled until explicitly enabled. Outputs are disabled and
+position-controller state reset on termination. This estimates holding current
+on an unloaded motor, not an independent torque measurement.
+
+Timeout reports retain the latest rejected criterion and its window error,
+position span, mean absolute speed, mean current and standard deviation alongside
+limits, bin/direction, elapsed times and fault masks. They are visible in the
+plotter's retained routine result. Status packets and commands are unchanged.
 
 ## Reading and editing tables
 
@@ -54,7 +75,7 @@ Transfers require stationary IDLE/ERROR, with no calibration routine running.
 Values are flattened: encoder has 128 correction radians indexed by raw absolute
 sensor angle; anti-cogging has 1000 mechanical bins with interleaved forward and
 reverse compensation amperes (`fwd0, rev0, fwd1, rev1, ...`). Bin angle is
-`index * 360 / bins` degrees; anti-cogging is indexed in aligned/corrected
+`index * 2*pi / bins` radians; anti-cogging is indexed in aligned/corrected
 mechanical coordinates. Sizes/channels come from status, not host assumptions.
 
 | Command | Payload | Reply |
@@ -107,3 +128,10 @@ Edits stay local until Apply edited table to RAM is confirmed. Uploads are
 acknowledged one chunk at a time and stop at the first rejection. Reconnect clears
 local snapshots so another device cannot receive stale edits inadvertently.
 Save all settings and tables to flash is a separate explicit operation.
+
+The anti-cogging PID is exposed through the existing discovered PID registry and
+GET_PID/SET_PID messages; its ID is never hardcoded by the plotter. Apply gains
+in fault-free IDLE, then save settings to flash for persistence. The three gains
+use the former 12 reserved bytes, preserving version-2 record size and offsets.
+A marker in the former filler bytes distinguishes older records, which receive
+the defaults in RAM when loaded. Loading does not automatically write flash.

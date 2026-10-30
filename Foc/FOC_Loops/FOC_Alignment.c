@@ -42,6 +42,9 @@ void FOC_Alignment_Start(FOC_HandleTypeDef *hfoc, float magnitude){
 FOC_LoopStatusTypeDef FOC_Alignment_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopStatusTypeDef result){
     FOC_AlignmentContextTypeDef *ctx = &hfoc->alignment;
     if(!ctx->runtime.active) return ctx->runtime.status;
+    if(result == FOC_LOOP_CANCELLED && (hfoc->active_errors || hfoc->latched_errors)){
+        ctx->runtime.detail = "Interrupted by fault; see active/latched flags";
+    }
     FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
     if(result == FOC_LOOP_COMPLETED && !ctx->candidate_valid){
         ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
@@ -58,6 +61,7 @@ FOC_LoopStatusTypeDef FOC_Alignment_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopStat
     }
     ctx->runtime.active = 0;
     ctx->runtime.status = result;
+    FOC_ReportRoutineResult(hfoc, "Encoder alignment", &ctx->runtime, (unsigned)ctx->stage);
     if(result == FOC_LOOP_ERROR) ctx->failed_stage = ctx->stage;
     ctx->stage = result == FOC_LOOP_COMPLETED ? FOC_ALIGNMENT_DONE :
                  result == FOC_LOOP_CANCELLED ? FOC_ALIGNMENT_CANCELLED : FOC_ALIGNMENT_FAILED;

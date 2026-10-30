@@ -430,6 +430,33 @@ rejected. Memory offsets and native field sizes are not transmitted.
 
 ## Shared state, control-mode, and error values
 
+### Retained test/calibration result
+
+`MSG_GET_ROUTINE_RESULT` (0x3C, empty payload) returns
+`MSG_ROUTINE_RESULT_REPLY` (0x3D, UTF-8 text, up to 767 bytes). This read-only
+additive command is available in production builds; older firmware may reject
+it as unknown. The last terminal routine result is retained in RAM until another
+routine finishes or the device reboots. It includes routine name, outcome,
+failure reason, failed stage, elapsed time and fault masks. Fault-driven cleanup
+explicitly says it was interrupted by a fault; user STOP says cancelled.
+
+Covered operations: current-sensor calibration, encoder alignment, encoder
+direction test, encoder correction calibration, R/L identification, current PI
+tuning and anti-cogging. Reports are also sent once through MSG_TEXT_REPLY.
+Encoder failures distinguish missing sweep coverage, excessive tracking error,
+forward/reverse disagreement, invalid correction mapping, invalid measurements,
+current limit, configuration changes and flash save failure.
+
+In stopped/IDLE/ERROR states the query additionally attempts a validated AS5047P
+DIAAGC read. MAGL (bit 11) means weak magnetic field, MAGH (bit 10) strong field,
+COF (bit 9) unreliable angle and LF (bit 8) completed offset compensation.
+These are snapshots at readback time, not recorded proof of the magnetic field
+at the instant of failure. No SPI diagnostics are inserted into the running
+sample path. Busy SPI, bad parity, sensor error flags or unavailable sources are
+reported as unknown/unavailable, never as a healthy magnet. The plotter displays
+the report in Calibration > Last test / calibration result and reads it on
+entry to IDLE/ERROR; the read button supports manual retry and reconnects.
+
 These values are used by both USB and CAN. They are separate from the discovered
 signal/variable/PID IDs and are defined in FOC_States.h, FOC_Loops.h, and
 FOC_Diagnostics.h.
@@ -479,6 +506,7 @@ the separate open-loop voltage routine.
 | 13 | FOC_ERROR_IBUS_OC |
 | 14 | FOC_ERROR_ENCODER_FAULT |
 | 15 | FOC_ERROR_OPERATION_FAILED |
+| 16 | FOC_ERROR_PHASE_OC |
 
 ERROR requires at least one latched fault. Active faults are reevaluated from
 the hardware/measurements and latched automatically. State-changing requests
@@ -495,3 +523,13 @@ current-sensor calibration, identification, PID autotune, alignment/alignment
 test, anticogging, and flash save/load/clear. Diagnostic text identifies the
 particular operation; clearing the event does not retry that operation.
 Other defined error bits may not be set by the current diagnostic paths.
+
+PHASE_OC (bit 16, 0x00010000, "Phase over-current" in the plotter) detects
+either polarity of measured phase current exceeding `max_dq_current`, once ADC
+calibration is complete. It is checked each measurement cycle, including during
+voltage-driven encoder calibration. Encoder/anti-cogging current-limit failures
+also report this specific latched fault rather than only OPERATION_FAILED.
+It remains latched after output is disabled and current falls; acknowledgement
+while the condition is present immediately relatches it. IBUS_OC remains the
+separate bus-current fault. All faults reported with FOC_SetError set the same
+bits in both active and latched masks, including one-shot software faults.

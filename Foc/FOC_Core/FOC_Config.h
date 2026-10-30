@@ -35,7 +35,19 @@
 #define VBUS_VOLTAGE_DIVIDER_RATIO (1.0f/(1.0f + 10.0f)) // R2/(R1+R2) voltage divider ratio for the bus voltage measurement, R1 = 100k, R2 = 10k
 
 /*Filters*/
-#define SPEED_MEASUREMENT_ALPHA 0.3f
+/* Mechanical speed PLL natural frequency. Lower = quieter, slower acceleration tracking. */
+#define ENCODER_SPEED_PLL_FREQUENCY_HZ 50.0f
+
+/* Anti-cogging acceptance windows (mechanical radians, seconds and amperes).
+   Calibration uses the separate user-configured pid_anticogging gains. */
+#define ANTICOG_WINDOW_MS 100U
+#define ANTICOG_MIN_SAMPLES 32U
+#define ANTICOG_MOVE_SETTLE_MS 50U
+#define ANTICOG_POSITION_TOLERANCE 0.005f
+#define ANTICOG_POSITION_SPAN 0.004f
+#define ANTICOG_MEAN_ABS_SPEED 0.05f
+#define ANTICOG_CURRENT_STD_ABS 0.02f
+#define ANTICOG_CURRENT_STD_REL 0.05f
 
 
 /*Temperature*/

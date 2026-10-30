@@ -54,6 +54,7 @@
     X(pid_current_q)                         \
     X(pid_speed)                             \
     X(pid_position)                          \
+    X(pid_anticogging)                       \
 
 /* Reserved for debug-only data. Functional settings/targets have validated APIs. */
 #define VAR_ID_LIST(X)
@@ -797,6 +798,29 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         Debug_ReplyStateTransition(msg_type, (FOC_StateTypeDef)payload[0], FOC_STATE_NONE);
         break;
 
+    case MSG_GET_ROUTINE_RESULT: {
+        if(payload_length != 0) goto calibration_payload_error;
+        char reply[768];
+        const char *diagnostic = "not sampled while motor is active";
+        uint16_t flags = 0;
+        uint8_t diagnostic_valid = 0;
+        if(hfoc.state == FOC_STATE_IDLE || hfoc.state == FOC_STATE_ERROR || hfoc.state == FOC_STATE_STOP){
+            const FOC_EncoderSourceTypeDef *source = FOC_EncoderSource(hfoc.flash_data.encoder.source_id);
+            if(!source || (source->read != FOC_EncoderReadSPI && source->read != FOC_EncoderReadTimer))
+                diagnostic = "unavailable for this encoder source";
+            else if(AS5047P_GetDIAAGC(&hfoc.has5047p, &flags) != AS5047P_OK)
+                diagnostic = "SPI diagnostic read failed/busy; magnetic field unknown";
+            else {diagnostic = "valid read (snapshot now, not necessarily at failure)"; diagnostic_valid = 1;}
+        }
+        snprintf(reply, sizeof(reply), "%s\nEncoder diagnostic: %s; DIAAGC=0x%03X; MAGL=%u; MAGH=%u; COF=%u; ready=%u. MAGL=weak field; MAGH=strong field; COF=unreliable angle.",
+            hfoc.routine_result[0] ? hfoc.routine_result : "No routine result recorded since boot.",
+            diagnostic, flags, !!(flags & (1u<<11)), !!(flags & (1u<<10)),
+            !!(flags & (1u<<9)), !!(flags & (1u<<8)));
+        if(!diagnostic_valid) snprintf(reply, sizeof(reply), "%s\nEncoder diagnostic: %s.",
+            hfoc.routine_result[0] ? hfoc.routine_result : "No routine result recorded since boot.", diagnostic);
+        Debug_SendBinaryResponse(MSG_ROUTINE_RESULT_REPLY, (uint8_t*)reply, strlen(reply));
+        break;
+    }
     case MSG_GET_CALIBRATION_INFO: {
         if(payload_length != 1 || payload[0] > 1) goto calibration_payload_error;
         uint8_t kind = payload[0];
@@ -811,7 +835,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         info[2] = kind ? hfoc.anticogging.stage : hfoc.encoder_calibration.stage;
         info[3] = r->error;
         write_u16_le(info+4, kind ? hfoc.anticogging.progress : hfoc.encoder_calibration.progress);
-        info[6] = hfoc.calibration_revolutions[kind] ? hfoc.calibration_revolutions[kind] : 3;
+        info[6] = hfoc.calibration_revolutions[kind] ? hfoc.calibration_revolutions[kind] : 1;
         write_u16_le(info+7, FOC_CalibrationSize(kind) / (kind ? 2 : 1));
         info[9] = kind ? 2 : 1;
         Debug_SendBinaryResponse(MSG_CALIBRATION_INFO_REPLY, info, sizeof(info));

@@ -33,9 +33,13 @@ void FOC_CurrentSensorCalibration_Start(FOC_HandleTypeDef *hfoc){
 FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopStatusTypeDef result){
     FOC_CurrentCalibrationContextTypeDef *ctx = &hfoc->current_calibration;
     if(!ctx->runtime.active) return ctx->runtime.status;
+    if(result == FOC_LOOP_CANCELLED && (hfoc->active_errors || hfoc->latched_errors)){
+        ctx->runtime.detail = "Interrupted by fault; see active/latched flags";
+    }
     if(ctx->calibration_enabled){
         ctx->calibration_enabled = 0;
         if(DRV8323_CSACALStop(&hfoc->hdrv8323) != DRV8323_OK){
+            ctx->runtime.detail = "Could not exit current-sense amplifier calibration mode";
             ctx->runtime.error = FOC_ROUTINE_ERROR_CURRENT_SENSE;
             result = FOC_LOOP_ERROR;
             DRV8323_SetHighImpedance(&hfoc->hdrv8323);
@@ -56,6 +60,7 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration_Finish(FOC_HandleTypeDef *hfo
     }
     ctx->runtime.active = 0;
     ctx->runtime.status = result;
+    FOC_ReportRoutineResult(hfoc, "Current sensor calibration", &ctx->runtime, (unsigned)ctx->stage);
     if(result == FOC_LOOP_ERROR) ctx->failed_stage = ctx->stage;
     ctx->stage = result == FOC_LOOP_COMPLETED ? FOC_CURRENT_CAL_DONE :
                  result == FOC_LOOP_CANCELLED ? FOC_CURRENT_CAL_CANCELLED : FOC_CURRENT_CAL_FAILED;
@@ -93,6 +98,7 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration_Update(FOC_HandleTypeDef *hfo
                 /* Even a failed SPI reply may have applied the command. */
                 ctx->calibration_enabled = 1;
                 if(DRV8323_CSACALStart(&hfoc->hdrv8323) != DRV8323_OK){
+                    ctx->runtime.detail = "Could not enable current-sense amplifier calibration mode";
                     ctx->runtime.error = FOC_ROUTINE_ERROR_CURRENT_SENSE;
                     return FOC_CurrentSensorCalibration_Finish(hfoc, FOC_LOOP_ERROR);
                 }
@@ -112,11 +118,13 @@ FOC_LoopStatusTypeDef FOC_CurrentSensorCalibration_Update(FOC_HandleTypeDef *hfo
                     ctx->candidate_valid = isfinite(ctx->candidate_a) &&
                                            isfinite(ctx->candidate_b) && isfinite(ctx->candidate_c);
                     if(!ctx->candidate_valid){
+                        ctx->runtime.detail = "Current-sensor averaged offsets are non-finite";
                         ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
                         return FOC_CurrentSensorCalibration_Finish(hfoc, FOC_LOOP_ERROR);
                     }
                     ctx->calibration_enabled = 0;
                     if(DRV8323_CSACALStop(&hfoc->hdrv8323) != DRV8323_OK){
+                        ctx->runtime.detail = "Could not disable current-sense amplifier calibration mode";
                         ctx->runtime.error = FOC_ROUTINE_ERROR_CURRENT_SENSE;
                         DRV8323_SetHighImpedance(&hfoc->hdrv8323);
                         return FOC_CurrentSensorCalibration_Finish(hfoc, FOC_LOOP_ERROR);

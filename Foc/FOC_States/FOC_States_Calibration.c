@@ -44,7 +44,9 @@ FOC_StateTransitionTypeDef FOC_StateEncoderCalibration_Transition(FOC_HandleType
 void FOC_StateEncoderCalibration(FOC_HandleTypeDef *hfoc){
     FOC_LoopStatusTypeDef status = FOC_EncoderCalibration_Update(hfoc);
     if(status == FOC_LOOP_COMPLETED) FOC_SetState(hfoc, FOC_STATE_STOP, FOC_STATE_NONE);
-    else if(status == FOC_LOOP_ERROR) FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
+    else if(status == FOC_LOOP_ERROR) FOC_SetError(hfoc,
+        (hfoc->active_errors | hfoc->latched_errors) ?
+        (hfoc->active_errors | hfoc->latched_errors) : FOC_ERROR_OPERATION_FAILED);
 }
 
 /**
@@ -172,6 +174,7 @@ void FOC_StateAntiCogging(FOC_HandleTypeDef* hfoc){
         FOC_StateCalibrationComplete(hfoc);
     } else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("Anti-cogging measurement failed!\n");
-        FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
+        FOC_SetError(hfoc, (hfoc->active_errors | hfoc->latched_errors) ?
+            (hfoc->active_errors | hfoc->latched_errors) : FOC_ERROR_OPERATION_FAILED);
     }
 }

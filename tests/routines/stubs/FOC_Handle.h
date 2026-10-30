@@ -25,6 +25,7 @@ struct FOC_Handle {
     FOC_CurrentCalibrationContextTypeDef current_calibration;
     FOC_EncoderCalibrationContextTypeDef encoder_calibration;
     FOC_EncoderRuntimeTypeDef encoder_runtime;
+    char routine_result[512];
     AS5047P_HandleTypeDef has5047p;
     volatile uint32_t *pencoder_count;
     FOC_IdentificationContextTypeDef identification;
@@ -39,7 +40,7 @@ struct FOC_Handle {
     struct {PhaseCurrentsTypeDef phase_current; float motor_temp, mosfet_temp, vbus;} adc_values;
     DQCurrentsTypeDef dq_current_setpoint;
     DQCurrentsTypeDef dq_current;
-    PIDControllerTypeDef pid_current_d, pid_current_q, pid_position, pid_speed;
+    PIDControllerTypeDef pid_current_d, pid_current_q, pid_position, pid_speed, pid_anticogging;
     float speed_setpoint, angle_setpoint, ibus;
     float encoder_angle_electrical, encoder_speed_electrical;
     float encoder_angle_mechanical_wrapped, encoder_speed_mechanical;

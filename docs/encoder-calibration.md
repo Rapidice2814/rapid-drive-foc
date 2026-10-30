@@ -92,7 +92,7 @@ can contaminate measurements even with bidirectional averaging.
 
 The Start/Update/Finish routine commands a stator field independently of the
 encoder position PID. It locks for 300 ms, then steps through 1-8 mechanical
-revolutions in each direction (default three), using 1024 positions per revolution. Each position
+revolutions in each direction (default one), using 1024 positions per revolution. Each position
 settles for 10 ms before eight ADC-synchronous samples are accumulated. Signed
 unwrapping tracks complete turns. Current/anti-cogging feedforward are
 temporarily disabled; the old correction is bypassed, not overwritten.
@@ -116,7 +116,7 @@ angle calculation. Zero alignment uses the same corrected coordinate.
 
 After both sweeps, outputs enter high impedance before validation/persistence.
 Only a validated candidate replaces the table and matching zero. Success saves
-all current settings, enables correction, invalidates anti-cogging, and enters
+all current settings with correction disabled, invalidates anti-cogging, and enters
 STOP, never RUN. Anti-cogging must subsequently be remeasured. Cancellation or
 measurement failure preserves the previous table/zero; failure latches
 OPERATION_FAILED. Cleanup restores temporary flags and removes excitation.
@@ -141,3 +141,16 @@ with injected periodic angle error, including interpolation/wraparound, source
 initialization/recovery, cancellation, CRC validation, and RAM rollback.
 
 SPI frame/parity behavior follows the [AS5047P datasheet](https://look.ams-osram.com/m/d05ee39221f9857/original/AS5047P-DS000324.pdf).
+
+Mechanical speed uses a critically damped angle-tracking PLL instead of a
+filtered sample-to-sample derivative. `ENCODER_SPEED_PLL_FREQUENCY_HZ` in
+`FOC_Config.h` sets its natural frequency (initially 50 Hz); decrease it for
+less standstill noise or increase it for faster acceleration tracking. This is
+an observer tuning frequency, not a maximum shaft rotation frequency. The PLL
+predicts a wrapped angle and corrects angle and speed from the shortest angular
+error. Measured angles still drive commutation and position unwrapping directly.
+Existing history resets also reset the observer, and the first sample seeds its
+angle with zero speed. Source switching and zero/correction changes therefore
+do not manufacture a speed spike. Sampling must still resolve motion to less
+than half a revolution per sample. Verify acceleration, reversal, speed-loop
+stability and ISR timing on hardware before relying on the new tuning.

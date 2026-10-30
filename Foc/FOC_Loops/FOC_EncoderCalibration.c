@@ -4,6 +4,7 @@
 #include "FOC_USB_Debug.h"
 #include "Cordic.h"
 #include "Utils.h"
+#include "FOC_Diagnostics.h"
 
 #define CAL_STEPS 1024U
 #define CAL_SAMPLES 8U
@@ -33,7 +34,7 @@ void FOC_EncoderCalibration_Start(FOC_HandleTypeDef *hfoc){
         .stage = FOC_ENCODER_CAL_LOCK,
         .voltage = hfoc->flash_data.encoder.calibration_voltage,
         .source = hfoc->flash_data.encoder.source_id,
-        .revolutions = hfoc->calibration_revolutions[0] ? hfoc->calibration_revolutions[0] : 3,
+        .revolutions = hfoc->calibration_revolutions[0] ? hfoc->calibration_revolutions[0] : 1,
         .pole_pairs = hfoc->flash_data.motor.pole_pairs,
         .motor_direction = hfoc->flash_data.motor.direction,
         .saved_anticog_ff = hfoc->flash_data.controller.anticogging_FF_enabled,
@@ -69,15 +70,19 @@ void FOC_EncoderCalibration_Start(FOC_HandleTypeDef *hfoc){
 FOC_LoopStatusTypeDef FOC_EncoderCalibration_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopStatusTypeDef result){
     FOC_EncoderCalibrationContextTypeDef *ctx = &hfoc->encoder_calibration;
     if(!ctx->runtime.active) return ctx->runtime.status;
+    if(result == FOC_LOOP_CANCELLED && (hfoc->active_errors || hfoc->latched_errors)){
+        ctx->runtime.detail = "Interrupted by fault; see active/latched flags";
+    }
     FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
     DRV8323_SetHighImpedance(&hfoc->hdrv8323);
     hfoc->encoder_runtime.bypass_correction = 0;
-    hfoc->flash_data.controller.anticogging_FF_enabled = ctx->saved_anticog_ff;
+    hfoc->flash_data.controller.anticogging_FF_enabled = result == FOC_LOOP_COMPLETED ? 0 : ctx->saved_anticog_ff;
     hfoc->flash_data.controller.current_PID_FF_enabled = ctx->saved_current_ff;
     if(result == FOC_LOOP_COMPLETED && !ctx->candidate_valid) result = FOC_LOOP_ERROR;
     if(result != FOC_LOOP_COMPLETED && result != FOC_LOOP_CANCELLED && result != FOC_LOOP_ERROR) result = FOC_LOOP_ERROR;
     if(result == FOC_LOOP_ERROR) ctx->failed_stage = ctx->stage;
     ctx->runtime.status = result;
+    FOC_ReportRoutineResult(hfoc, "Encoder calibration", &ctx->runtime, (unsigned)ctx->stage);
     ctx->runtime.active = 0;
     ctx->stage = result == FOC_LOOP_COMPLETED ? FOC_ENCODER_CAL_DONE :
         result == FOC_LOOP_CANCELLED ? FOC_ENCODER_CAL_CANCELLED : FOC_ENCODER_CAL_FAILED;
@@ -90,17 +95,29 @@ static uint8_t calibration_validate(FOC_HandleTypeDef *hfoc){
     FOC_EncoderCalibrationContextTypeDef *ctx = &hfoc->encoder_calibration;
     float mean = 0;
     for(unsigned i = 0; i < FOC_ENCODER_LUT_SIZE; i++){
-        if(!ctx->forward_count[i] || !ctx->reverse_count[i]) return 0;
+        if(!ctx->forward_count[i] || !ctx->reverse_count[i]){
+            ctx->runtime.detail = "Incomplete angular coverage: bins missing in forward/reverse sweep";
+            return 0;
+        }
         float a = ctx->forward[i] / ctx->forward_count[i];
         float b = ctx->reverse[i] / ctx->reverse_count[i];
         float disagreement = fabsf(a - b);
-        if(!isfinite(a) || !isfinite(b) || disagreement > CAL_DISAGREEMENT_MAX) return 0;
+        if(!isfinite(a) || !isfinite(b)){
+            ctx->runtime.detail = "Non-finite averaged encoder error"; return 0;
+        }
+        if(disagreement > CAL_DISAGREEMENT_MAX){
+            ctx->runtime.detail = "Forward/reverse disagreement exceeds 0.03 rad"; return 0;
+        }
         if(disagreement > ctx->max_disagreement) ctx->max_disagreement = disagreement;
         ctx->forward[i] = (a + b) * 0.5f;
         mean += ctx->forward[i] / FOC_ENCODER_LUT_SIZE;
     }
     for(unsigned i = 0; i < FOC_ENCODER_LUT_SIZE; i++) ctx->forward[i] -= mean;
-    return FOC_EncoderValidateLUT(ctx->forward);
+    if(!FOC_EncoderValidateLUT(ctx->forward)){
+        ctx->runtime.detail = "Correction exceeds 0.1 rad or mapping is nonmonotonic/too steep";
+        return 0;
+    }
+    return 1;
 }
 
 /** @brief Swaps the candidate/accepted LUT so RAM can be rolled back on flash failure. */
@@ -128,14 +145,32 @@ FOC_LoopStatusTypeDef FOC_EncoderCalibration_Update(FOC_HandleTypeDef *hfoc){
         ctx->runtime.error = FOC_ROUTINE_ERROR_TIMEOUT;
         return FOC_EncoderCalibration_Finish(hfoc, FOC_LOOP_ERROR);
     }
-    if(!hfoc->encoder_runtime.healthy || ctx->source != hfoc->flash_data.encoder.source_id ||
-       ctx->pole_pairs != hfoc->flash_data.motor.pole_pairs || ctx->motor_direction != hfoc->flash_data.motor.direction ||
-       !isfinite(hfoc->encoder_runtime.raw_angle) || hfoc->active_errors || hfoc->latched_errors) goto invalid;
+    if(!hfoc->encoder_runtime.healthy || !isfinite(hfoc->encoder_runtime.raw_angle)){
+        ctx->runtime.detail = "Encoder read unavailable or angle non-finite; magnetic-field state requires diagnostics";
+        ctx->runtime.error = FOC_ROUTINE_ERROR_ENCODER;
+        goto invalid;
+    }
+    if(ctx->source != hfoc->flash_data.encoder.source_id || ctx->pole_pairs != hfoc->flash_data.motor.pole_pairs ||
+       ctx->motor_direction != hfoc->flash_data.motor.direction){
+        ctx->runtime.detail = "Encoder source, pole count or motor direction changed during calibration";
+        goto invalid;
+    }
+    if(hfoc->active_errors || hfoc->latched_errors){
+        ctx->runtime.detail = "Interrupted by fault; see active/latched flags"; goto invalid;
+    }
+    ctx->runtime.detail = "Phase current measurement is non-finite";
     if(!isfinite(hfoc->adc_values.phase_current.a) || !isfinite(hfoc->adc_values.phase_current.b) ||
-       !isfinite(hfoc->adc_values.phase_current.c) ||
-       fabsf(hfoc->adc_values.phase_current.a) > hfoc->flash_data.limits.max_dq_current ||
+       !isfinite(hfoc->adc_values.phase_current.c)) goto invalid;
+    if(fabsf(hfoc->adc_values.phase_current.a) > hfoc->flash_data.limits.max_dq_current ||
        fabsf(hfoc->adc_values.phase_current.b) > hfoc->flash_data.limits.max_dq_current ||
-       fabsf(hfoc->adc_values.phase_current.c) > hfoc->flash_data.limits.max_dq_current) goto invalid;
+       fabsf(hfoc->adc_values.phase_current.c) > hfoc->flash_data.limits.max_dq_current){
+        ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
+        ctx->runtime.detail = "Measured phase current exceeds maximum d/q current";
+        FOC_EncoderCalibration_Finish(hfoc, FOC_LOOP_ERROR);
+        FOC_SetError(hfoc, FOC_ERROR_PHASE_OC);
+        return FOC_LOOP_ERROR;
+    }
+    ctx->runtime.detail = NULL;
     switch(ctx->stage){
         case FOC_ENCODER_CAL_LOCK:
             if(FOC_RoutineElapsed(now, ctx->runtime.stage_started_ms, 300U)){
@@ -145,7 +180,9 @@ FOC_LoopStatusTypeDef FOC_EncoderCalibration_Update(FOC_HandleTypeDef *hfoc){
             }
             break;
         case FOC_ENCODER_CAL_APPLY:
-            if(ctx->step > CAL_STEPS * ctx->revolutions || ctx->direction > 1) goto invalid;
+            if(ctx->step > CAL_STEPS * ctx->revolutions || ctx->direction > 1){
+                ctx->runtime.detail = "Invalid encoder sweep step/direction"; goto invalid;
+            }
             calibration_field(hfoc);
             ctx->samples = 0;
             ctx->runtime.stage_started_ms = now;
@@ -161,7 +198,10 @@ FOC_LoopStatusTypeDef FOC_EncoderCalibration_Update(FOC_HandleTypeDef *hfoc){
             float expected = (float)ctx->step * (M_2PIF / CAL_STEPS) * (hfoc->flash_data.motor.direction ? -1.0f : 1.0f);
             float error = expected - ctx->raw_relative;
             float tracking_limit = fminf(0.15f, M_PIF / (2.0f * hfoc->flash_data.motor.pole_pairs));
-            if(!isfinite(error) || fabsf(error) > tracking_limit) goto invalid;
+            if(!isfinite(error) || fabsf(error) > tracking_limit){
+                ctx->runtime.detail = "Rotor/encoder tracking error exceeds min(0.15 rad, pi/(2*pole_pairs)); check magnet, pole count and rotor following";
+                goto invalid;
+            }
             unsigned bin = (unsigned)(raw * (FOC_ENCODER_LUT_SIZE / M_2PIF) + 0.5f) % FOC_ENCODER_LUT_SIZE;
             if(ctx->direction == 0){ctx->forward[bin] += error; ctx->forward_count[bin]++;}
             else {ctx->reverse[bin] += error; ctx->reverse_count[bin]++;}
@@ -194,17 +234,19 @@ FOC_LoopStatusTypeDef FOC_EncoderCalibration_Update(FOC_HandleTypeDef *hfoc){
             uint8_t old_source = hfoc->flash_data.encoder.correction_source;
             uint8_t old_offset_valid = hfoc->flash_data.encoder.offset_valid;
             calibration_swap(hfoc);
-            hfoc->flash_data.encoder.correction_valid = hfoc->flash_data.encoder.correction_enabled = 1;
+            hfoc->flash_data.encoder.correction_valid = 1;
+            hfoc->flash_data.encoder.correction_enabled = 0;
             hfoc->flash_data.encoder.correction_source = ctx->source;
             hfoc->flash_data.encoder.raw_zero = ctx->reference_raw;
-            hfoc->flash_data.encoder.mechanical_offset = ctx->reference_raw + FOC_EncoderLUT(hfoc->flash_data.encoder.correction, ctx->reference_raw);
+            hfoc->flash_data.encoder.mechanical_offset = ctx->reference_raw;
             normalize_angle_0_2pi(&hfoc->flash_data.encoder.mechanical_offset);
             hfoc->flash_data.encoder.offset_valid = 1;
             hfoc->flash_data.controller.anticogging_data_valid = 0;
             /* Persist normal settings, not temporary calibration disable flags. */
-            hfoc->flash_data.controller.anticogging_FF_enabled = ctx->saved_anticog_ff;
+            hfoc->flash_data.controller.anticogging_FF_enabled = 0;
             hfoc->flash_data.controller.current_PID_FF_enabled = ctx->saved_current_ff;
             if(FOC_FLASH_WriteData(&hfoc->flash_data) != FLASH_OK){
+                ctx->runtime.detail = "Flash save failed; previous calibration restored";
                 calibration_swap(hfoc);
                 hfoc->flash_data.encoder.raw_zero = old_zero;
                 hfoc->flash_data.encoder.mechanical_offset = old_offset;
@@ -225,6 +267,6 @@ FOC_LoopStatusTypeDef FOC_EncoderCalibration_Update(FOC_HandleTypeDef *hfoc){
     }
     return FOC_LOOP_IN_PROGRESS;
 invalid:
-    ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
+    if(ctx->runtime.error == FOC_ROUTINE_ERROR_NONE) ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
     return FOC_EncoderCalibration_Finish(hfoc, FOC_LOOP_ERROR);
 }

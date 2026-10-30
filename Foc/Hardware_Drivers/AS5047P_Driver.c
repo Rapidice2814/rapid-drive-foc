@@ -129,11 +129,12 @@ AS5047P_StatusTypeDef AS5047P_GetCMAG(AS5047P_HandleTypeDef *has5047p, uint16_t 
 }
 
 AS5047P_StatusTypeDef AS5047P_GetDIAAGC(AS5047P_HandleTypeDef *has5047p, uint16_t *value){
-    if(has5047p->pins_set == 0) return AS5047P_ERROR; //if the pins are not set, return error
+    if(!value || !has5047p->pins_set || !has5047p->hspi || has5047p->dma_stage) return AS5047P_ERROR;
 
-    AS5047P_TransmitCommand(has5047p, DIAAGC, 1);
+    if(AS5047P_TransmitCommand(has5047p, DIAAGC, 1) == 0xFFFF) return AS5047P_ERROR;
     uint16_t ret = AS5047P_TransmitCommand(has5047p, NOP, 1);
 
+    if((ret & 0x4000) || !is_even_parity(ret)) return AS5047P_ERROR;
     *value = (ret & 0x0FFF);
 
     return AS5047P_OK;

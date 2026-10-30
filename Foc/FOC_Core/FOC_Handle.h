@@ -23,6 +23,7 @@ typedef struct FOC_Handle {
 
     /* Per-handle calibration workspaces; never persisted to flash. */
     FOC_AlignmentContextTypeDef alignment;
+    char routine_result[512]; /* Last terminal result, readable after a USB reconnect. */
     FOC_CurrentCalibrationContextTypeDef current_calibration;
     FOC_EncoderCalibrationContextTypeDef encoder_calibration;
     FOC_EncoderRuntimeTypeDef encoder_runtime;
@@ -86,6 +87,7 @@ typedef struct FOC_Handle {
     PIDControllerTypeDef pid_current_d;            //d current controller
     PIDControllerTypeDef pid_current_q;            //q current controller
     PIDControllerTypeDef pid_speed;                //speed controller
+    PIDControllerTypeDef pid_anticogging;
     PIDControllerTypeDef pid_position;             //position controller
 
     DQCurrentsTypeDef dq_current_setpoint; //d and q current setpoints [A]

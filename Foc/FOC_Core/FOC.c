@@ -155,6 +155,7 @@ void FOC_Setup(){
 
     PID_Init(&hfoc.pid_speed, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_speed, 0);
     PID_Init(&hfoc.pid_position, (1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER)), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.controller.PID_gains_position, 0);
+    PID_Init(&hfoc.pid_anticogging, 1.0f/(CURRENT_LOOP_FREQUENCY / SPEED_LOOP_CLOCK_DIVIDER), 0.01f, &hfoc.flash_data.limits.max_dq_current, &hfoc.flash_data.anticogging_position_gains, 0);
     /* Filtered currents remain available for diagnostics; PID uses raw d/q. */
     biquad_filter_init(&hfoc.dq_current_d_filter, BIQUAD_LOW_PASS, 200.0f, CURRENT_LOOP_FREQUENCY, 0.70710678f);
     biquad_filter_init(&hfoc.dq_current_q_filter, BIQUAD_LOW_PASS, 200.0f, CURRENT_LOOP_FREQUENCY, 0.70710678f);

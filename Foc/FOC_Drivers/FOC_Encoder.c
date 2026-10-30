@@ -98,6 +98,7 @@ float FOC_EncoderCorrect(FOC_HandleTypeDef *hfoc, float raw){
 /** @brief Resets position/speed history when the angle coordinate changes. */
 void FOC_EncoderResetHistory(FOC_HandleTypeDef *hfoc){
     hfoc->encoder_runtime.history_valid = 0;
+    hfoc->encoder_runtime.speed_pll_angle = 0;
     hfoc->encoder_full_rotations = 0;
     hfoc->encoder_speed_mechanical = hfoc->encoder_speed_electrical = 0;
 }
@@ -113,6 +114,26 @@ uint8_t FOC_EncoderUpdate(FOC_HandleTypeDef *hfoc, float frequency){
     float angle = FOC_EncoderCorrect(hfoc, raw) - hfoc->flash_data.encoder.mechanical_offset;
     normalize_angle_0_2pi(&angle);
     float delta = 0;
+    if(!hfoc->encoder_runtime.history_valid){
+        hfoc->encoder_runtime.speed_pll_angle = angle;
+        hfoc->encoder_speed_mechanical = 0;
+    }else{
+        /* Critically damped alpha-beta angle tracker. The rational pole avoids
+           an exponential in the current ISR and stays stable as dt changes.
+           alpha=1-p*p, beta=(1-p)^2 give two identical discrete poles p. */
+        float step = M_2PIF * ENCODER_SPEED_PLL_FREQUENCY_HZ / frequency;
+        float gain = step / (1.0f + step);
+        float alpha = gain * (2.0f - gain);
+        float beta = gain * gain;
+        float prediction = hfoc->encoder_runtime.speed_pll_angle + hfoc->encoder_speed_mechanical / frequency;
+        normalize_angle_0_2pi(&prediction);
+        float error = angle - prediction;
+        if(error > M_PIF) error -= M_2PIF;
+        else if(error < -M_PIF) error += M_2PIF;
+        hfoc->encoder_runtime.speed_pll_angle = prediction + alpha * error;
+        normalize_angle_0_2pi(&hfoc->encoder_runtime.speed_pll_angle);
+        hfoc->encoder_speed_mechanical += beta * frequency * error;
+    }
     if(hfoc->encoder_runtime.history_valid){
         delta = angle - hfoc->encoder_angle_mechanical_wrapped_prev;
         if(delta > M_PIF){hfoc->encoder_full_rotations--; delta -= M_2PIF;}
@@ -124,7 +145,6 @@ uint8_t FOC_EncoderUpdate(FOC_HandleTypeDef *hfoc, float frequency){
     hfoc->encoder_angle_mechanical_unwrapped = angle + hfoc->encoder_full_rotations * M_2PIF;
     hfoc->encoder_angle_electrical = angle * hfoc->flash_data.motor.pole_pairs;
     normalize_angle_0_2pi(&hfoc->encoder_angle_electrical);
-    hfoc->encoder_speed_mechanical = hfoc->encoder_speed_mechanical * (1 - SPEED_MEASUREMENT_ALPHA) + delta * frequency * SPEED_MEASUREMENT_ALPHA;
     hfoc->encoder_speed_electrical = hfoc->encoder_speed_mechanical * hfoc->flash_data.motor.pole_pairs;
     return 1;
 }

@@ -46,6 +46,10 @@ static FOC_StateTransitionTypeDef FOC_StateStartRoutine(FOC_HandleTypeDef *hfoc)
         FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
         if(DRV8323_ExitHighImpedance(&hfoc->hdrv8323) != DRV8323_OK){
             Debug_SendTextResponse("Motor setup failed: could not enable inverter output.\n");
+            FOC_RoutineRuntimeTypeDef failure = {.status = FOC_LOOP_ERROR,
+                .error = FOC_ROUTINE_ERROR_INVALID_INPUT, .started_ms = HAL_GetTick(),
+                .detail = "Gate driver refused inverter output enable; check driver communication/faults"};
+            FOC_ReportRoutineResult(hfoc, "Motor setup", &failure, (unsigned)hfoc->state);
             FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
             return FOC_STATETRANSITION_ERROR;
         }

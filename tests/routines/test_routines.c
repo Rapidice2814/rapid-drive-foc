@@ -191,11 +191,12 @@ static uint16_t *pending_rx;
 static unsigned dma_calls, blocking_calls;
 static int fail_dma;
 static uint16_t last_dma_command;
+static uint16_t blocking_response;
 
 HAL_SPI_StateTypeDef HAL_SPI_GetState(SPI_HandleTypeDef *spi){return spi->state;}
 HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *spi, uint8_t *tx, uint8_t *rx, uint16_t size, uint32_t timeout){
     UNUSED(spi); UNUSED(tx); UNUSED(size); UNUSED(timeout); blocking_calls++;
-    *(uint16_t*)rx = 0;
+    *(uint16_t*)rx = blocking_response;
     return HAL_OK;
 }
 HAL_StatusTypeDef HAL_SPI_TransmitReceive_DMA(SPI_HandleTypeDef *spi, uint8_t *tx, uint8_t *rx, uint16_t size){
@@ -230,6 +231,15 @@ void *memcpy(void *dest, const void *source, size_t count){
 }
 uint32_t HAL_GetTick(void){return now;}
 void Debug_SendTextResponse(const char *format, ...){
+    if(strcmp(format, "%s\n") == 0){
+        va_list report_args; va_start(report_args, format);
+        const char *report = va_arg(report_args, const char *);
+        va_end(report_args);
+        if(strstr(report, "Anti-cogging failed:")){
+            snprintf(anticog_failure_text, sizeof(anticog_failure_text), "%s", report);
+            anticog_failure_reports++;
+        }
+    }
     if(strncmp(format, "Anti-cogging failed:", 19) == 0){
         va_list args;
         va_start(args, format);
@@ -276,8 +286,6 @@ FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *data){UNUSED(data); fl
 FLASH_StatusTypeDef FOC_FLASH_ClearData(void){flash_calls++; return flash_fail ? FLASH_ERROR : FLASH_OK;}
 void Current_Loop(FOC_HandleTypeDef *h){UNUSED(h); current_ticks++;}
 void Speed_Loop(FOC_HandleTypeDef *h){UNUSED(h); speed_ticks++;}
-void PID_Reset(PIDControllerTypeDef *pid){pid->integrator = 0;}
-void PID_SetGains(PIDControllerTypeDef *pid, PIDValuesTypeDef gains){*pid->K = gains; PID_Reset(pid);}
 uint8_t FOC_SetControlMode(FOC_HandleTypeDef *h, ControlModeTypeDef mode){
     h->flash_data.controller.control_mode = mode;
     if(mode == CONTROL_MODE_OPENLOOP) h->dq_current_setpoint = (DQCurrentsTypeDef){0};
@@ -331,6 +339,7 @@ void FOC_StateError(FOC_HandleTypeDef *h){UNUSED(h);}
 static void reset(void){
     test_spi = (SPI_HandleTypeDef){.hdmarx = &test_cs, .hdmatx = &test_cs};
     test_cs.value = 3; dma_calls = blocking_calls = 0; fail_dma = 0; pending_rx = NULL;
+    blocking_response = 0;
     now = starts = stops = commits = voltages = encoder_calls = 0;
     fail_start = fail_stop = fail_encoder = 0;
     current_ticks = speed_ticks = 0;
@@ -577,6 +586,75 @@ int test_completed_state_continuations(void){
     return 0;
 }
 
+int test_every_reported_fault_latches_until_acknowledged(void){
+    for(unsigned bit = 0; bit <= 16; bit++){
+        reset(); FOC_HandleTypeDef h = {0};
+        h.state = FOC_STATE_IDLE;
+        uint32_t fault = 1u << bit;
+        FOC_SetError(&h, fault);
+        CHECK(h.active_errors == fault && h.latched_errors == fault);
+        CHECK(h.state == FOC_STATE_ERROR && h.hdrv8323.high_impedance);
+        FOC_CheckErrors(&h);
+        CHECK(h.active_errors == 0 && h.latched_errors == fault && h.state == FOC_STATE_ERROR);
+        FOC_ClearLatchedErrors(&h);
+        CHECK(!h.active_errors && !h.latched_errors && h.state == FOC_STATE_STOP);
+    }
+    return 0;
+}
+
+int test_phase_overcurrent_detects_all_phases_and_relatches(void){
+    for(unsigned phase = 0; phase < 3; phase++){
+        for(unsigned negative = 0; negative < 2; negative++){
+            reset(); FOC_HandleTypeDef h = {0};
+            h.state = FOC_STATE_IDLE; h.adc_calibrated = 1;
+            h.flash_data.limits.max_dq_current = 5;
+            float *current = phase == 0 ? &h.adc_values.phase_current.a :
+                             phase == 1 ? &h.adc_values.phase_current.b : &h.adc_values.phase_current.c;
+            *current = negative ? -5.1f : 5.1f;
+            FOC_CheckErrors(&h);
+            CHECK(h.active_errors == FOC_ERROR_PHASE_OC && h.latched_errors == FOC_ERROR_PHASE_OC);
+            CHECK(h.state == FOC_STATE_ERROR && h.hdrv8323.high_impedance);
+            FOC_ClearLatchedErrors(&h);
+            CHECK(h.latched_errors == FOC_ERROR_PHASE_OC && h.state == FOC_STATE_ERROR);
+            *current = 0;
+            FOC_CheckErrors(&h);
+            CHECK(!h.active_errors && h.latched_errors == FOC_ERROR_PHASE_OC);
+            FOC_ClearLatchedErrors(&h);
+            CHECK(!h.latched_errors && h.state == FOC_STATE_STOP);
+        }
+    }
+    return 0;
+}
+
+int test_measured_faults_latch_corresponding_bits(void){
+    const unsigned bits[] = {4, 5, 6, 9, 10, 11, 12, 13};
+    for(unsigned i = 0; i < sizeof(bits) / sizeof(bits[0]); i++){
+        reset(); FOC_HandleTypeDef h = {0}; h.state = FOC_STATE_IDLE;
+        h.flash_data.limits.motor_temp_trip_level = 60;
+        h.flash_data.limits.mosfet_temp_trip_level = 80;
+        h.flash_data.limits.vbus_undervoltage_trip_level = 8;
+        h.flash_data.limits.vbus_overvoltage_trip_level = 30;
+        h.flash_data.limits.ibus_overcurrent_trip_level = 5;
+        h.adc_values.vbus = 24;
+        switch(bits[i]){
+            case 4: driver_fault = 1; break;
+            case 5: h.adc_values.motor_temp = 61; break;
+            case 6: h.adc_values.motor_temp = -1; break;
+            case 9: h.adc_values.mosfet_temp = 81; break;
+            case 10: h.adc_values.mosfet_temp = -1; break;
+            case 11: h.adc_values.vbus = 31; break;
+            case 12: h.adc_values.vbus = 7; break;
+            case 13: h.ibus = 6; break;
+        }
+        FOC_CheckErrors(&h);
+        CHECK(h.active_errors == (1u << bits[i]) && h.latched_errors == h.active_errors);
+        CHECK(h.state == FOC_STATE_ERROR && h.hdrv8323.high_impedance);
+        FOC_ClearLatchedErrors(&h);
+        CHECK(h.latched_errors == (1u << bits[i]));
+    }
+    return 0;
+}
+
 int test_faulted_flash_actions_execute_once(void){
     const FOC_StateTypeDef actions[] = {FOC_STATE_FLASH_SAVE, FOC_STATE_FLASH_LOAD, FOC_STATE_FLASH_CLEAR};
     for(unsigned i = 0; i < 3; i++){
@@ -607,6 +685,7 @@ int test_maintenance_entry_rules(void){
             reset(); FOC_HandleTypeDef h = {0};
             h.state = fault ? FOC_STATE_ERROR : FOC_STATE_IDLE;
             h.adc_calibrated = 1; h.flash_data.encoder.offset_valid = 1;
+            h.flash_data.limits.max_dq_current = 5;
             h.encoder_runtime.healthy = 1;
             h.latched_errors = fault ? FOC_ERROR_OPERATION_FAILED : 0;
             CHECK(FOC_SetState(&h, actions[i], FOC_STATE_RUN) == FOC_STATETRANSITION_OK);
@@ -811,7 +890,7 @@ int test_anticog_cleanup_restores_gains_all_stages(void){
         reset(); FOC_HandleTypeDef h = {0}; seed_motor(&h);
         h.flash_data.controller.anticogging_data_valid = 1;
         start_anticog(&h);
-        CHECK(h.flash_data.controller.PID_gains_position.Kp == 10);
+        CHECK(h.flash_data.controller.PID_gains_position.Kp == 7);
         CHECK(h.anticogging.gains_saved && !h.flash_data.controller.anticogging_data_valid);
         h.anticogging.stage = (FOC_AntiCoggingStageTypeDef)stage;
         h.anticogging.candidate_valid = 1;
@@ -835,7 +914,8 @@ int test_anticog_collects_both_directions_and_commits_validity(void){
     reset(); FOC_HandleTypeDef h = {0}; seed_motor(&h);
     h.dq_current.q = 2;
     start_anticog(&h);
-    CHECK(h.anticogging.revolutions == 3);
+    CHECK(h.anticogging.revolutions == 1);
+    h.anticogging.filtered_current = 2; /* Steady input; this fixture skips settling ticks. */
     for(unsigned i = 0; i < 8000 && h.anticogging.runtime.active; i++){
         if(h.anticogging.stage == FOC_ANTICOG_REPORT){
             /* Reporting is independent of measurement; cover its state below. */
@@ -843,7 +923,15 @@ int test_anticog_collects_both_directions_and_commits_validity(void){
             h.anticogging.wait_ms = 0;
         }
         h.encoder_angle_mechanical_wrapped = h.angle_setpoint;
-        h.anticogging.hold_count = 10;
+        h.encoder_angle_mechanical_unwrapped = h.angle_setpoint;
+        /* Full stable-window behaviour has separate sampling tests below.
+           Seed its statistics here to exercise all bins without emulating minutes. */
+        h.anticogging.window_samples = ANTICOG_MIN_SAMPLES - 1;
+        h.anticogging.window_started_ms = now - ANTICOG_WINDOW_MS;
+        h.anticogging.position_min = h.anticogging.position_max = h.angle_setpoint;
+        h.anticogging.current_mean = 2;
+        h.anticogging.current_m2 = h.anticogging.speed_sum = 0;
+        h.anticogging.window_error_max = h.anticogging.window_command_max = 0;
         h.anticogging.divider = SPEED_LOOP_CLOCK_DIVIDER - 1;
         now += 100;
         FOC_AntiCogging_Update(&h);
@@ -851,7 +939,7 @@ int test_anticog_collects_both_directions_and_commits_validity(void){
     }
     CHECK(h.anticogging.runtime.status == FOC_LOOP_COMPLETED);
     CHECK(h.flash_data.controller.anticogging_data_valid);
-    CHECK(h.anticogging.progress == 1000 && h.anticogging.revolution == 3);
+    CHECK(h.anticogging.progress == 1000 && h.anticogging.revolution == 1);
     CHECK(fabsf(h.flash_data.controller.anticogging_array[0][500] - 2) < 0.01f);
     CHECK(fabsf(h.flash_data.controller.anticogging_array[1][500] - 2) < 0.01f);
     CHECK(h.flash_data.controller.PID_gains_position.Kp == 7);
@@ -861,6 +949,7 @@ int test_anticog_collects_both_directions_and_commits_validity(void){
 
 int test_anticog_stall_and_fault_cleanup(void){
     reset(); FOC_HandleTypeDef h = {0}; seed_motor(&h);
+    h.calibration_revolutions[1] = 3; /* Explicit multi-revolution reporting fixture. */
     h.state = FOC_STATE_IDLE;
     h.adc_calibrated = h.flash_data.encoder.offset_valid = h.encoder_runtime.healthy = 1;
     FOC_SetState(&h, FOC_STATE_ANTICOGGING, FOC_STATE_RUN);
@@ -892,9 +981,10 @@ int test_anticog_stall_and_fault_cleanup(void){
     CHECK(strstr(anticog_failure_text, "point settling timeout (code 4)"));
     CHECK(strstr(anticog_failure_text, "direction=reverse; revolution=2/3; bin=740; progress=71.0%"));
     CHECK(strstr(anticog_failure_text, "point=10000ms/10000ms"));
-    CHECK(strstr(anticog_failure_text, "target=1250mrad") && strstr(anticog_failure_text, "PID_error=-5750000urad"));
-    CHECK(strstr(anticog_failure_text, "speed=1000000urad/s") && strstr(anticog_failure_text, "Iq_command=500mA"));
-    CHECK(strstr(anticog_failure_text, "11 consecutive checks"));
+    CHECK(strstr(anticog_failure_text, "target=1250mrad"));
+    CHECK(strstr(anticog_failure_text, "command=500mA"));
+    CHECK(strstr(anticog_failure_text, "Last window:"));
+    CHECK(strstr(anticog_failure_text, "latched=0x"));
     CHECK(anticog_failure_reports == 1 && strlen(anticog_failure_text) < 1019);
     FOC_AntiCogging_Update(&h);
     CHECK(anticog_failure_reports == 1);
@@ -905,7 +995,7 @@ int test_anticog_overall_timeout_is_distinguished_and_wraparound_safe(void){
     reset(); FOC_HandleTypeDef h = {0}; seed_motor(&h);
     now = UINT32_MAX - 5000;
     start_anticog(&h);
-    now += 600000 * h.anticogging.revolutions;
+    now += 1800000 * h.anticogging.revolutions;
     CHECK(FOC_AntiCogging_Update(&h) == FOC_LOOP_ERROR);
     CHECK(h.anticogging.runtime.error == FOC_ROUTINE_ERROR_TIMEOUT);
     CHECK(strstr(anticog_failure_text, "overall calibration timeout (code 4)"));
@@ -974,7 +1064,7 @@ int test_remaining_routine_timeouts_and_invalid_stages(void){
         CHECK(FOC_AlignmentTest_Update(&h) == FOC_LOOP_ERROR);
         CHECK(h.flash_data.motor.direction == 0 && h.phase_voltage.a == 0);
         start_anticog(&h);
-        if(mode) now += 600000 * h.anticogging.revolutions;
+        if(mode) now += 1800000 * h.anticogging.revolutions;
         else h.anticogging.stage = (FOC_AntiCoggingStageTypeDef)255;
         CHECK(FOC_AntiCogging_Update(&h) == FOC_LOOP_ERROR);
         CHECK(h.flash_data.controller.PID_gains_position.Kp == 7);
@@ -1183,6 +1273,44 @@ int test_encoder_lut_interpolation_and_validation(void){
     return 0;
 }
 
+int test_encoder_pll_noise_and_tracking(void){
+    reset(); FOC_HandleTypeDef h = {0};
+    h.state = FOC_STATE_IDLE;
+    CHECK(FOC_EncoderSelect(&h, 7));
+    h.flash_data.motor.pole_pairs = 7;
+    float old_speed = 0, previous = 0.581f, pll_energy = 0, old_energy = 0;
+    for(unsigned i = 0; i < 1600; i++){
+        float angle = 0.581f + ((i & 1) ? 0.002f : -0.002f);
+        h.encoder_runtime.raw_angle = angle;
+        CHECK(FOC_EncoderUpdate(&h, 8000));
+        CHECK(h.encoder_angle_mechanical_wrapped == angle);
+        old_speed = 0.7f * old_speed + 0.3f * (angle - previous) * 8000;
+        previous = angle;
+        if(i > 800){
+            pll_energy += h.encoder_speed_mechanical * h.encoder_speed_mechanical;
+            old_energy += old_speed * old_speed;
+        }
+    }
+    CHECK(pll_energy < old_energy * 0.01f);
+    /* Startup acquisition, multiple wraps, reversal and stopping. */
+    float angle = previous;
+    const float targets[] = {1000, -1000, 0, 0.2f};
+    for(unsigned stage = 0; stage < 4; stage++){
+        for(unsigned i = 0; i < 1200; i++){
+            angle += targets[stage] / 8000;
+            normalize_angle_0_2pi(&angle);
+            h.encoder_runtime.raw_angle = angle;
+            CHECK(FOC_EncoderUpdate(&h, 8000));
+        }
+        CHECK(fabsf(h.encoder_speed_mechanical - targets[stage]) < 0.05f);
+        CHECK(fabsf(h.encoder_speed_electrical - h.encoder_speed_mechanical * 7) < 0.001f);
+    }
+    FOC_EncoderResetHistory(&h);
+    h.encoder_runtime.raw_angle = 4;
+    CHECK(FOC_EncoderUpdate(&h, 8000) && h.encoder_speed_mechanical == 0);
+    return 0;
+}
+
 int test_encoder_source_selection_and_history_reset(void){
     reset(); FOC_HandleTypeDef h = {0};
     unsigned count;
@@ -1253,13 +1381,44 @@ static void seed_encoder_calibration(FOC_HandleTypeDef *h){
     h->encoder_runtime.raw_angle = 6.2f + 0.01f * sinf(6.2f);
 }
 
+int test_encoder_calibration_overcurrent_reports_specific_latched_fault(void){
+    reset(); FOC_HandleTypeDef h = {0}; seed_encoder_calibration(&h);
+    h.state = FOC_STATE_ENCODER_CALIBRATION;
+    FOC_EncoderCalibration_Start(&h);
+    h.adc_values.phase_current.b = -6;
+    FOC_StateLoop(&h);
+    CHECK(h.state == FOC_STATE_ERROR && h.hdrv8323.high_impedance);
+    CHECK(h.active_errors == FOC_ERROR_PHASE_OC && h.latched_errors == FOC_ERROR_PHASE_OC);
+    CHECK(h.encoder_calibration.runtime.status == FOC_LOOP_ERROR);
+    CHECK(strstr(h.routine_result, "Measured phase current exceeds"));
+    CHECK(!h.encoder_calibration.runtime.active);
+    CHECK(h.phase_voltage.a == 0 && h.phase_voltage.b == 0 && h.phase_voltage.c == 0);
+    return 0;
+}
+
+int test_encoder_tracking_failure_has_retained_reason(void){
+    reset(); FOC_HandleTypeDef h = {0}; seed_encoder_calibration(&h);
+    FOC_EncoderCalibration_Start(&h);
+    now += 300; FOC_EncoderCalibration_Update(&h);
+    FOC_EncoderCalibration_Update(&h);
+    h.encoder_runtime.raw_angle += 0.5f;
+    now += 11;
+    CHECK(FOC_EncoderCalibration_Update(&h) == FOC_LOOP_ERROR);
+    CHECK(strstr(h.routine_result, "tracking error exceeds"));
+    CHECK(strstr(h.routine_result, "stage=3"));
+    char saved[512]; memcpy(saved, h.routine_result, sizeof(saved));
+    FOC_EncoderCalibration_Update(&h);
+    CHECK(strcmp(saved, h.routine_result) == 0);
+    return 0;
+}
+
 int test_encoder_calibration_sweep_and_persistence(void){
     reset(); FOC_HandleTypeDef h = {0}; seed_encoder_calibration(&h);
     FOC_EncoderCalibration_Start(&h);
     CHECK(h.encoder_runtime.bypass_correction);
     now += 300;
     FOC_EncoderCalibration_Update(&h);
-    CHECK(h.encoder_calibration.revolutions == 3);
+    CHECK(h.encoder_calibration.revolutions == 1);
     for(unsigned tick = 0; tick < 75000 && h.encoder_calibration.runtime.active; tick++){
         FOC_EncoderCalibrationContextTypeDef *ctx = &h.encoder_calibration;
         float truth = 6.2f + ctx->step * (M_2PIF / 1024);
@@ -1272,11 +1431,14 @@ int test_encoder_calibration_sweep_and_persistence(void){
         FOC_EncoderCalibration_Update(&h);
     }
     CHECK(h.encoder_calibration.runtime.status == FOC_LOOP_COMPLETED && flash_calls == 1);
-    CHECK(h.flash_data.encoder.correction_valid && h.flash_data.encoder.correction_enabled);
+    CHECK(h.flash_data.encoder.correction_valid && !h.flash_data.encoder.correction_enabled);
     CHECK(h.flash_data.encoder.correction_source == 7 && h.flash_data.encoder.offset_valid);
     CHECK(h.hdrv8323.high_impedance && h.phase_voltage.a == 0 && !h.encoder_runtime.bypass_correction);
     CHECK(h.flash_data.controller.current_PID_FF_enabled);
     CHECK(!h.flash_data.controller.anticogging_data_valid && !h.encoder_runtime.history_valid);
+    CHECK(!h.flash_data.controller.anticogging_FF_enabled);
+    CHECK(FOC_EncoderCorrect(&h, 1.0f) == 1.0f);
+    CHECK(FOC_EncoderEnableCorrection(&h, 1)); /* Explicit opt-in before accuracy check. */
     float before = 0, after = 0;
     for(unsigned i = 0; i < 128; i++){
         float truth = i * M_2PIF / 128;
@@ -1445,6 +1607,22 @@ static uint16_t encoder_frame(uint16_t value){
     return value | ((parity & 1) ? 0x8000 : 0);
 }
 
+int test_encoder_diagnostic_reads_reject_invalid_or_busy_frames(void){
+    reset();
+    AS5047P_HandleTypeDef e = {0}; uint16_t diagnostic = 0;
+    CHECK(AS5047P_GetDIAAGC(&e, &diagnostic) == AS5047P_ERROR);
+    CHECK(AS5047P_SetPins(&e, &test_spi, &test_cs, 1) == AS5047P_OK);
+    blocking_response = 0x0900; /* Even parity: MAGL plus LF. */
+    CHECK(AS5047P_GetDIAAGC(&e, &diagnostic) == AS5047P_OK && diagnostic == 0x900);
+    blocking_response = 0x0100; /* Bad parity. */
+    CHECK(AS5047P_GetDIAAGC(&e, &diagnostic) == AS5047P_ERROR);
+    blocking_response = 0xC000; /* Error flag, even parity. */
+    CHECK(AS5047P_GetDIAAGC(&e, &diagnostic) == AS5047P_ERROR);
+    e.dma_stage = 1; unsigned calls = blocking_calls;
+    CHECK(AS5047P_GetDIAAGC(&e, &diagnostic) == AS5047P_ERROR && blocking_calls == calls);
+    return 0;
+}
+
 int test_spi_dma_two_frames_validate_angle_and_selected_cs(void){
     for(unsigned source = 1; source <= 2; source++){
         reset(); FOC_HandleTypeDef h = {0}; config_ready(&h);
@@ -1511,5 +1689,130 @@ int test_encoder_sources_and_legacy_flash_reservation(void){
     data.contains_data = 1; data.struct_terminator = FLASH_DATA_STRUCT_TERMINATOR;
     data.crc = FOC_FlashCRC(&data, offsetof(FLASH_DataTypeDef, crc));
     CHECK(FOC_FLASH_RecordValid(&data));
+    return 0;
+}
+
+
+int test_pid_filtered_derivative_decays_without_sign_flip(void){
+    PIDControllerTypeDef pid = {0}; PIDValuesTypeDef gains = {0, 0, 1}; float limit = 1000;
+    PID_Init(&pid, 0.001f, 0.01f, &limit, &gains, 0);
+    float first = PID_Update(&pid, 0, 1);
+    float second = PID_Update(&pid, 0, 1);
+    CHECK(first < 0 && second < 0 && fabsf(second) < fabsf(first));
+    PID_Reset(&pid);
+    for(unsigned i = 1; i <= 300; i++) PID_Update(&pid, 0, i * 0.001f);
+    CHECK(fabsf(pid.differentiator + 1) < 0.001f);
+    return 0;
+}
+
+static void window_fixture(FOC_HandleTypeDef *h){
+    seed_motor(h);
+    FOC_AntiCogging_Start(h);
+    h->anticogging.stage = FOC_ANTICOG_COLLECT;
+    h->anticogging.point_started_ms = now;
+    h->dq_current.q = h->dq_current_setpoint.q = 2;
+}
+static void window_tick(FOC_HandleTypeDef *h){
+    h->anticogging.divider = SPEED_LOOP_CLOCK_DIVIDER - 1;
+    now += 2;
+    FOC_AntiCogging_Update(h);
+}
+
+int test_anticog_window_averages_samples_and_resets_between_points(void){
+    reset(); FOC_HandleTypeDef h = {0}; window_fixture(&h);
+    for(unsigned i = 0; i < 50; i++){
+        h.dq_current.q = 2 + ((i & 1) ? 0.002f : -0.002f);
+        window_tick(&h);
+        CHECK(h.anticogging.sample_index == 0);
+    }
+    window_tick(&h);
+    CHECK(h.anticogging.sample_index == 1);
+    CHECK(fabsf(h.flash_data.controller.anticogging_array[0][0] - 2) < 0.0001f);
+    CHECK(h.anticogging.window_samples == 0 && h.anticogging.current_mean == 0);
+    CHECK(!h.flash_data.controller.anticogging_data_valid && !h.flash_data.controller.anticogging_FF_enabled);
+    h.encoder_angle_mechanical_unwrapped = h.angle_setpoint;
+    h.dq_current.q = h.dq_current_setpoint.q = 1;
+    for(unsigned i = 0; i < 100 && h.anticogging.sample_index == 1; i++) window_tick(&h);
+    CHECK(h.anticogging.sample_index == 2);
+    CHECK(fabsf(h.flash_data.controller.anticogging_array[0][1] - 1) < 0.0001f);
+    return 0;
+}
+
+int test_anticog_rejects_unstable_windows_then_recovers(void){
+    const char *reasons[] = {"Position error", "oscillation/drift", "absolute speed", "current is unstable", "saturated"};
+    for(unsigned mode = 0; mode < 5; mode++){
+        reset(); FOC_HandleTypeDef h = {0}; window_fixture(&h);
+        for(unsigned i = 0; i < 70; i++){
+            h.encoder_angle_mechanical_unwrapped = mode == 0 ? 0.01f : mode == 1 ? ((i & 1) ? 0.003f : -0.003f) : 0;
+            h.encoder_speed_mechanical = mode == 2 ? 0.1f : 0;
+            h.dq_current.q = mode == 3 ? ((i & 1) ? 2.2f : 1.8f) : 2;
+            h.dq_current_setpoint.q = mode == 4 ? 5 : 2;
+            window_tick(&h);
+        }
+        CHECK(h.anticogging.sample_index == 0 && h.anticogging.runtime.active);
+        CHECK(h.anticogging.runtime.detail && strstr(h.anticogging.runtime.detail, reasons[mode]));
+        h.encoder_angle_mechanical_unwrapped = h.encoder_speed_mechanical = 0;
+        h.dq_current.q = h.dq_current_setpoint.q = 2;
+        for(unsigned i = 0; i < 150 && !h.anticogging.sample_index; i++) window_tick(&h);
+        CHECK(h.anticogging.sample_index == 1);
+        CHECK(fabsf(h.flash_data.controller.anticogging_array[0][0] - 2) < 0.0001f);
+    }
+    return 0;
+}
+
+int test_anticog_timeout_retains_rejected_window_statistics(void){
+    reset(); FOC_HandleTypeDef h = {0}; window_fixture(&h);
+    for(unsigned i = 0; i < 70; i++){
+        h.dq_current.q = (i & 1) ? 2.2f : 1.8f;
+        window_tick(&h);
+    }
+    now += 10000;
+    window_tick(&h);
+    CHECK(h.anticogging.runtime.status == FOC_LOOP_ERROR);
+    CHECK(h.anticogging.last_std > 0.19f);
+    CHECK(strstr(h.routine_result, "current is unstable"));
+    CHECK(strstr(h.routine_result, "std=") && strstr(h.routine_result, "latched=0x"));
+    CHECK(!h.flash_data.controller.anticogging_data_valid && h.hdrv8323.high_impedance);
+    return 0;
+}
+
+int test_anticog_continuous_targets_and_configured_gains(void){
+    reset(); FOC_HandleTypeDef h = {0}; seed_motor(&h);
+    h.encoder_angle_mechanical_unwrapped = 3 * M_2PIF + 0.1f;
+    h.calibration_revolutions[1] = 2;
+    start_anticog(&h);
+    CHECK(h.flash_data.controller.PID_gains_position.Kp == 7);
+    CHECK(h.pid_anticogging.prevMeasurement == h.encoder_angle_mechanical_unwrapped);
+    h.anticogging.divider = SPEED_LOOP_CLOCK_DIVIDER - 1;
+    FOC_AntiCogging_Update(&h);
+    CHECK(fabsf(h.angle_setpoint - (3 * M_2PIF - ANTICOG_ANGLE_STEP)) < 0.00001f);
+    /* Repeated forward revolutions start next to the previous revolution's last bin. */
+    h.anticogging.stage = FOC_ANTICOG_POSITION; h.anticogging.revolution = 1;
+    h.anticogging.divider = SPEED_LOOP_CLOCK_DIVIDER - 1; h.anticogging.wait_ms = 0;
+    FOC_AntiCogging_Update(&h);
+    CHECK(fabsf(h.angle_setpoint - (4 * M_2PIF - ANTICOG_ANGLE_STEP)) < 0.00001f);
+    /* Reverse approach begins one bin beyond the last forward bin. */
+    h.anticogging.stage = FOC_ANTICOG_POSITION; h.anticogging.direction = 1; h.anticogging.revolution = 0;
+    h.anticogging.divider = SPEED_LOOP_CLOCK_DIVIDER - 1; h.anticogging.wait_ms = 0;
+    FOC_AntiCogging_Update(&h);
+    CHECK(fabsf(h.angle_setpoint - 5 * M_2PIF) < 0.00001f);
+    return 0;
+}
+
+int test_anticog_separate_pid_defaults_custom_gains_and_normal_pid_preserved(void){
+    reset(); FOC_HandleTypeDef h = {0}; seed_motor(&h);
+    size_t old_size = sizeof(h.flash_data);
+    memset(h.flash_data.reserved, 0xA5, sizeof(h.flash_data.reserved));
+    start_anticog(&h);
+    CHECK(sizeof(h.flash_data) == old_size);
+    CHECK(h.pid_anticogging.K == &h.flash_data.anticogging_position_gains);
+    CHECK(h.pid_anticogging.K->Kp == 10 && h.pid_anticogging.K->Ki == 20 && h.pid_anticogging.K->Kd == 0.2f);
+    CHECK(h.flash_data.controller.PID_gains_position.Kp == 7 && h.flash_data.controller.PID_gains_position.Ki == 8);
+    FOC_AntiCogging_Finish(&h, FOC_LOOP_CANCELLED);
+    h.flash_data.anticogging_position_gains = (PIDValuesTypeDef){3, 4, 0.05f};
+    start_anticog(&h);
+    CHECK(h.pid_anticogging.K->Kp == 3 && h.pid_anticogging.K->Ki == 4 && h.pid_anticogging.K->Kd == 0.05f);
+    FOC_AntiCogging_Finish(&h, FOC_LOOP_CANCELLED);
+    CHECK(h.flash_data.controller.PID_gains_position.Kp == 7 && h.flash_data.controller.PID_gains_position.Kd == 9);
     return 0;
 }

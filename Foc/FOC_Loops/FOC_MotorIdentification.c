@@ -70,6 +70,9 @@ void FOC_MotorIdentification_Start(FOC_HandleTypeDef *hfoc){
 FOC_LoopStatusTypeDef FOC_MotorIdentification_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopStatusTypeDef result){
     FOC_IdentificationContextTypeDef *ctx = &hfoc->identification;
     if(!ctx->runtime.active) return ctx->runtime.status;
+    if(result == FOC_LOOP_CANCELLED && (hfoc->active_errors || hfoc->latched_errors)){
+        ctx->runtime.detail = "Interrupted by fault; see active/latched flags";
+    }
     FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
     if(result == FOC_LOOP_COMPLETED && !ctx->candidate_valid){
         ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
@@ -86,6 +89,7 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification_Finish(FOC_HandleTypeDef *hfoc, FO
     if(result == FOC_LOOP_ERROR) ctx->failed_stage = ctx->stage;
     ctx->runtime.active = 0;
     ctx->runtime.status = result;
+    FOC_ReportRoutineResult(hfoc, "Motor R/L identification", &ctx->runtime, (unsigned)ctx->stage);
     ctx->stage = result == FOC_LOOP_COMPLETED ? FOC_IDENT_DONE :
                  result == FOC_LOOP_CANCELLED ? FOC_IDENT_CANCELLED : FOC_IDENT_FAILED;
     return result;
@@ -152,7 +156,7 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification_Update(FOC_HandleTypeDef *hfoc){
             }else if(ctx->capture_index <= FOC_IDENTIFICATION_SAMPLES){
                 float current = ctx->selector == 0 ? hfoc->adc_values.phase_current.a :
                                 ctx->selector == 1 ? hfoc->adc_values.phase_current.b : hfoc->adc_values.phase_current.c;
-                if(!isfinite(current)) goto invalid_result;
+                if(!isfinite(current)){ctx->runtime.detail = "Measured phase current is non-finite"; goto invalid_result;}
                 ctx->measured[ctx->capture_index++ - 1] = current;
             }else{
                 ctx->capture_index = 0;
@@ -183,7 +187,7 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification_Update(FOC_HandleTypeDef *hfoc){
                     ctx->estimated_l -= gradient_l;
                     ctx->estimated_r -= gradient_r;
                     if(!isfinite(ctx->estimated_r) || ctx->estimated_r <= 0 ||
-                       !isfinite(ctx->estimated_l) || ctx->estimated_l <= 0) goto invalid_result;
+                       !isfinite(ctx->estimated_l) || ctx->estimated_l <= 0){ctx->runtime.detail = "R/L fit produced nonpositive or non-finite estimates"; goto invalid_result;}
                     ctx->fit_stage = FOC_IDENT_FIT_BASELINE;
                     if(ctx->error < 0.5f || (fabsf(gradient_l) < 1e-7f && fabsf(gradient_r) < 1e-4f)){
                         ctx->resistance[ctx->selector] = ctx->estimated_r;
@@ -204,14 +208,14 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification_Update(FOC_HandleTypeDef *hfoc){
             break;
         case FOC_IDENT_EVALUATE_MODEL:
             if(!isfinite(ctx->model_r) || ctx->model_r <= 0 ||
-               !isfinite(ctx->model_l) || ctx->model_l <= 0) goto invalid_result;
+               !isfinite(ctx->model_l) || ctx->model_l <= 0){ctx->runtime.detail = "R/L candidate model has invalid resistance/inductance"; goto invalid_result;}
             if(ctx->model_index < FOC_IDENTIFICATION_SAMPLES){
                 float predicted = model_current(ctx->time[ctx->model_index], ctx->model_r, ctx->model_l);
-                if(!isfinite(predicted)) goto invalid_result;
+                if(!isfinite(predicted)){ctx->runtime.detail = "R/L model current prediction is non-finite"; goto invalid_result;}
                 ctx->predicted[ctx->model_index++] = predicted;
             }else if(ctx->model_index == FOC_IDENTIFICATION_SAMPLES){
                 ctx->error = compute_error(ctx->predicted, ctx->measured);
-                if(!isfinite(ctx->error)) goto invalid_result;
+                if(!isfinite(ctx->error)){ctx->runtime.detail = "R/L model fit error is non-finite"; goto invalid_result;}
                 ctx->model_index++;
             }else{
                 ctx->model_index = 0;
@@ -232,12 +236,12 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification_Update(FOC_HandleTypeDef *hfoc){
                 ctx->candidate_l = (ctx->inductance[0] + ctx->inductance[1] + ctx->inductance[2]) * (2.0f / 9.0f);
                 ctx->candidate_valid = isfinite(ctx->candidate_r) && ctx->candidate_r > 0 &&
                                        isfinite(ctx->candidate_l) && ctx->candidate_l > 0;
-                if(!ctx->candidate_valid) goto invalid_result;
+                if(!ctx->candidate_valid){ctx->runtime.detail = "Final R/L averages are nonpositive or non-finite"; goto invalid_result;}
                 identification_stage(ctx, FOC_IDENT_WAIT_FINISH, now, 10);
             }else if(ctx->attempt < 3){
                 ctx->attempt++;
                 identification_stage(ctx, FOC_IDENT_START, now, 10);
-            }else goto invalid_result;
+            }else {ctx->runtime.detail = "Phase R/L estimates disagree after retries"; goto invalid_result;}
             break;
         case FOC_IDENT_WAIT_FINISH:
             return FOC_MotorIdentification_Finish(hfoc, FOC_LOOP_COMPLETED);
@@ -247,6 +251,7 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification_Update(FOC_HandleTypeDef *hfoc){
     }
     return FOC_LOOP_IN_PROGRESS;
 invalid_result:
+    if(!ctx->runtime.detail) ctx->runtime.detail = "R/L result failed validation";
     ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_RESULT;
     return FOC_MotorIdentification_Finish(hfoc, FOC_LOOP_ERROR);
 }

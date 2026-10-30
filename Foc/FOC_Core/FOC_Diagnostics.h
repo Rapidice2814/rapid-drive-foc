@@ -29,6 +29,8 @@ typedef struct FOC_Handle FOC_HandleTypeDef;
 
 /* Failed calibration, identification, tuning, or storage operation. */
 #define FOC_ERROR_OPERATION_FAILED (1u << 15)
+/* Measured phase current exceeds the configured maximum d/q current. */
+#define FOC_ERROR_PHASE_OC (1u << 16)
 
 void FOC_CheckErrors(FOC_HandleTypeDef *hfoc);
 void FOC_ClearLatchedErrors(FOC_HandleTypeDef *hfoc);

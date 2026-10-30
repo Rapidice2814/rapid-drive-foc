@@ -60,6 +60,7 @@ def main():
             str(root / "Foc/FOC_Core/FOC_Diagnostics.c"),
             str(root / "Foc/FOC_Core/FOC_Configuration.c"),
             str(root / "Foc/Utils/Filters.c"),
+            str(root / "Foc/Utils/PID.c"),
             "-Wl,--start-group", "-lm", "-lc", "-lgcc", "-lnosys", "-Wl,--end-group", "-o", str(elf_path),
         ], check=True)
         with elf_path.open("rb") as stream:
