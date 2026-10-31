@@ -13,6 +13,9 @@ typedef enum {
 typedef struct FOC_Handle FOC_HandleTypeDef;
 
 void FOC_EncoderCalibration_Start(FOC_HandleTypeDef *hfoc);
+void FOC_MotorProbe_Start(FOC_HandleTypeDef *hfoc);
+FOC_LoopStatusTypeDef FOC_MotorProbe_Update(FOC_HandleTypeDef *hfoc);
+FOC_LoopStatusTypeDef FOC_MotorProbe_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopStatusTypeDef result);
 FOC_LoopStatusTypeDef FOC_EncoderCalibration_Update(FOC_HandleTypeDef *hfoc);
 FOC_LoopStatusTypeDef FOC_EncoderCalibration_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopStatusTypeDef result);
 

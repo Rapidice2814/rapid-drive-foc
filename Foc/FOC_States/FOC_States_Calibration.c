@@ -178,3 +178,16 @@ void FOC_StateAntiCogging(FOC_HandleTypeDef* hfoc){
             (hfoc->active_errors | hfoc->latched_errors) : FOC_ERROR_OPERATION_FAILED);
     }
 }
+
+FOC_StateTransitionTypeDef FOC_StateMotorProbe_Transition(FOC_HandleTypeDef *h){
+    FOC_StateTransitionTypeDef result = FOC_StateMotorSetup_Validate(h);
+    if(result != FOC_STATETRANSITION_OK) return result;
+    const FOC_EncoderSourceTypeDef *source = FOC_EncoderSource(h->flash_data.encoder.source_id);
+    if(!h->encoder_runtime.healthy || !source || !source->calibratable) return FOC_STATETRANSITION_DENIED;
+    return FOC_STATETRANSITION_OK;
+}
+void FOC_StateMotorProbe(FOC_HandleTypeDef *h){
+    FOC_LoopStatusTypeDef status = FOC_MotorProbe_Update(h);
+    if(status == FOC_LOOP_COMPLETED) FOC_SetState(h, FOC_STATE_STOP, FOC_STATE_NONE);
+    else if(status == FOC_LOOP_ERROR) FOC_SetError(h, FOC_ERROR_OPERATION_FAILED);
+}

@@ -13,6 +13,7 @@ from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0, UC_AR
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--match", help="Run only test names matching this regular expression")
     parser.add_argument("--compiler", default=shutil.which("arm-none-eabi-gcc"))
     parser.add_argument("--optimized", action="store_true",
                         help="Exercise size optimization and LTO; preserve test entry points")
@@ -22,6 +23,8 @@ def main():
     here = Path(__file__).resolve().parent
     root = here.parents[1]
     test_names = re.findall(r"^int (test_\w+)\(void\)", (here / "test_routines.c").read_text(), re.MULTILINE)
+    if args.match:
+        test_names = [name for name in test_names if re.search(args.match, name)]
     if not test_names:
         raise AssertionError("No compiled-C test entry points found")
     with tempfile.TemporaryDirectory(prefix="foc-routines-") as directory:
@@ -50,6 +53,7 @@ def main():
             str(root / "Foc/FOC_Loops/FOC_MotorIdentification.c"),
             str(root / "Foc/FOC_Loops/FOC_PIDAutotune.c"),
             str(root / "Foc/FOC_Loops/FOC_AlignmentTest.c"),
+            str(root / "Foc/FOC_Loops/FOC_MotorProbe.c"),
             str(root / "Foc/FOC_Loops/FOC_AntiCogging.c"),
             str(root / "Foc/FOC_Loops/FOC_OpenLoop.c"),
             str(root / "Foc/FOC_States/FOC_StateController.c"),

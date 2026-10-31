@@ -1,15 +1,18 @@
 #ifndef FOC_ENCODER_H
 #define FOC_ENCODER_H
 #include <stdint.h>
+#include "AngleSimulator.h"
 
 #define FOC_ENCODER_LUT_SIZE 128U
 #define FOC_ENCODER_SOURCE_MAX 8U
+#define FOC_ENCODER_SOURCE_SIMULATOR 4U
 #ifndef FOC_ENCODER_SOURCE_LIST
 #define FOC_ENCODER_SOURCE_LIST(X) \
     X(0, "Internal AS5047P quadrature", FOC_EncoderInitTimer, FOC_EncoderReadTimer, 1) \
     X(1, "Internal AS5047P SPI DMA", FOC_EncoderInitSPI, FOC_EncoderReadSPI, 1) \
     X(2, "External AS5047P SPI DMA", FOC_EncoderInitExternalSPI, FOC_EncoderReadSPI, 1) \
-    X(3, "External AS5047P quadrature", FOC_EncoderInitExternalTimer, FOC_EncoderReadTimer, 1)
+    X(3, "External AS5047P quadrature", FOC_EncoderInitExternalTimer, FOC_EncoderReadTimer, 1) \
+    X(4, "Internal simulator", FOC_EncoderInitSimulator, FOC_EncoderReadSimulator, 0)
 #endif
 typedef struct FOC_Handle FOC_HandleTypeDef;
 
@@ -28,8 +31,15 @@ typedef struct {
 typedef struct {
     float raw_angle;
     float speed_pll_angle; /* Wrapped prediction; never used for commutation. */
+    AngleSimulator simulator;
+    uint8_t simulated_commutation;
     uint8_t healthy, history_valid, bypass_correction, initialized;
 } FOC_EncoderRuntimeTypeDef;
+
+uint8_t FOC_EncoderInitSimulator(FOC_HandleTypeDef *hfoc);
+uint8_t FOC_EncoderReadSimulator(FOC_HandleTypeDef *hfoc, float *angle);
+uint8_t FOC_EncoderUseSimulatedCommutation(FOC_HandleTypeDef *hfoc, uint8_t enabled);
+void FOC_EncoderControlFrame(FOC_HandleTypeDef *hfoc, float *angle, float *d, float *q);
 
 const FOC_EncoderSourceTypeDef *FOC_EncoderSources(unsigned *count);
 const FOC_EncoderSourceTypeDef *FOC_EncoderSource(uint8_t id);

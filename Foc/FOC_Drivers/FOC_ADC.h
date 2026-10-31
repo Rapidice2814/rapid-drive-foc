@@ -16,6 +16,7 @@ typedef struct {
 
     float mosfet_temp; //mosfet temperature [C]
     float motor_temp; //motor temperature [C]
+    uint8_t current_sense_saturated; //any raw phase sample within 48 counts of an ADC rail
 } FOC_ADC_ValuesTypeDef;
 
 

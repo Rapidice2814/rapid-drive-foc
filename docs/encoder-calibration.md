@@ -8,7 +8,7 @@ defaults. Reading does not erase old records; flash save or successful encoder
 calibration replaces them. Existing settings must be backed up before upgrading.
 
 The record stores source selection, raw/corrected zero, 128 correction floats,
-validity/enabled flags, and calibration voltage. CRC-32/ISO-HDLC covers all bytes
+validity/enabled flags, and calibration D current. CRC-32/ISO-HDLC covers all bytes
 before the CRC field; magic, format version, record length, and terminator are
 also checked. Invalid source bindings/tables are rejected on load. Storage is
 single-bank: interrupted programming can destroy the previous flash record.
@@ -97,11 +97,24 @@ settles for 10 ms before eight ADC-synchronous samples are accumulated. Signed
 unwrapping tracks complete turns. Current/anti-cogging feedforward are
 temporarily disabled; the old correction is bypassed, not overwritten.
 
-Default excitation is 0.5 V (`flash_data.encoder.calibration_voltage`). Voltage
-must be positive and within configured voltage limits. Invalid current limits,
-phase current above `max_dq_current`, unhealthy/nonfinite readings, source/motor
-parameter changes, loss of tracking, and a watchdog of 120 s per configured
-revolution per direction cause failure. Tracking
+Excitation uses the normal d/q current loop, with an independent generated
+angle for both Park and inverse-Park transforms. The physical encoder still
+supplies raw measurements and remains the selected source. Q current is zero;
+D current ramps up over 200 ms and down over 200 ms on normal completion.
+Faults/STOP disable output immediately. Default D current is 0.25 A
+(`flash_data.encoder.calibration_current`), editable in Calibration > Encoder
+or the discovered Encoder configuration group. It must be positive and no higher
+than `max_dq_current`. Configure valid d/q current PI gains before calibrating.
+Current/voltage limits remain active; this is not a voltage excitation routine.
+
+The former voltage float retains its binary offset, with a new marker in the
+version-2 record's filler bytes. Older voltage settings migrate to 0.25 A rather
+than being reinterpreted as amperes. Other settings/tables and record size are
+preserved; loading does not automatically write flash.
+
+Invalid current limits, phase overcurrent, unhealthy/nonfinite encoder readings,
+source/motor parameter changes, tracking loss, and a watchdog of 120 s per
+configured revolution per direction cause failure. Tracking
 error must stay below min(0.15 rad, pi/(2*pole_pairs)).
 
 Errors are binned by raw absolute angle into 128 entries. Every bin must have
@@ -154,3 +167,35 @@ angle with zero speed. Source switching and zero/correction changes therefore
 do not manufacture a speed spike. Sampling must still resolve motion to less
 than half a revolution per sample. Verify acceleration, reversal, speed-loop
 stability and ISR timing on hardware before relying on the new tuning.
+
+## Reusing the internal angle simulator
+
+`Foc/Utils/AngleSimulator.h` is hardware- and FOC-independent. Each caller owns
+its own `AngleSimulator` state and clock. Mechanical angles/speeds use radians
+and radians/s; electrical conversion multiplies by the pole count and wraps.
+
+```c
+AngleSimulator sim = {0};
+AngleSimulator_SetAngle(&sim, 1.0f);
+AngleSimulator_SetSpeed(&sim, -2.0f);
+AngleSimulator_Advance(&sim, 0.001f); // caller-supplied elapsed seconds
+float electrical = AngleSimulator_Electrical(&sim, 7);
+```
+
+Setters/advance return false for invalid inputs and leave the angle unchanged.
+An encoder backend named **Internal simulator** (source ID 4) uses this component,
+starting at zero with +1 rad/s; it advances at the encoder update rate. Test code
+can set `hfoc->encoder_runtime.simulator` angle/speed directly through the API.
+This source is deliberately non-calibratable: a virtual reference cannot serve
+as the physical measurement of its own error.
+
+Tests that need physical feedback plus virtual commutation can keep the physical
+encoder selected, populate `hfoc->encoder_runtime.simulator`, then call
+`FOC_EncoderUseSimulatedCommutation(hfoc, 1)`. Advance/set its angle from the test
+at each control tick; the physical encoder pipeline continues independently.
+`FOC_EncoderControlFrame` supplies this generated electrical frame to the normal
+current loop, with D/Q commands expressed in that frame independent of encoder
+direction. Disable the override with `FOC_EncoderUseSimulatedCommutation(hfoc, 0)`
+and remove excitation during test cleanup. This low-level override does not
+change the saved encoder source. Encoder calibration saves/restores the simulator
+state automatically and always disables its override at termination.

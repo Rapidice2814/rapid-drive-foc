@@ -2,6 +2,7 @@
 #define FOC_ERROR_OPERATION_FAILED (1u << 15)
 #define FOC_ERROR_ENCODER_FAULT (1u << 14)
 #define FOC_ERROR_PHASE_OC (1u << 16)
+#define FOC_ERROR_CURRENT_SENSE_SATURATION (1u << 17)
 void FOC_SetError(FOC_HandleTypeDef *, uint32_t);
 void FOC_CheckErrors(FOC_HandleTypeDef *);
 void FOC_ClearLatchedErrors(FOC_HandleTypeDef *);

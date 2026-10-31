@@ -26,6 +26,9 @@ struct FOC_Handle {
     FOC_EncoderCalibrationContextTypeDef encoder_calibration;
     FOC_EncoderRuntimeTypeDef encoder_runtime;
     char routine_result[512];
+    FOC_SetupResult setup_result;
+    FOC_MotorProbeContext motor_probe;
+    float setup_voltage;
     AS5047P_HandleTypeDef has5047p;
     volatile uint32_t *pencoder_count;
     FOC_IdentificationContextTypeDef identification;
@@ -37,7 +40,7 @@ struct FOC_Handle {
     FOC_OpenLoopContextTypeDef open_loop;
     uint8_t run_loop_divider, checklist_step;
     FLASH_DataTypeDef flash_data;
-    struct {PhaseCurrentsTypeDef phase_current; float motor_temp, mosfet_temp, vbus;} adc_values;
+    struct {PhaseCurrentsTypeDef phase_current; float motor_temp, mosfet_temp, vbus; uint8_t current_sense_saturated;} adc_values;
     DQCurrentsTypeDef dq_current_setpoint;
     DQCurrentsTypeDef dq_current;
     PIDControllerTypeDef pid_current_d, pid_current_q, pid_position, pid_speed, pid_anticogging;

@@ -798,6 +798,28 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         Debug_ReplyStateTransition(msg_type, (FOC_StateTypeDef)payload[0], FOC_STATE_NONE);
         break;
 
+    case MSG_GET_SETUP_STATUS: {
+        if(payload_length != 0) goto calibration_payload_error;
+        uint8_t reply[20] = {0};
+        uint32_t sequence = hfoc.setup_result.sequence;
+        memcpy(reply, &sequence, 4);
+        reply[4] = hfoc.setup_result.state; reply[5] = hfoc.setup_result.status;
+        reply[6] = hfoc.setup_result.error; reply[7] = (uint8_t)hfoc.state;
+        memcpy(reply+8, &hfoc.active_errors, 4); memcpy(reply+12, &hfoc.latched_errors, 4);
+        float voltage = hfoc.setup_voltage > 0 ? hfoc.setup_voltage : 0.5f;
+        memcpy(reply+16, &voltage, 4);
+        Debug_SendBinaryResponse(MSG_SETUP_STATUS_REPLY, reply, sizeof(reply));
+        break;
+    }
+    case MSG_SET_SETUP_VOLTAGE: {
+        if(payload_length != 4) goto calibration_payload_error;
+        float voltage; memcpy(&voltage, payload, 4);
+        if(hfoc.state != FOC_STATE_IDLE || hfoc.active_errors || hfoc.latched_errors) goto calibration_state_error;
+        if(!isfinite(voltage) || voltage <= 0 || voltage > hfoc.flash_data.limits.max_dq_voltage) goto calibration_payload_error;
+        hfoc.setup_voltage = voltage;
+        Debug_SendBinaryResponse(MSG_ACK, NULL, 0);
+        break;
+    }
     case MSG_GET_ROUTINE_RESULT: {
         if(payload_length != 0) goto calibration_payload_error;
         char reply[768];

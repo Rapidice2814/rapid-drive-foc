@@ -8,6 +8,8 @@
 /* Called once by each routine after cleanup. No blocking sensor access in the ISR. */
 void FOC_ReportRoutineResult(FOC_HandleTypeDef *h, const char *name,
                             FOC_RoutineRuntimeTypeDef *r, unsigned stage){
+    h->setup_result.status = (uint8_t)r->status;
+    h->setup_result.error = (uint8_t)r->error;
     const char *fallback[] = {"No detailed reason recorded", "Routine not started",
         "Invalid routine stage/counters", "Invalid input/configuration or terminal status",
         "Routine timed out", "Encoder read failed", "Current-sensor calibration/driver failure",
@@ -32,6 +34,7 @@ void FOC_ReportRoutineResult(FOC_HandleTypeDef *h, const char *name,
  */
 void FOC_CheckErrors(FOC_HandleTypeDef *hfoc){
     uint32_t active_errors = 0;
+    if(hfoc->adc_values.current_sense_saturated) active_errors |= FOC_ERROR_CURRENT_SENSE_SATURATION;
 
     if(DRV8323_CheckFault(&hfoc->hdrv8323)) active_errors |= FOC_ERROR_DRIVER_FAULT;
     

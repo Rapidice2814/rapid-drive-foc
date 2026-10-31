@@ -24,6 +24,9 @@ typedef struct FOC_Handle {
     /* Per-handle calibration workspaces; never persisted to flash. */
     FOC_AlignmentContextTypeDef alignment;
     char routine_result[512]; /* Last terminal result, readable after a USB reconnect. */
+    FOC_SetupResult setup_result;
+    FOC_MotorProbeContext motor_probe;
+    float setup_voltage; /* Runtime-only voltage for uncalibrated motor setup. */
     FOC_CurrentCalibrationContextTypeDef current_calibration;
     FOC_EncoderCalibrationContextTypeDef encoder_calibration;
     FOC_EncoderRuntimeTypeDef encoder_runtime;

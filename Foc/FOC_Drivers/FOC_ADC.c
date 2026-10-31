@@ -69,9 +69,8 @@ FOC_ADC_StatusTypeDef FOC_ADC_Measure(FOC_ADC_ValuesTypeDef *hadc_values){
             acc_phase_current_c += raw_c;
             acc_vbus += raw_v;
 
-            //TODO: check if saturated
             if(abs(raw_a) > 2000 || abs(raw_b) > 2000 || abs(raw_c) > 2000) {
-                __NOP();
+                adc_values.current_sense_saturated = 1;
             }
         }
 
@@ -123,6 +122,9 @@ FOC_ADC_StatusTypeDef FOC_ADC_Measure(FOC_ADC_ValuesTypeDef *hadc_values){
         hadc_values->vbus = adc_values.vbus - adc_offset_values.vbus;
         hadc_values->mosfet_temp = adc_values.mosfet_temp - adc_offset_values.mosfet_temp;
         hadc_values->motor_temp = adc_values.motor_temp - adc_offset_values.motor_temp;
+        /* Preserve even one clipped sample until the control loop consumes it. */
+        hadc_values->current_sense_saturated = adc_values.current_sense_saturated;
+        adc_values.current_sense_saturated = 0;
 
         return FOC_ADC_MEASUREMENT_COMPLETE;
     }

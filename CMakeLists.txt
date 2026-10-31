@@ -75,6 +75,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_Alignment.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_EncoderCalibration.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Drivers/FOC_Calibration.c
+    ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_MotorProbe.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_AlignmentTest.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_AntiCogging.c
     ${CMAKE_SOURCE_DIR}/Foc/FOC_Loops/FOC_ControlLoops.c

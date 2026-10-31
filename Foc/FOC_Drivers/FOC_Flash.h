@@ -54,7 +54,7 @@ struct FLASH_EncoderParameters {
     uint8_t correction_valid;
     uint8_t correction_enabled;
     float raw_zero;
-    float calibration_voltage;
+    float calibration_current;
     float correction[FOC_ENCODER_LUT_SIZE];
 };
 

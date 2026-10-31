@@ -11,6 +11,8 @@
  */
 static FOC_LoopStatusTypeDef FOC_StateFinishRoutine(FOC_HandleTypeDef *hfoc){
     switch(hfoc->state){
+        case FOC_STATE_MOTOR_PROBE:
+            return FOC_MotorProbe_Finish(hfoc, FOC_LOOP_CANCELLED);
         case FOC_STATE_ALIGNMENT:
             return FOC_Alignment_Finish(hfoc, FOC_LOOP_CANCELLED);
         case FOC_STATE_ENCODER_CALIBRATION:
@@ -41,6 +43,17 @@ static FOC_LoopStatusTypeDef FOC_StateFinishRoutine(FOC_HandleTypeDef *hfoc){
  *       impedance. Failure latches an operation fault; it never starts a routine.
  */
 static FOC_StateTransitionTypeDef FOC_StateStartRoutine(FOC_HandleTypeDef *hfoc){
+    switch(hfoc->state){
+        case FOC_STATE_MOTOR_PROBE: case FOC_STATE_ALIGNMENT: case FOC_STATE_ALIGNMENT_TEST:
+        case FOC_STATE_IDENTIFY: case FOC_STATE_PID_AUTOTUNE: case FOC_STATE_ENCODER_CALIBRATION:
+        case FOC_STATE_ANTICOGGING: case FOC_STATE_CURRENT_SENSOR_CALIBRATION:
+            hfoc->setup_result.sequence++;
+            hfoc->setup_result.state = (uint8_t)hfoc->state;
+            hfoc->setup_result.status = FOC_LOOP_IN_PROGRESS;
+            hfoc->setup_result.error = FOC_ROUTINE_ERROR_NONE;
+            break;
+        default: break;
+    }
     if(hfoc->state == FOC_STATE_ALIGNMENT || hfoc->state == FOC_STATE_IDENTIFY ||
        hfoc->state == FOC_STATE_ALIGNMENT_TEST){
         FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
@@ -60,8 +73,11 @@ static FOC_StateTransitionTypeDef FOC_StateStartRoutine(FOC_HandleTypeDef *hfoc)
         WS2812b_Send();
     }
     switch(hfoc->state){
+        case FOC_STATE_MOTOR_PROBE:
+            FOC_MotorProbe_Start(hfoc);
+            break;
         case FOC_STATE_ALIGNMENT:
-            FOC_Alignment_Start(hfoc, 1.0f);
+            FOC_Alignment_Start(hfoc, hfoc->setup_voltage > 0 ? hfoc->setup_voltage : 0.5f);
             break;
         case FOC_STATE_ENCODER_CALIBRATION:
             FOC_EncoderCalibration_Start(hfoc);

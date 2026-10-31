@@ -27,7 +27,7 @@ static void config_ready(FOC_HandleTypeDef *h){
     h->flash_data.motor.pole_pairs = 11;
     h->flash_data.motor.torque_constant = 0.02f;
     h->flash_data.controller.current_control_bandwidth = 500;
-    h->flash_data.encoder.calibration_voltage = 0.5f;
+    h->flash_data.encoder.calibration_current = 0.5f;
 }
 
 int test_configuration_schema_is_bounded_unique_and_matches_absolute_limits(void){
@@ -107,6 +107,8 @@ int test_configuration_motor_before_identification_and_calibration_invalidation(
     update = (FOC_ConfigUpdate){FOC_CONFIG_CURRENT_FF, 1};
     CHECK(FOC_ConfigurationSet(&h, FOC_CONFIG_CONTROLLER, &update, 1).code);
     update = (FOC_ConfigUpdate){FOC_CONFIG_MAX_VOLTAGE, config_float(0.1f)};
+    CHECK(!FOC_ConfigurationSet(&h, FOC_CONFIG_LIMITS, &update, 1).code);
+    update = (FOC_ConfigUpdate){FOC_CONFIG_MAX_CURRENT, config_float(0.1f)};
     CHECK(FOC_ConfigurationSet(&h, FOC_CONFIG_LIMITS, &update, 1).code);
     return 0;
 }
@@ -587,7 +589,7 @@ int test_completed_state_continuations(void){
 }
 
 int test_every_reported_fault_latches_until_acknowledged(void){
-    for(unsigned bit = 0; bit <= 16; bit++){
+    for(unsigned bit = 0; bit <= 17; bit++){
         reset(); FOC_HandleTypeDef h = {0};
         h.state = FOC_STATE_IDLE;
         uint32_t fault = 1u << bit;
@@ -599,6 +601,23 @@ int test_every_reported_fault_latches_until_acknowledged(void){
         FOC_ClearLatchedErrors(&h);
         CHECK(!h.active_errors && !h.latched_errors && h.state == FOC_STATE_STOP);
     }
+    return 0;
+}
+
+int test_current_sense_saturation_latches_and_requires_acknowledgement(void){
+    reset(); FOC_HandleTypeDef h = {0}; h.state = FOC_STATE_IDLE;
+    h.adc_values.current_sense_saturated = 1;
+    FOC_CheckErrors(&h);
+    CHECK(h.active_errors == FOC_ERROR_CURRENT_SENSE_SATURATION);
+    CHECK(h.latched_errors == FOC_ERROR_CURRENT_SENSE_SATURATION);
+    CHECK(h.state == FOC_STATE_ERROR && h.hdrv8323.high_impedance);
+    FOC_ClearLatchedErrors(&h);
+    CHECK(h.latched_errors == FOC_ERROR_CURRENT_SENSE_SATURATION);
+    h.adc_values.current_sense_saturated = 0;
+    FOC_CheckErrors(&h);
+    CHECK(!h.active_errors && h.latched_errors == FOC_ERROR_CURRENT_SENSE_SATURATION);
+    FOC_ClearLatchedErrors(&h);
+    CHECK(!h.latched_errors && h.state == FOC_STATE_STOP);
     return 0;
 }
 
@@ -1315,7 +1334,7 @@ int test_encoder_source_selection_and_history_reset(void){
     reset(); FOC_HandleTypeDef h = {0};
     unsigned count;
     const FOC_EncoderSourceTypeDef *sources = FOC_EncoderSources(&count);
-    CHECK(count == 5 && sources[4].id == 7);
+    CHECK(count == 6 && sources[4].id == 7);
     CHECK(FOC_EncoderSource(7) != NULL && FOC_EncoderSource(99) == NULL);
     h.state = FOC_STATE_IDLE;
     h.flash_data.encoder.offset_valid = h.flash_data.encoder.correction_valid = 1;
@@ -1370,7 +1389,7 @@ static void seed_encoder_calibration(FOC_HandleTypeDef *h){
     h->adc_calibrated = 1;
     h->flash_data.encoder.offset_valid = 1;
     h->flash_data.encoder.source_id = h->flash_data.encoder.correction_source = 7;
-    h->flash_data.encoder.calibration_voltage = 0.5f;
+    h->flash_data.encoder.calibration_current = 0.5f;
     h->flash_data.limits.max_dq_current = 5;
     h->flash_data.limits.max_dq_voltage = 1;
     h->flash_data.motor.pole_pairs = 11;
@@ -1431,6 +1450,7 @@ int test_encoder_calibration_sweep_and_persistence(void){
         FOC_EncoderCalibration_Update(&h);
     }
     CHECK(h.encoder_calibration.runtime.status == FOC_LOOP_COMPLETED && flash_calls == 1);
+    CHECK(!h.encoder_runtime.simulated_commutation && h.dq_current_setpoint.d == 0 && h.dq_current_setpoint.q == 0);
     CHECK(h.flash_data.encoder.correction_valid && !h.flash_data.encoder.correction_enabled);
     CHECK(h.flash_data.encoder.correction_source == 7 && h.flash_data.encoder.offset_valid);
     CHECK(h.hdrv8323.high_impedance && h.phase_voltage.a == 0 && !h.encoder_runtime.bypass_correction);
@@ -1555,6 +1575,7 @@ int test_encoder_calibration_rejects_bad_measurements(void){
                 h.encoder_calibration.reverse[i] = 0.04f;
             }
         }
+        if(mode >= 3) now += 200; /* Allow normal current ramp-down before validation. */
         CHECK(FOC_EncoderCalibration_Update(&h) == FOC_LOOP_ERROR);
         CHECK(!flash_calls && h.hdrv8323.high_impedance && !h.flash_data.encoder.correction_valid);
     }
@@ -1814,5 +1835,113 @@ int test_anticog_separate_pid_defaults_custom_gains_and_normal_pid_preserved(voi
     CHECK(h.pid_anticogging.K->Kp == 3 && h.pid_anticogging.K->Ki == 4 && h.pid_anticogging.K->Kd == 0.05f);
     FOC_AntiCogging_Finish(&h, FOC_LOOP_CANCELLED);
     CHECK(h.flash_data.controller.PID_gains_position.Kp == 7 && h.flash_data.controller.PID_gains_position.Kd == 9);
+    return 0;
+}
+
+int test_angle_simulator_reusable_clock_direction_and_invalid_inputs(void){
+    AngleSimulator a = {0}, b = {0};
+    CHECK(AngleSimulator_SetAngle(&a, -0.1f));
+    CHECK(fabsf(a.angle - (M_2PIF - 0.1f)) < 0.00001f);
+    CHECK(AngleSimulator_SetSpeed(&a, 2));
+    CHECK(AngleSimulator_Advance(&a, 0.1f));
+    CHECK(fabsf(a.angle - 0.1f) < 0.00001f);
+    CHECK(fabsf(AngleSimulator_Electrical(&a, 7) - 0.7f) < 0.0001f);
+    CHECK(AngleSimulator_SetSpeed(&b, -1));
+    CHECK(AngleSimulator_Advance(&b, 0.2f));
+    CHECK(fabsf(b.angle - (M_2PIF - 0.2f)) < 0.00001f);
+    float before = a.angle;
+    CHECK(!AngleSimulator_Advance(&a, -1) && !AngleSimulator_SetAngle(&a, NAN));
+    CHECK(!AngleSimulator_SetSpeed(&a, INFINITY) && a.angle == before);
+    return 0;
+}
+
+int test_encoder_current_calibration_routes_virtual_frame_and_restores_state(void){
+    for(unsigned direction = 0; direction < 2; direction++){
+        reset(); FOC_HandleTypeDef h = {0}; seed_encoder_calibration(&h);
+        h.flash_data.motor.direction = direction;
+        h.encoder_runtime.simulator = (AngleSimulator){1.2f, -0.3f};
+        uint8_t source = h.flash_data.encoder.source_id;
+        float raw = h.encoder_runtime.raw_angle;
+        FOC_EncoderCalibration_Start(&h);
+        CHECK(h.encoder_runtime.simulated_commutation && h.encoder_runtime.simulator.speed == 0);
+        now += 100; FOC_EncoderCalibration_Update(&h);
+        CHECK(fabsf(h.dq_current_setpoint.d - 0.25f) < 0.00001f && h.dq_current_setpoint.q == 0);
+        now += 200; FOC_EncoderCalibration_Update(&h);
+        CHECK(h.encoder_calibration.stage == FOC_ENCODER_CAL_APPLY);
+        h.encoder_calibration.step = 20;
+        FOC_EncoderCalibration_Update(&h);
+        float angle = 2, d = -3, q = -4;
+        FOC_EncoderControlFrame(&h, &angle, &d, &q);
+        CHECK(fabsf(angle - 20 * (M_2PIF / 1024) * 11) < 0.00001f);
+        CHECK(d == 0.5f && q == 0);
+        CHECK(h.encoder_runtime.raw_angle == raw && h.flash_data.encoder.source_id == source);
+        CHECK(current_ticks >= 3);
+        FOC_EncoderCalibration_Finish(&h, FOC_LOOP_CANCELLED);
+        CHECK(!h.encoder_runtime.simulated_commutation && h.hdrv8323.high_impedance);
+        CHECK(h.encoder_runtime.simulator.angle == 1.2f && h.encoder_runtime.simulator.speed == -0.3f);
+        CHECK(h.dq_current_setpoint.d == 0 && h.dq_current_setpoint.q == 0);
+        angle = 2; d = -3; q = -4;
+        FOC_EncoderControlFrame(&h, &angle, &d, &q);
+        CHECK(angle == 2 && d == -3 && q == -4);
+    }
+    return 0;
+}
+
+int test_encoder_simulator_source_advances_and_cannot_calibrate_itself(void){
+    reset(); FOC_HandleTypeDef h = {0}; seed_motor(&h);
+    h.state = FOC_STATE_IDLE;
+    CHECK(FOC_EncoderSelect(&h, 4));
+    CHECK(FOC_EncoderSource(4)->calibratable == 0);
+    CHECK(FOC_EncoderUpdate(&h, 1000));
+    CHECK(fabsf(h.encoder_runtime.raw_angle - 0.001f) < 0.000001f);
+    CHECK(AngleSimulator_SetSpeed(&h.encoder_runtime.simulator, -2));
+    CHECK(FOC_EncoderUpdate(&h, 1000));
+    CHECK(fabsf(h.encoder_runtime.raw_angle - (M_2PIF - 0.001f)) < 0.00001f);
+    FOC_EncoderCalibration_Start(&h);
+    CHECK(h.encoder_calibration.runtime.status == FOC_LOOP_ERROR);
+    CHECK(!h.encoder_runtime.simulated_commutation);
+    return 0;
+}
+
+int test_motor_probe_detects_direction_and_poles_without_prior_pole_count(void){
+    const unsigned pairs[] = {1, 7, 14, 32};
+    for(unsigned n = 0; n < 4; n++) for(unsigned reversed = 0; reversed < 2; reversed++){
+        reset(); FOC_HandleTypeDef h = {0}; seed_encoder_calibration(&h);
+        h.flash_data.motor.pole_pairs = 0; h.adc_values.vbus = 24;
+        CHECK(FOC_SetState(&h, FOC_STATE_MOTOR_PROBE, FOC_STATE_NONE) == FOC_STATETRANSITION_OK);
+        CHECK(h.setup_result.sequence == 1 && h.setup_result.status == FOC_LOOP_IN_PROGRESS);
+        for(unsigned tick = 0; tick < 2000 && h.motor_probe.runtime.active; tick++){
+            float physical = h.motor_probe.phase / pairs[n] * (reversed ? -1 : 1);
+            h.encoder_runtime.raw_angle = 6.2f + physical;
+            normalize_angle_0_2pi(&h.encoder_runtime.raw_angle);
+            now += 10; FOC_StateLoop(&h);
+        }
+        CHECK(h.motor_probe.runtime.status == FOC_LOOP_COMPLETED);
+        CHECK(h.flash_data.motor.pole_pairs == pairs[n] && h.flash_data.motor.direction == reversed);
+        CHECK(h.setup_result.state == FOC_STATE_MOTOR_PROBE && h.setup_result.status == FOC_LOOP_COMPLETED);
+        CHECK(h.state == FOC_STATE_STOP && h.hdrv8323.high_impedance);
+        CHECK(!h.flash_data.encoder.offset_valid && !h.flash_data.controller.anticogging_data_valid);
+    }
+    return 0;
+}
+
+int test_motor_probe_failure_and_cancel_preserve_previous_parameters(void){
+    for(unsigned mode = 0; mode < 3; mode++){
+        reset(); FOC_HandleTypeDef h = {0}; seed_encoder_calibration(&h); h.adc_values.vbus = 24;
+        CHECK(FOC_SetState(&h, FOC_STATE_MOTOR_PROBE, FOC_STATE_NONE) == FOC_STATETRANSITION_OK);
+        if(mode == 0){
+            for(unsigned i = 0; i < 2000 && h.motor_probe.runtime.active; i++){now += 10; FOC_StateLoop(&h);}
+            CHECK(h.motor_probe.runtime.status == FOC_LOOP_ERROR);
+            CHECK(strstr(h.routine_result, "Insufficient"));
+        }else if(mode == 1){
+            FOC_SetState(&h, FOC_STATE_STOP, FOC_STATE_NONE);
+            CHECK(h.motor_probe.runtime.status == FOC_LOOP_CANCELLED);
+        }else{
+            h.encoder_runtime.healthy = 0; FOC_StateLoop(&h);
+            CHECK(h.motor_probe.runtime.status == FOC_LOOP_ERROR);
+        }
+        CHECK(h.flash_data.motor.pole_pairs == 11 && !h.flash_data.motor.direction);
+        CHECK(h.hdrv8323.high_impedance && h.phase_voltage.a == 0 && !h.motor_probe.runtime.active);
+    }
     return 0;
 }

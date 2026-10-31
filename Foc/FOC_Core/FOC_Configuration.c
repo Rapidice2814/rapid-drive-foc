@@ -128,8 +128,8 @@ FOC_ConfigResult FOC_ConfigurationSet(FOC_HandleTypeDef *h, uint8_t group,
     if(group == FOC_CONFIG_LIMITS && VALUE(MAX_VOLTAGE) > VALUE(UNDERVOLTAGE) * M_1_SQRT3F)
         return reject(DEBUG_ERR_OUT_OF_RANGE, "Voltage limit must fit undervoltage trip / sqrt(3) across the permitted bus range.");
     if((group == FOC_CONFIG_LIMITS || group == FOC_CONFIG_ENCODER) &&
-       (!isfinite(VALUE(CAL_VOLTAGE)) || VALUE(CAL_VOLTAGE) > VALUE(MAX_VOLTAGE)))
-        return reject(DEBUG_ERR_OUT_OF_RANGE, "Encoder calibration voltage must not exceed the configured voltage limit.");
+       (!isfinite(VALUE(CAL_CURRENT)) || VALUE(CAL_CURRENT) > VALUE(MAX_CURRENT)))
+        return reject(DEBUG_ERR_OUT_OF_RANGE, "Encoder calibration D current must not exceed the configured current limit.");
     if(group == FOC_CONFIG_CONTROLLER && VALUE(CURRENT_FF) &&
        (!isfinite(VALUE(RESISTANCE)) || VALUE(RESISTANCE) <= 0 || !isfinite(VALUE(INDUCTANCE)) || VALUE(INDUCTANCE) <= 0))
         return reject(DEBUG_ERR_OUT_OF_RANGE, "Current feed-forward requires valid positive motor R and L.");

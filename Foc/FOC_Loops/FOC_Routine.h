@@ -32,6 +32,18 @@ typedef struct {
     uint8_t active;
 } FOC_RoutineRuntimeTypeDef;
 
+typedef struct {
+    uint32_t sequence;
+    uint8_t state, status, error;
+} FOC_SetupResult;
+
+typedef struct {
+    FOC_RoutineRuntimeTypeDef runtime;
+    float last_raw, travel, forward_travel, phase;
+    uint32_t stage_started_ms;
+    uint8_t stage, failed_stage, candidate_poles, candidate_direction;
+} FOC_MotorProbeContext;
+
 void FOC_ReportRoutineResult(FOC_HandleTypeDef *hfoc, const char *name,
                             FOC_RoutineRuntimeTypeDef *runtime, unsigned stage);
 
@@ -179,7 +191,10 @@ typedef struct {
     FOC_EncoderCalibrationStageTypeDef stage, failed_stage;
     float forward[FOC_ENCODER_LUT_SIZE], reverse[FOC_ENCODER_LUT_SIZE];
     uint16_t forward_count[FOC_ENCODER_LUT_SIZE], reverse_count[FOC_ENCODER_LUT_SIZE];
-    float reference_raw, last_raw, raw_relative, voltage, max_disagreement;
+    float reference_raw, last_raw, raw_relative, current, max_disagreement;
+    AngleSimulator saved_simulator;
+    uint32_t release_started_ms;
+    uint8_t owns_simulator;
     uint16_t step, progress;
     uint8_t direction, samples, saved_anticog_ff, saved_current_ff;
     uint8_t saved_anticog_valid, source, candidate_valid;

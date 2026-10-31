@@ -30,7 +30,7 @@ typedef enum {FOC_CONFIGURATION_GROUPS(CONFIG_GROUP_ENUM) FOC_CONFIG_GROUP_COUNT
  X(TORQUE_CONSTANT,MOTOR,f,motor.torque_constant,CONFIG_ABS_TORQUE_CONSTANT_MIN,CONFIG_ABS_TORQUE_CONSTANT_MAX,"Nm/A",CONFIG_IDLE,"Torque constant") \
  X(BANDWIDTH,CONTROLLER,f,controller.current_control_bandwidth,CONFIG_ABS_BANDWIDTH_MIN,CONFIG_ABS_BANDWIDTH_MAX,"rad/s",CONFIG_IDLE,"Current-control bandwidth") \
  X(CURRENT_FF,CONTROLLER,bool,controller.current_PID_FF_enabled,0,1,"-",CONFIG_IDLE,"Current feed-forward") \
- X(CAL_VOLTAGE,ENCODER,f,encoder.calibration_voltage,CONFIG_ABS_VOLTAGE_MIN,CONFIG_ABS_VOLTAGE_MAX,"V",CONFIG_IDLE,"Calibration voltage")
+ X(CAL_CURRENT,ENCODER,f,encoder.calibration_current,CONFIG_ABS_CURRENT_MIN,CONFIG_ABS_CURRENT_MAX,"A",CONFIG_IDLE,"Calibration D current")
 
 #define CONFIG_IDLE (1u << FOC_STATE_IDLE)
 #define CONFIG_IDLE_ERROR (CONFIG_IDLE | (1u << FOC_STATE_ERROR))

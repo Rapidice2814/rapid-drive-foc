@@ -176,6 +176,8 @@ FOC_LoopStatusTypeDef FOC_AntiCogging_Finish(FOC_HandleTypeDef *hfoc, FOC_LoopSt
     if(result == FOC_LOOP_ERROR) ctx->failed_stage = ctx->stage;
     ctx->runtime.active = 0;
     ctx->runtime.status = result;
+    hfoc->setup_result.status = (uint8_t)result;
+    hfoc->setup_result.error = (uint8_t)ctx->runtime.error;
     if(result != FOC_LOOP_ERROR) FOC_ReportRoutineResult(hfoc, "Anti-cogging calibration", &ctx->runtime, (unsigned)ctx->stage);
     ctx->stage = result == FOC_LOOP_COMPLETED ? FOC_ANTICOG_DONE :
                  result == FOC_LOOP_CANCELLED ? FOC_ANTICOG_CANCELLED : FOC_ANTICOG_FAILED;

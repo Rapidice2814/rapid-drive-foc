@@ -18,7 +18,7 @@ extern CORDIC_HandleTypeDef hcordic;
  */
 void Cordic_CalculateSinCos(float theta, float *cos, float *sin){
     static float previous_theta = 0.0f;
-    static float cos_buffer = 0.0f;
+    static float cos_buffer = 1.0f; /* Correct cached cos(0) for the first lock field. */
     static float sin_buffer = 0.0f;
 
     if(theta != previous_theta){

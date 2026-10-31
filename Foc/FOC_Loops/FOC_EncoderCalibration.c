@@ -12,14 +12,11 @@
 #define CAL_TIMEOUT_MS 120000U
 #define CAL_DISAGREEMENT_MAX 0.03f
 
-/** @brief Commands a stator field without closing position feedback on the encoder. */
-static void calibration_field(FOC_HandleTypeDef *hfoc){
-    FOC_EncoderCalibrationContextTypeDef *ctx = &hfoc->encoder_calibration;
-    float phase = (float)ctx->step * (M_2PIF / CAL_STEPS) * hfoc->flash_data.motor.pole_pairs;
-    normalize_angle_0_2pi(&phase);
-    float c, s;
-    Cordic_CalculateSinCos(phase, &c, &s);
-    FOC_SetPhaseVoltages(hfoc, InvClarke_transform((ABVoltagesTypeDef){ctx->voltage * c, ctx->voltage * s}));
+/* The portable simulator owns only the commanded field angle. Raw physical
+   encoder readings remain independent and continue feeding the calibration LUT. */
+static void calibration_field(FOC_HandleTypeDef *h){
+    AngleSimulator_SetAngle(&h->encoder_runtime.simulator,
+        h->encoder_calibration.step * (M_2PIF / CAL_STEPS));
 }
 
 /**
@@ -32,7 +29,8 @@ void FOC_EncoderCalibration_Start(FOC_HandleTypeDef *hfoc){
     hfoc->encoder_calibration = (FOC_EncoderCalibrationContextTypeDef){
         .runtime = {.active = 1, .status = FOC_LOOP_IN_PROGRESS, .started_ms = HAL_GetTick(), .stage_started_ms = HAL_GetTick()},
         .stage = FOC_ENCODER_CAL_LOCK,
-        .voltage = hfoc->flash_data.encoder.calibration_voltage,
+        .current = hfoc->flash_data.encoder.calibration_current,
+        .saved_simulator = hfoc->encoder_runtime.simulator,
         .source = hfoc->flash_data.encoder.source_id,
         .revolutions = hfoc->calibration_revolutions[0] ? hfoc->calibration_revolutions[0] : 1,
         .pole_pairs = hfoc->flash_data.motor.pole_pairs,
@@ -46,10 +44,22 @@ void FOC_EncoderCalibration_Start(FOC_HandleTypeDef *hfoc){
     if(ctx->revolutions > 8 || source == NULL || !source->calibratable || !hfoc->encoder_runtime.healthy ||
        hfoc->active_errors || hfoc->latched_errors || !hfoc->adc_calibrated ||
        !hfoc->flash_data.encoder.offset_valid || hfoc->flash_data.motor.pole_pairs == 0 ||
-       !isfinite(ctx->voltage) || ctx->voltage <= 0 ||
-       !isfinite(hfoc->flash_data.limits.max_dq_voltage) || ctx->voltage > hfoc->flash_data.limits.max_dq_voltage ||
+       !isfinite(ctx->current) || ctx->current <= 0 || hfoc->encoder_runtime.simulated_commutation ||
+       !isfinite(hfoc->flash_data.limits.max_dq_voltage) || hfoc->flash_data.limits.max_dq_voltage <= 0 ||
+       ctx->current > hfoc->flash_data.limits.max_dq_current ||
        !isfinite(hfoc->flash_data.limits.max_dq_current) || hfoc->flash_data.limits.max_dq_current <= 0){
         ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_INPUT;
+        FOC_EncoderCalibration_Finish(hfoc, FOC_LOOP_ERROR);
+        return;
+    }
+    PIDValuesTypeDef d_gains = hfoc->flash_data.controller.PID_gains_d;
+    PIDValuesTypeDef q_gains = hfoc->flash_data.controller.PID_gains_q;
+    if(!isfinite(d_gains.Kp) || !isfinite(d_gains.Ki) || !isfinite(q_gains.Kp) || !isfinite(q_gains.Ki) ||
+       !isfinite(d_gains.Kd) || !isfinite(q_gains.Kd) || d_gains.Kd < 0 || q_gains.Kd < 0 ||
+       d_gains.Kp < 0 || d_gains.Ki < 0 || q_gains.Kp < 0 || q_gains.Ki < 0 ||
+       (d_gains.Kp == 0 && d_gains.Ki == 0) || (q_gains.Kp == 0 && q_gains.Ki == 0)){
+        ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_INPUT;
+        ctx->runtime.detail = "Configure/tune d/q current PI gains before current-driven encoder calibration";
         FOC_EncoderCalibration_Finish(hfoc, FOC_LOOP_ERROR);
         return;
     }
@@ -58,8 +68,18 @@ void FOC_EncoderCalibration_Start(FOC_HandleTypeDef *hfoc){
     hfoc->flash_data.controller.anticogging_FF_enabled = 0;
     hfoc->flash_data.controller.current_PID_FF_enabled = 0;
     FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
-    DRV8323_ExitHighImpedance(&hfoc->hdrv8323);
+    PID_Reset(&hfoc->pid_current_d);
+    PID_Reset(&hfoc->pid_current_q);
+    hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0};
+    AngleSimulator_SetSpeed(&hfoc->encoder_runtime.simulator, 0);
     calibration_field(hfoc);
+    ctx->owns_simulator = 1;
+    FOC_EncoderUseSimulatedCommutation(hfoc, 1);
+    if(DRV8323_ExitHighImpedance(&hfoc->hdrv8323) != DRV8323_OK){
+        ctx->runtime.error = FOC_ROUTINE_ERROR_INVALID_INPUT;
+        ctx->runtime.detail = "Gate driver refused inverter output enable";
+        FOC_EncoderCalibration_Finish(hfoc, FOC_LOOP_ERROR);
+    }
 }
 
 /**
@@ -75,6 +95,13 @@ FOC_LoopStatusTypeDef FOC_EncoderCalibration_Finish(FOC_HandleTypeDef *hfoc, FOC
     }
     FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
     DRV8323_SetHighImpedance(&hfoc->hdrv8323);
+    hfoc->dq_current_setpoint = (DQCurrentsTypeDef){0};
+    PID_Reset(&hfoc->pid_current_d); PID_Reset(&hfoc->pid_current_q);
+    if(ctx->owns_simulator){
+        FOC_EncoderUseSimulatedCommutation(hfoc, 0);
+        hfoc->encoder_runtime.simulator = ctx->saved_simulator;
+        ctx->owns_simulator = 0;
+    }
     hfoc->encoder_runtime.bypass_correction = 0;
     hfoc->flash_data.controller.anticogging_FF_enabled = result == FOC_LOOP_COMPLETED ? 0 : ctx->saved_anticog_ff;
     hfoc->flash_data.controller.current_PID_FF_enabled = ctx->saved_current_ff;
@@ -171,6 +198,14 @@ FOC_LoopStatusTypeDef FOC_EncoderCalibration_Update(FOC_HandleTypeDef *hfoc){
         return FOC_LOOP_ERROR;
     }
     ctx->runtime.detail = NULL;
+    if(ctx->stage <= FOC_ENCODER_CAL_VALIDATE){
+        float fraction = fminf(1.0f, (now - ctx->runtime.started_ms) / 200.0f);
+        if(ctx->stage == FOC_ENCODER_CAL_VALIDATE)
+            fraction = fmaxf(0.0f, 1.0f - (now - ctx->release_started_ms) / 200.0f);
+        hfoc->dq_current_setpoint.d = ctx->current * fraction;
+        hfoc->dq_current_setpoint.q = 0;
+        Current_Loop(hfoc);
+    }
     switch(ctx->stage){
         case FOC_ENCODER_CAL_LOCK:
             if(FOC_RoutineElapsed(now, ctx->runtime.stage_started_ms, 300U)){
@@ -210,8 +245,7 @@ FOC_LoopStatusTypeDef FOC_EncoderCalibration_Update(FOC_HandleTypeDef *hfoc){
                 ctx->progress = (uint16_t)((ctx->direction ? 2 * total - ctx->step : ctx->step) * 1000UL / (2 * total));
                 if(ctx->direction == 0 && ctx->step == total){ctx->direction = 1; ctx->stage = FOC_ENCODER_CAL_APPLY;}
                 else if(ctx->direction == 1 && ctx->step == 0){
-                    FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
-                    DRV8323_SetHighImpedance(&hfoc->hdrv8323);
+                    ctx->release_started_ms = now;
                     ctx->stage = FOC_ENCODER_CAL_VALIDATE;
                 }else{
                     if(ctx->direction) ctx->step--; else ctx->step++;
@@ -221,6 +255,9 @@ FOC_LoopStatusTypeDef FOC_EncoderCalibration_Update(FOC_HandleTypeDef *hfoc){
             break;
         }
         case FOC_ENCODER_CAL_VALIDATE:
+            if(!FOC_RoutineElapsed(now, ctx->release_started_ms, 200U)) break;
+            FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
+            DRV8323_SetHighImpedance(&hfoc->hdrv8323);
             if(!calibration_validate(hfoc)) goto invalid;
             ctx->candidate_valid = 1;
             ctx->stage = FOC_ENCODER_CAL_SAVE;

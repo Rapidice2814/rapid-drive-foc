@@ -3,6 +3,29 @@
 #include "FOC_Handle.h"
 #include "Utils.h"
 
+uint8_t FOC_EncoderInitSimulator(FOC_HandleTypeDef *h){
+    h->encoder_runtime.simulator = (AngleSimulator){0, 1.0f};
+    return 1;
+}
+uint8_t FOC_EncoderReadSimulator(FOC_HandleTypeDef *h, float *angle){
+    *angle = h->encoder_runtime.simulator.angle;
+    return isfinite(*angle);
+}
+/* Temporary control-frame override: physical encoder selection/feedback stay intact. */
+uint8_t FOC_EncoderUseSimulatedCommutation(FOC_HandleTypeDef *h, uint8_t enabled){
+    if(enabled > 1 || (enabled && (!h->flash_data.motor.pole_pairs ||
+        !isfinite(h->encoder_runtime.simulator.angle)))) return 0;
+    h->encoder_runtime.simulated_commutation = enabled;
+    return 1;
+}
+void FOC_EncoderControlFrame(FOC_HandleTypeDef *h, float *angle, float *d, float *q){
+    if(!h->encoder_runtime.simulated_commutation) return;
+    *angle = AngleSimulator_Electrical(&h->encoder_runtime.simulator, h->flash_data.motor.pole_pairs);
+    /* Commands are in the generated field's coordinates, independent of sensor direction. */
+    *d = h->dq_current_setpoint.d;
+    *q = h->dq_current_setpoint.q;
+}
+
 /* Add hardware readers here. IDs must remain stable across firmware updates.
    Do not advertise an electrical-only estimator as a mechanical encoder. */
 #define DECLARE_READER(id, name, init, reader, calibratable) uint8_t init(FOC_HandleTypeDef *); uint8_t reader(FOC_HandleTypeDef *, float *);
@@ -105,6 +128,11 @@ void FOC_EncoderResetHistory(FOC_HandleTypeDef *hfoc){
 /** @brief Updates mechanical/electrical estimates from the selected source. */
 uint8_t FOC_EncoderUpdate(FOC_HandleTypeDef *hfoc, float frequency){
     float raw;
+    if(hfoc->flash_data.encoder.source_id == FOC_ENCODER_SOURCE_SIMULATOR && isfinite(frequency) && frequency > 0 &&
+       !AngleSimulator_Advance(&hfoc->encoder_runtime.simulator, 1.0f / frequency)){
+        hfoc->encoder_runtime.healthy = 0;
+        return 0;
+    }
     if(!isfinite(frequency) || frequency <= 0 || !FOC_EncoderReadRaw(hfoc, &raw)){
         hfoc->encoder_runtime.healthy = 0;
         return 0;

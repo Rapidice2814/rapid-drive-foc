@@ -23,6 +23,7 @@ void Current_Loop(FOC_HandleTypeDef *hfoc){
     }
 
 
+    FOC_EncoderControlFrame(hfoc, &encoder_angle_electrical, &setpoint_d, &setpoint_q);
     if(hfoc->flash_data.controller.anticogging_FF_enabled == 1 && hfoc->flash_data.controller.anticogging_data_valid == 1){
         float encoder_angle_mechanical_wrapped = hfoc->encoder_angle_mechanical_wrapped;
         normalize_angle_0_2pi(&encoder_angle_mechanical_wrapped);

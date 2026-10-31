@@ -527,9 +527,16 @@ Other defined error bits may not be set by the current diagnostic paths.
 PHASE_OC (bit 16, 0x00010000, "Phase over-current" in the plotter) detects
 either polarity of measured phase current exceeding `max_dq_current`, once ADC
 calibration is complete. It is checked each measurement cycle, including during
-voltage-driven encoder calibration. Encoder/anti-cogging current-limit failures
+current-controlled encoder calibration. Encoder/anti-cogging current-limit failures
 also report this specific latched fault rather than only OPERATION_FAILED.
 It remains latched after output is disabled and current falls; acknowledgement
 while the condition is present immediately relatches it. IBUS_OC remains the
 separate bus-current fault. All faults reported with FOC_SetError set the same
 bits in both active and latched masks, including one-shot software faults.
+
+## Protocol 12 motor Setup additions
+
+See [Motor Setup](motor-setup.md) for commissioning prerequisites, fail-stop
+sequencing and combined direction/pole detection. State 21 is MOTOR_PROBE;
+COUNT becomes 22. Commands 0x3E/0x3F get/return a correlated 20-byte setup status;
+0x40 sets runtime detection/alignment voltage. Existing IDs are unchanged.

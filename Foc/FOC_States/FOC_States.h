@@ -40,7 +40,8 @@ typedef enum {
     X(FOC_STATE_FLASH_CLEAR,                FOC_StateFlashClear_Transition,                 FOC_StateFlashClear) \
     X(FOC_STATE_BOOTLOADER,                 FOC_StateBootloader_Transition,                 FOC_StateBootloader) \
     X(FOC_STATE_OPENLOOP,                   FOC_StateOpenLoop_Transition,                   FOC_StateOpenLoop) \
-    X(FOC_STATE_ENCODER_CALIBRATION,        FOC_StateEncoderCalibration_Transition,         FOC_StateEncoderCalibration)
+    X(FOC_STATE_ENCODER_CALIBRATION,        FOC_StateEncoderCalibration_Transition,         FOC_StateEncoderCalibration) \
+    X(FOC_STATE_MOTOR_PROBE,                FOC_StateMotorProbe_Transition,                 FOC_StateMotorProbe)
 
 typedef enum
 {
@@ -94,6 +95,8 @@ void FOC_StateLoop(FOC_HandleTypeDef *hfoc);
 FOC_StateTransitionTypeDef FOC_StateBootloader_Transition(FOC_HandleTypeDef* hfoc);
 FOC_StateTransitionTypeDef FOC_StateEncoderCalibration_Transition(FOC_HandleTypeDef *hfoc);
 void FOC_StateEncoderCalibration(FOC_HandleTypeDef *hfoc);
+FOC_StateTransitionTypeDef FOC_StateMotorProbe_Transition(FOC_HandleTypeDef *hfoc);
+void FOC_StateMotorProbe(FOC_HandleTypeDef *hfoc);
 void FOC_StateBootloader(FOC_HandleTypeDef* hfoc);
 FOC_StateTransitionTypeDef FOC_StateInit_Transition(FOC_HandleTypeDef* hfoc);
 void FOC_StateInit(FOC_HandleTypeDef* hfoc);

@@ -31,6 +31,7 @@ typedef struct FOC_Handle FOC_HandleTypeDef;
 #define FOC_ERROR_OPERATION_FAILED (1u << 15)
 /* Measured phase current exceeds the configured maximum d/q current. */
 #define FOC_ERROR_PHASE_OC (1u << 16)
+#define FOC_ERROR_CURRENT_SENSE_SATURATION (1u << 17)
 
 void FOC_CheckErrors(FOC_HandleTypeDef *hfoc);
 void FOC_ClearLatchedErrors(FOC_HandleTypeDef *hfoc);
