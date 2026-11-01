@@ -1,12 +1,14 @@
 #include "FOC_States.h"
+#include "FOC_Configuration.h"
 #include "FOC_Handle.h"
 #include "FOC_USB_Debug.h"
 #include "FOC_Loops.h"
 #include "FOC_Diagnostics.h"
 #include "WS2812b_Driver.h"
+#include <math.h>
 
 /**
- * @brief Cleans up migrated routines on every accepted state exit.
+ * @brief Cleans up routines on every accepted state exit.
  * @note Terminal results are retained; only active routines are cancelled.
  */
 static FOC_LoopStatusTypeDef FOC_StateFinishRoutine(FOC_HandleTypeDef *hfoc){
@@ -37,7 +39,7 @@ static FOC_LoopStatusTypeDef FOC_StateFinishRoutine(FOC_HandleTypeDef *hfoc){
 }
 
 /**
- * @brief Initializes migrated routines only after state entry and exit cleanup.
+ * @brief Initializes routines only after state entry and exit cleanup.
  * @return ERROR if the motor output could not be enabled, otherwise OK.
  * @note Motor-driving setup starts with zero phase voltage before leaving high
  *       impedance. Failure latches an operation fault; it never starts a routine.
@@ -47,6 +49,10 @@ static FOC_StateTransitionTypeDef FOC_StateStartRoutine(FOC_HandleTypeDef *hfoc)
         case FOC_STATE_MOTOR_PROBE: case FOC_STATE_ALIGNMENT: case FOC_STATE_ALIGNMENT_TEST:
         case FOC_STATE_IDENTIFY: case FOC_STATE_PID_AUTOTUNE: case FOC_STATE_ENCODER_CALIBRATION:
         case FOC_STATE_ANTICOGGING: case FOC_STATE_CURRENT_SENSOR_CALIBRATION:
+            /* An automatic prerequisite is part of the pending request, not a
+               separate setup step. Keep its sequence unchanged until retry. */
+            if(hfoc->state == FOC_STATE_CURRENT_SENSOR_CALIBRATION &&
+               hfoc->current_calibration_retry_state != FOC_STATE_NONE) break;
             hfoc->setup_result.sequence++;
             hfoc->setup_result.state = (uint8_t)hfoc->state;
             hfoc->setup_result.status = FOC_LOOP_IN_PROGRESS;
@@ -182,7 +188,29 @@ FOC_StateTypeDef FOC_GetState(FOC_HandleTypeDef *hfoc){
 FOC_StateTransitionTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDef state, FOC_StateTypeDef next_state){
     if(hfoc->calibration_upload.active && state != FOC_STATE_STOP && state != FOC_STATE_ERROR && state != FOC_STATE_IDLE)
         return FOC_STATETRANSITION_DENIED;
+    switch(state){
+        case FOC_STATE_RUN: case FOC_STATE_OPENLOOP: case FOC_STATE_BOOTUP_SOUND:
+        case FOC_STATE_ALIGNMENT: case FOC_STATE_ALIGNMENT_TEST: case FOC_STATE_IDENTIFY:
+        case FOC_STATE_PID_AUTOTUNE: case FOC_STATE_ENCODER_CALIBRATION:
+        case FOC_STATE_ANTICOGGING: case FOC_STATE_MOTOR_PROBE: case FOC_STATE_CHECKLIST: {
+            FOC_ConfigResult config = FOC_ConfigurationReady(hfoc, state);
+            if(config.code){
+                Debug_SendTextResponse("Motor operation blocked: configure %s\n", config.message);
+                return FOC_STATETRANSITION_DENIED;
+            }
+            break;
+        }
+        default: break;
+    }
     if(state == hfoc->state){
+        if(next_state != FOC_STATE_NONE) hfoc->next_state = next_state;
+        return FOC_STATETRANSITION_OK;
+    }
+    /* A lost ACK may cause the original request to be resent while its
+       prerequisite is running. Accept it without restarting calibration. */
+    if(hfoc->state == FOC_STATE_CURRENT_SENSOR_CALIBRATION &&
+       hfoc->current_calibration_retry_state != FOC_STATE_NONE &&
+       hfoc->current_calibration_retry_state == state){
         if(next_state != FOC_STATE_NONE) hfoc->next_state = next_state;
         return FOC_STATETRANSITION_OK;
     }
@@ -206,12 +234,25 @@ FOC_StateTransitionTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDe
             return FOC_STATETRANSITION_DENIED;
     }
 
+    if(transition_result == FOC_STATETRANSITION_ADC_NOT_CALIBRATED &&
+       hfoc->state == FOC_STATE_IDLE && !hfoc->active_errors && !hfoc->latched_errors &&
+       isfinite(hfoc->encoder_speed_mechanical) && fabsf(hfoc->encoder_speed_mechanical) <= 0.1f &&
+       isfinite(hfoc->adc_values.vbus) && hfoc->adc_values.vbus > 0.0f){
+        Debug_SendTextResponse("Current sensor not calibrated: calibrating before retrying %s.\n", FOC_StateToString(state));
+        FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
+        DRV8323_SetHighImpedance(&hfoc->hdrv8323);
+        hfoc->current_calibration_retry_state = state;
+        transition_result = FOC_SetState(hfoc, FOC_STATE_CURRENT_SENSOR_CALIBRATION, next_state);
+        if(transition_result != FOC_STATETRANSITION_OK)
+            hfoc->current_calibration_retry_state = FOC_STATE_NONE;
+        return transition_result;
+    }
     if(transition_result != FOC_STATETRANSITION_OK){
         return transition_result;
     }
 
     /* The existing destination transition functions include entry side effects.
-       Migrated routine cleanup never enables output. A cleanup failure overrides
+       Routine cleanup never enables output. A cleanup failure overrides
        the destination with immediate ERROR rather than allowing motion. */
     if(FOC_StateFinishRoutine(hfoc) == FOC_LOOP_ERROR && state != FOC_STATE_ERROR){
         hfoc->active_errors |= FOC_ERROR_OPERATION_FAILED;
@@ -220,6 +261,10 @@ FOC_StateTransitionTypeDef FOC_SetState(FOC_HandleTypeDef *hfoc, FOC_StateTypeDe
         state = FOC_STATE_ERROR;
         transition_result = FOC_STATETRANSITION_ERROR;
     }
+    /* Any accepted exit (including STOP, faults, and maintenance) cancels the
+       deferred request. Successful completion snapshots it before leaving. */
+    if(hfoc->state == FOC_STATE_CURRENT_SENSOR_CALIBRATION)
+        hfoc->current_calibration_retry_state = FOC_STATE_NONE;
     if(state == FOC_STATE_ERROR){
         hfoc->next_state = FOC_STATE_NONE;
     }else{

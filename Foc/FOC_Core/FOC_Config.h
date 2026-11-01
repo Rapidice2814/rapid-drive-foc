@@ -8,7 +8,7 @@
 #define FOC_VERSION_PATCH 0
 
 /* Debugging */
-/* Raw writes and legacy text commands are development-only, never a safety API. */
+/* Raw debug writes and text commands are development-only, never a safety API. */
 #ifndef FOC_ENABLE_DEBUG_WRITES
 #ifdef DEBUG
 #define FOC_ENABLE_DEBUG_WRITES 1
@@ -67,16 +67,7 @@
 
 
 
-/*Motor parameters*/
-#define MOTOR_POLE_PAIRS 11 //Motor pole pairs
-#define MOTOR_STATOR_RESISTANCE 0.2f // [Ohm]
-#define MOTOR_STATOR_INDUCTANCE 2.5e-05f // [H]
-#define MOTOR_TORQUE_CONSTANT (8.27 / 380) // [Nm/A]
-
-/*limits*/
-#define VOLTAGE_LIMIT 8.0f //[V], max motor voltage
-#define MAX_DQ_CURRENT 5.0f //[A]
-
+/* Motor-specific settings and operating limits start unset (zero). */
 
 /* Absolute production-API bounds. These are board/firmware capabilities, not
  * editable runtime limits. Widening them requires hardware review/rebuild.

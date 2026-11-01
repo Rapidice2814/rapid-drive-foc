@@ -113,6 +113,23 @@ float CalculateBusCurrent(PhaseCurrentsTypeDef phase_current, PhaseVoltagesTypeD
   */
 FOC_StatusTypeDef FOC_SetPhaseVoltages(FOC_HandleTypeDef *hfoc, PhaseVoltagesTypeDef phase_voltage){
 
+    /* Also constrain voltage-driven commissioning routines to user limits. */
+    float limit = hfoc->flash_data.limits.max_dq_voltage;
+    if(!isfinite(limit) || limit <= 0 || !isfinite(phase_voltage.a) ||
+       !isfinite(phase_voltage.b) || !isfinite(phase_voltage.c)){
+        phase_voltage = (PhaseVoltagesTypeDef){0};
+    }else{
+        float peak = fmaxf(fabsf(phase_voltage.a), fmaxf(fabsf(phase_voltage.b), fabsf(phase_voltage.c)));
+        if(peak > limit){
+            float scale = limit / peak;
+            phase_voltage.a *= scale; phase_voltage.b *= scale; phase_voltage.c *= scale;
+        }
+    }
+    if(!isfinite(hfoc->adc_values.vbus) || hfoc->adc_values.vbus <= 0){
+        hfoc->phase_voltage = (PhaseVoltagesTypeDef){0};
+        *hfoc->pCCRa = *hfoc->pCCRb = *hfoc->pCCRc = 0;
+        return FOC_ERROR;
+    }
     hfoc->phase_voltage = phase_voltage;
     
 	float Umin = fminf(phase_voltage.a, fminf(phase_voltage.b, phase_voltage.c));

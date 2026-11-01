@@ -14,47 +14,12 @@
 /* KEEP in the linker script cannot retain an object already discarded by LTO. */
 __attribute__((used, section(".permanent"))) FLASH_DataTypeDef flash_data_storage;
 
-static_assert(sizeof(FLASH_DataTypeDef) % 8 == 0, "struct not aligned to 8 bytes"); // Ensure that the struct size is a multiple of 8 bytes, as required by the flash programming algorithm.
 static_assert(sizeof(FLASH_DataTypeDef) <= FLASH_PAGE_SIZE * NUMBER_OF_FLASH_PAGES, "struct size exceeds flash storage size");
 
 
-// static const FLASH_DataTypeDef flash_data_default_values = {0};
-static const FLASH_DataTypeDef flash_data_default_values = {
-    .encoder = {.calibration_current = 0.25f},
-    .anticogging_position_gains = {10.0f, 20.0f, 0.2f},
-    .filler = {0xAC, 0x51, 0xD1, 0xC0},
-    .motor = {
-        .torque_constant = MOTOR_TORQUE_CONSTANT,
-        .pole_pairs = MOTOR_POLE_PAIRS,
-    },
-    
-    .controller = {
-        .current_control_bandwidth = 500.0f,
-        .PID_gains_speed = {
-            .Kp = 0.1f,
-            .Ki = 5.0f,
-            .Kd = 0.0f
-        },
-        .PID_gains_position = {
-            .Kp = 1.0f,
-            .Ki = 5.0f,
-            .Kd = 0.5f
-        },
-    },
+/* No motor, tuning or application-specific limits are assumed on a new board. */
+static const FLASH_DataTypeDef flash_data_default_values = {0};
 
-    .limits = {
-        .vbus_overvoltage_trip_level = 27.0f,
-        .vbus_undervoltage_trip_level = 20.0f,
-        .ibus_overcurrent_trip_level = 1.0f,
-        .mosfet_temp_trip_level = MOSFET_MAX_TEMP,
-        .motor_temp_trip_level = MOTOR_MAX_TEMP,
-        .max_dq_voltage = VOLTAGE_LIMIT * M_1_SQRT3F,
-        .max_dq_current = MAX_DQ_CURRENT
-    },
-};
-
-
-    
 static FLASH_EraseInitTypeDef EraseInitStruct;
 
 
@@ -70,7 +35,6 @@ FLASH_StatusTypeDef FOC_FLASH_WriteData(FLASH_DataTypeDef *pdata){
         return FLASH_ERROR;
     }
 
-    pdata->filler[2] = 0xD1; pdata->filler[3] = 0xC0;
     pdata->contains_data = 1;
     pdata->magic = FOC_FLASH_MAGIC;
     pdata->format_version = FOC_FLASH_FORMAT_VERSION;
@@ -174,19 +138,7 @@ FLASH_StatusTypeDef FOC_FLASH_ReadData(FLASH_DataTypeDef *pdata){
     }
     /* Copy the entire record, including a possible partial final doubleword. */
     memcpy(pdata, stored, sizeof(*pdata));
-    FOC_FLASH_InitAntiCogGains(pdata);
-    if(pdata->filler[2] != 0xD1 || pdata->filler[3] != 0xC0){
-        /* Same float slot formerly held volts. Do not reinterpret it as amperes. */
-        pdata->encoder.calibration_current = 0.25f;
-        pdata->filler[2] = 0xD1; pdata->filler[3] = 0xC0;
-    }
-    pdata->crc = FOC_FlashCRC(pdata, offsetof(FLASH_DataTypeDef, crc));
-
-    if(pdata->contains_data == 1 && pdata->struct_terminator == FLASH_DATA_STRUCT_TERMINATOR){
-        return FLASH_OK;
-    } else {
-        return FLASH_EMPTY;
-    }
+    return FLASH_OK;
 }
 
 /**

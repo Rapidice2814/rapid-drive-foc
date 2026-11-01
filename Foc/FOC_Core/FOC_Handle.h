@@ -20,6 +20,8 @@ typedef struct FOC_Handle {
     FOC_StateTypeDef state; // Current state of the FOC driver
     FOC_StateTypeDef previous_state;
     FOC_StateTypeDef next_state;
+    /* Original request awaiting automatic current calibration; RAM only. */
+    FOC_StateTypeDef current_calibration_retry_state;
 
     /* Per-handle calibration workspaces; never persisted to flash. */
     FOC_AlignmentContextTypeDef alignment;

@@ -50,7 +50,7 @@ void FOC_StateEncoderCalibration(FOC_HandleTypeDef *hfoc){
 }
 
 /**
- * @brief Continues a migrated calibration or stops when no continuation exists.
+ * @brief Continues a calibration or stops when no continuation exists.
  * @param hfoc FOC handle with a successfully completed routine.
  * @note A denied continuation falls back to STOP; completion never restarts it.
  */
@@ -72,7 +72,29 @@ FOC_StateTransitionTypeDef FOC_StateCurrentSensorCalibration_Transition(FOC_Hand
 void FOC_StateCurrentSensorCalibration(FOC_HandleTypeDef* hfoc){
     FOC_LoopStatusTypeDef ret = FOC_CurrentSensorCalibration_Update(hfoc);
     if(ret == FOC_LOOP_COMPLETED){
-        FOC_StateCalibrationComplete(hfoc);
+        FOC_StateTypeDef requested = hfoc->current_calibration_retry_state;
+        FOC_StateTypeDef continuation = hfoc->next_state;
+        if(requested == FOC_STATE_NONE){
+            FOC_StateCalibrationComplete(hfoc);
+            return;
+        }
+        /* Retry exactly once, through the normal entry guards. Return to IDLE
+           first because motor setup deliberately rejects entry from a routine. */
+        if(hfoc->adc_calibrated != 1 || hfoc->active_errors || hfoc->latched_errors ||
+           !isfinite(hfoc->encoder_speed_mechanical) || fabsf(hfoc->encoder_speed_mechanical) > 0.1f ||
+           FOC_SetState(hfoc, FOC_STATE_STOP, FOC_STATE_NONE) != FOC_STATETRANSITION_OK ||
+           FOC_SetState(hfoc, FOC_STATE_IDLE, FOC_STATE_NONE) != FOC_STATETRANSITION_OK){
+            Debug_SendTextResponse("Current calibration retry cancelled: driver is not ready or stationary.\n");
+            FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
+            return;
+        }
+        Debug_SendTextResponse("Current sensor calibrated: retrying %s.\n", FOC_StateToString(requested));
+        FOC_StateTransitionTypeDef result = FOC_SetState(hfoc, requested, continuation);
+        if(result != FOC_STATETRANSITION_OK){
+            Debug_SendTextResponse("Operation after current calibration rejected: %s; transition code=%u.\n",
+                                   FOC_StateToString(requested), (unsigned)result);
+            FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);
+        }
     }else if(ret == FOC_LOOP_ERROR){
         Debug_SendTextResponse("Current sensor calibration failed!\n");
         FOC_SetError(hfoc, FOC_ERROR_OPERATION_FAILED);

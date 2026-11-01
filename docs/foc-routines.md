@@ -15,7 +15,7 @@ Encoder linearization and flash/source requirements are described in
 named stage, timers, counters, candidate results, and retained status. These
 workspaces are RAM-only and are not part of the flash format or USB definitions.
 Persistent function-local variables and dynamic allocation are not used by the
-migrated routines.
+routines.
 
 - `Start` initializes the entire workspace. Starting an active routine first
   cancels it. A current-sense cleanup failure prevents that restart.
@@ -59,7 +59,7 @@ neither is shared across handles. Checklist progress survives only the requested
 return from its calibration children; unrelated state changes cancel it. A
 rejected transition does not advance the checklist.
 
-The migrated state-entry validators are side-effect-free. Other legacy state
+The motor-setup state-entry validators are side-effect-free. Other state
 transition callbacks still combine validation and entry actions; their behavior
 has not been globally refactored. Fault entry disables output before cleanup.
 
@@ -94,7 +94,26 @@ CSA cleanup, and final settling succeed. The ADC-calibrated flag is cleared on
 start and set only on success. Previously installed offsets remain in place
 after an unsuccessful attempt, but are not marked calibrated.
 
-Alignment stages the legacy encoder-zero helper's result, restoring the
+When a requested operation is rejected specifically because the current sensor
+is uncalibrated, the state controller can run current calibration first. This
+automatic prerequisite is accepted only from stationary, fault-free IDLE with
+a finite positive bus voltage and valid configuration for the requested operation.
+Outputs remain in high impedance during calibration. On success the controller
+returns through STOP/IDLE, rechecks the original operation's entry guards, and
+tries it once, preserving its requested continuation. Calibration failure, a
+rejected retry, or movement before retry stops the operation and latches a fault.
+An accepted state change away from current calibration, including an explicit
+STOP or ERROR, discards the pending request. There is no automatic resume after
+fault acknowledgement. The checklist retains its existing explicit calibration
+step.
+
+The automatic prerequisite leaves the setup-result sequence unchanged; the
+requested routine increments it when it actually starts. This lets the plotter
+wait for the original step without mistaking internal current calibration for
+an unrelated setup operation. Explicit current-calibration requests still
+produce their own setup sequence.
+
+Alignment stages the encoder-zero helper's result, restoring the
 accepted offset and validity immediately after the helper returns. Its candidate
 is committed only on successful completion. Updates and state transitions share
 the existing single FOC execution context; these APIs are not interrupt-safe or

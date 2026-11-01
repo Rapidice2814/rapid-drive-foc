@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stdio.h>
 #include "FOC_Handle.h"
 #include "FOC_Loops.h"
 #include "FOC_USB_Debug.h"
@@ -121,6 +122,8 @@ FOC_LoopStatusTypeDef FOC_EncoderCalibration_Finish(FOC_HandleTypeDef *hfoc, FOC
 static uint8_t calibration_validate(FOC_HandleTypeDef *hfoc){
     FOC_EncoderCalibrationContextTypeDef *ctx = &hfoc->encoder_calibration;
     float mean = 0;
+    unsigned worst_bin = 0;
+    ctx->max_disagreement = 0;
     for(unsigned i = 0; i < FOC_ENCODER_LUT_SIZE; i++){
         if(!ctx->forward_count[i] || !ctx->reverse_count[i]){
             ctx->runtime.detail = "Incomplete angular coverage: bins missing in forward/reverse sweep";
@@ -129,15 +132,29 @@ static uint8_t calibration_validate(FOC_HandleTypeDef *hfoc){
         float a = ctx->forward[i] / ctx->forward_count[i];
         float b = ctx->reverse[i] / ctx->reverse_count[i];
         float disagreement = fabsf(a - b);
-        if(!isfinite(a) || !isfinite(b)){
+        if(!isfinite(a) || !isfinite(b) || !isfinite(disagreement)){
             ctx->runtime.detail = "Non-finite averaged encoder error"; return 0;
         }
-        if(disagreement > CAL_DISAGREEMENT_MAX){
-            ctx->runtime.detail = "Forward/reverse disagreement exceeds 0.03 rad"; return 0;
+        if(disagreement > ctx->max_disagreement){
+            ctx->max_disagreement = disagreement;
+            worst_bin = i;
         }
-        if(disagreement > ctx->max_disagreement) ctx->max_disagreement = disagreement;
         ctx->forward[i] = (a + b) * 0.5f;
         mean += ctx->forward[i] / FOC_ENCODER_LUT_SIZE;
+    }
+    if(ctx->max_disagreement > CAL_DISAGREEMENT_MAX){
+        /* Sample tracking bounds these errors. Print fixed-point radians so
+         * nano.specs does not need floating-point printf support. */
+        unsigned long measured = (unsigned long)(ctx->max_disagreement * 1000000.0f + 0.5f);
+        unsigned long limit = (unsigned long)(CAL_DISAGREEMENT_MAX * 1000000.0f + 0.5f);
+        unsigned long excess = measured - limit;
+        snprintf(ctx->validation_detail, sizeof(ctx->validation_detail),
+            "Forward/reverse disagreement=%lu.%06lu rad; limit=%lu.%06lu rad; excess=%lu.%06lu rad; worst bin=%u",
+            measured / 1000000UL, measured % 1000000UL,
+            limit / 1000000UL, limit % 1000000UL,
+            excess / 1000000UL, excess % 1000000UL, worst_bin);
+        ctx->runtime.detail = ctx->validation_detail;
+        return 0;
     }
     for(unsigned i = 0; i < FOC_ENCODER_LUT_SIZE; i++) ctx->forward[i] -= mean;
     if(!FOC_EncoderValidateLUT(ctx->forward)){

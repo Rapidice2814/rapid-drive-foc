@@ -8,8 +8,8 @@
 #define IDENTIFICATION_MAX_ITERATIONS 4096U
 
 /** @brief Models the current response of the original RL fitting algorithm. */
-static float model_current(float t, float r, float l){
-    return (MEASUREMENT_VOLTAGE / r) * (1.0 - exp(-r * t / l));
+static float model_current(float t, float r, float l, float voltage){
+    return (voltage / r) * (1.0 - exp(-r * t / l));
 }
 
 /** @brief Computes bounded squared error over one captured response. */
@@ -43,9 +43,10 @@ static void identification_stage(FOC_IdentificationContextTypeDef *ctx,
 /** @brief Applies the original test voltage to the selected phase. */
 static void identification_voltage(FOC_HandleTypeDef *hfoc, uint8_t selector){
     PhaseVoltagesTypeDef voltage = {0};
-    if(selector == 0) voltage.a = MEASUREMENT_VOLTAGE;
-    else if(selector == 1) voltage.b = MEASUREMENT_VOLTAGE;
-    else voltage.c = MEASUREMENT_VOLTAGE;
+    float excitation = fminf(MEASUREMENT_VOLTAGE, hfoc->flash_data.limits.max_dq_voltage);
+    if(selector == 0) voltage.a = excitation;
+    else if(selector == 1) voltage.b = excitation;
+    else voltage.c = excitation;
     FOC_SetPhaseVoltages(hfoc, voltage);
 }
 
@@ -130,8 +131,8 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification_Update(FOC_HandleTypeDef *hfoc){
             identification_stage(ctx, FOC_IDENT_PREPARE, now, 100);
             break;
         case FOC_IDENT_PREPARE:
-            ctx->estimated_r = MOTOR_STATOR_RESISTANCE * 1.5f;
-            ctx->estimated_l = MOTOR_STATOR_INDUCTANCE * 1.5f;
+            ctx->estimated_r = 0;
+            ctx->estimated_l = 0;
             ctx->capture_index = ctx->model_index = 0;
             ctx->iterations = 0;
             ctx->fit_stage = FOC_IDENT_FIT_BASELINE;
@@ -165,6 +166,17 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification_Update(FOC_HandleTypeDef *hfoc){
             }
             break;
         case FOC_IDENT_SELECT_MODEL:
+            if(ctx->estimated_r == 0){
+                /* Seed from the measured RL step, with no assumed motor model. */
+                float first = ctx->measured[1], second = ctx->measured[2];
+                float decay = second / first - 1.0f;
+                if(!isfinite(decay) || first <= 0 || decay <= 0 || decay >= 1){
+                    ctx->runtime.detail = "RL response cannot seed a positive model";
+                    goto invalid_result;
+                }
+                ctx->estimated_r = fminf(MEASUREMENT_VOLTAGE, hfoc->flash_data.limits.max_dq_voltage) * (1.0f - decay) / first;
+                ctx->estimated_l = -ctx->estimated_r / (CURRENT_LOOP_FREQUENCY * logf(decay));
+            }
             ctx->model_r = ctx->estimated_r;
             ctx->model_l = ctx->estimated_l;
             switch(ctx->fit_stage){
@@ -210,7 +222,7 @@ FOC_LoopStatusTypeDef FOC_MotorIdentification_Update(FOC_HandleTypeDef *hfoc){
             if(!isfinite(ctx->model_r) || ctx->model_r <= 0 ||
                !isfinite(ctx->model_l) || ctx->model_l <= 0){ctx->runtime.detail = "R/L candidate model has invalid resistance/inductance"; goto invalid_result;}
             if(ctx->model_index < FOC_IDENTIFICATION_SAMPLES){
-                float predicted = model_current(ctx->time[ctx->model_index], ctx->model_r, ctx->model_l);
+                float predicted = model_current(ctx->time[ctx->model_index], ctx->model_r, ctx->model_l, fminf(MEASUREMENT_VOLTAGE, hfoc->flash_data.limits.max_dq_voltage));
                 if(!isfinite(predicted)){ctx->runtime.detail = "R/L model current prediction is non-finite"; goto invalid_result;}
                 ctx->predicted[ctx->model_index++] = predicted;
             }else if(ctx->model_index == FOC_IDENTIFICATION_SAMPLES){

@@ -28,7 +28,7 @@ typedef struct {
     uint32_t stage_started_ms;
     FOC_LoopStatusTypeDef status;
     FOC_RoutineErrorTypeDef error;
-    const char *detail; /* Static reason at the failing check; never persisted. */
+    const char *detail; /* Static or context-owned reason; never persisted. */
     uint8_t active;
 } FOC_RoutineRuntimeTypeDef;
 
@@ -192,6 +192,7 @@ typedef struct {
     float forward[FOC_ENCODER_LUT_SIZE], reverse[FOC_ENCODER_LUT_SIZE];
     uint16_t forward_count[FOC_ENCODER_LUT_SIZE], reverse_count[FOC_ENCODER_LUT_SIZE];
     float reference_raw, last_raw, raw_relative, current, max_disagreement;
+    char validation_detail[128]; /* Retains measured failure details through cleanup. */
     AngleSimulator saved_simulator;
     uint32_t release_started_ms;
     uint8_t owns_simulator;

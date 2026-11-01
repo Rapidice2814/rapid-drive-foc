@@ -2,8 +2,8 @@
 #define FOC_FLASH_FORMAT_H
 #include <stdint.h>
 #include <stddef.h>
-#define FOC_FLASH_MAGIC 0x52444632UL
-#define FOC_FLASH_FORMAT_VERSION 2U
+#define FOC_FLASH_MAGIC 0x52444643UL
+#define FOC_FLASH_FORMAT_VERSION 3U
 /** @brief CRC-32/ISO-HDLC over the stored settings bytes preceding the CRC. */
 static inline uint32_t FOC_FlashCRC(const void *data, size_t size){
     const uint8_t *p = data;

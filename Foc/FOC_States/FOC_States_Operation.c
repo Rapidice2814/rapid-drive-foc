@@ -1,4 +1,5 @@
 #include "FOC_States.h"
+#include "FOC_Configuration.h"
 #include "FOC_Handle.h"
 #include "FOC_Loops.h"
 #include "FOC_USB_Debug.h"
@@ -63,7 +64,8 @@ FOC_StateTransitionTypeDef FOC_StateStop_Transition(FOC_HandleTypeDef* hfoc){
 }
 
 void FOC_StateStop(FOC_HandleTypeDef* hfoc){
-    if(!hfoc->hdrv8323.high_impedance && hfoc->encoder_runtime.healthy) Current_Loop(hfoc);
+    if(!hfoc->hdrv8323.high_impedance && hfoc->encoder_runtime.healthy &&
+       !FOC_ConfigurationReady(hfoc, FOC_STATE_RUN).code) Current_Loop(hfoc);
     else{
         FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
         DRV8323_SetHighImpedance(&hfoc->hdrv8323);

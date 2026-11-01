@@ -53,6 +53,21 @@ static void format_bound(char out[32], float value){
     snprintf(out, 32, "%s%lue%d", value < 0 ? "-" : "", (unsigned long)mantissa, exponent - 8);
 }
 
+/** @brief PID metadata uses the same bounds and states as PID writes. */
+int FOC_PIDFormat(char *out, size_t capacity, uint8_t id, const char *name){
+    char minimum[32], maximum[32];
+    format_bound(minimum, CONFIG_ABS_PID_GAIN_MIN);
+    format_bound(maximum, CONFIG_ABS_PID_GAIN_MAX);
+    return snprintf(out, capacity, "%u\t%s\t%s\t%s\t%lu\n", id, name,
+                    minimum, maximum, (unsigned long)FOC_PID_WRITABLE_STATES);
+}
+
+static uint8_t pid_gains_valid(PIDValuesTypeDef gains){
+    return isfinite(gains.Kp) && isfinite(gains.Ki) && isfinite(gains.Kd) &&
+           gains.Kp >= CONFIG_ABS_PID_GAIN_MIN && gains.Ki >= CONFIG_ABS_PID_GAIN_MIN && gains.Kd >= CONFIG_ABS_PID_GAIN_MIN &&
+           gains.Kp <= CONFIG_ABS_PID_GAIN_MAX && gains.Ki <= CONFIG_ABS_PID_GAIN_MAX && gains.Kd <= CONFIG_ABS_PID_GAIN_MAX;
+}
+
 /** @brief Serializes bounded text metadata identically for discovery and hashing. */
 int FOC_ConfigurationFormat(char *out, size_t capacity, uint8_t id){
     if(id >= FOC_CONFIG_FIELD_COUNT) return -1;
@@ -115,20 +130,18 @@ FOC_ConfigResult FOC_ConfigurationSet(FOC_HandleTypeDef *h, uint8_t group,
     for(uint8_t i = 0; i < FOC_CONFIG_FIELD_COUNT; i++){
         if(fields[i].group != group) continue;
         float v = number(candidate[i], i);
-        /* Unmeasured R/L are zero at first boot. Other motor fields can be
-         * configured before identification; explicit writes must be positive. */
-        if(group == FOC_CONFIG_MOTOR && !changed[i] && v == 0 &&
-           (i == FOC_CONFIG_RESISTANCE || i == FOC_CONFIG_INDUCTANCE)) continue;
+        /* Zero explicitly means unset, including in a partially supplied group. */
+        if(v == 0) continue;
         if(!isfinite(v) || v < fields[i].minimum || v > fields[i].maximum)
             return reject(DEBUG_ERR_OUT_OF_RANGE, fields[i].name);
     }
 #define VALUE(symbol) number(candidate[FOC_CONFIG_##symbol], FOC_CONFIG_##symbol)
-    if(group == FOC_CONFIG_LIMITS && VALUE(UNDERVOLTAGE) >= VALUE(OVERVOLTAGE))
+    if(group == FOC_CONFIG_LIMITS && VALUE(UNDERVOLTAGE) > 0 && VALUE(OVERVOLTAGE) > 0 && VALUE(UNDERVOLTAGE) >= VALUE(OVERVOLTAGE))
         return reject(DEBUG_ERR_OUT_OF_RANGE, "Bus undervoltage trip must be below overvoltage trip.");
-    if(group == FOC_CONFIG_LIMITS && VALUE(MAX_VOLTAGE) > VALUE(UNDERVOLTAGE) * M_1_SQRT3F)
+    if(group == FOC_CONFIG_LIMITS && VALUE(UNDERVOLTAGE) > 0 && VALUE(MAX_VOLTAGE) > VALUE(UNDERVOLTAGE) * M_1_SQRT3F)
         return reject(DEBUG_ERR_OUT_OF_RANGE, "Voltage limit must fit undervoltage trip / sqrt(3) across the permitted bus range.");
     if((group == FOC_CONFIG_LIMITS || group == FOC_CONFIG_ENCODER) &&
-       (!isfinite(VALUE(CAL_CURRENT)) || VALUE(CAL_CURRENT) > VALUE(MAX_CURRENT)))
+       VALUE(MAX_CURRENT) > 0 && (!isfinite(VALUE(CAL_CURRENT)) || VALUE(CAL_CURRENT) > VALUE(MAX_CURRENT)))
         return reject(DEBUG_ERR_OUT_OF_RANGE, "Encoder calibration D current must not exceed the configured current limit.");
     if(group == FOC_CONFIG_CONTROLLER && VALUE(CURRENT_FF) &&
        (!isfinite(VALUE(RESISTANCE)) || VALUE(RESISTANCE) <= 0 || !isfinite(VALUE(INDUCTANCE)) || VALUE(INDUCTANCE) <= 0))
@@ -152,11 +165,57 @@ FOC_ConfigResult FOC_ConfigurationSet(FOC_HandleTypeDef *h, uint8_t group,
     return ok();
 }
 
+/** @brief Checks only the settings consumed by the requested motor operation. */
+FOC_ConfigResult FOC_ConfigurationReady(const FOC_HandleTypeDef *h, FOC_StateTypeDef operation){
+    const struct FLASH_ControllerParameters *controller = &h->flash_data.controller;
+    if(!pid_gains_valid(controller->PID_gains_d) || !pid_gains_valid(controller->PID_gains_q) ||
+       !pid_gains_valid(controller->PID_gains_speed) || !pid_gains_valid(controller->PID_gains_position) ||
+       !pid_gains_valid(h->flash_data.anticogging_position_gains))
+        return reject(DEBUG_ERR_OUT_OF_RANGE, "Invalid PID gains.");
+    uint8_t required[FOC_CONFIG_FIELD_COUNT] = {0};
+    for(uint8_t i = 0; i < FOC_CONFIG_FIELD_COUNT; i++){
+        float v = number(FOC_ConfigurationRead(h, i), i);
+        if(!isfinite(v) || (v != 0 && (v < fields[i].minimum || v > fields[i].maximum)))
+            return reject(DEBUG_ERR_OUT_OF_RANGE, fields[i].name);
+        required[i] = fields[i].group == FOC_CONFIG_LIMITS;
+    }
+    if(operation != FOC_STATE_IDENTIFY && operation != FOC_STATE_MOTOR_PROBE && operation != FOC_STATE_BOOTUP_SOUND)
+        required[FOC_CONFIG_POLE_PAIRS] = 1;
+    if(operation == FOC_STATE_RUN || operation == FOC_STATE_PID_AUTOTUNE || operation == FOC_STATE_ANTICOGGING)
+        required[FOC_CONFIG_RESISTANCE] = required[FOC_CONFIG_INDUCTANCE] = 1;
+    if(operation == FOC_STATE_PID_AUTOTUNE || operation == FOC_STATE_CHECKLIST) required[FOC_CONFIG_BANDWIDTH] = 1;
+    if(operation == FOC_STATE_ENCODER_CALIBRATION) required[FOC_CONFIG_CAL_CURRENT] = 1;
+    for(uint8_t i = 0; i < FOC_CONFIG_FIELD_COUNT; i++){
+        if(required[i] && number(FOC_ConfigurationRead(h, i), i) <= 0)
+            return reject(DEBUG_ERR_OUT_OF_RANGE, fields[i].name);
+    }
+    const struct FLASH_Limits *l = &h->flash_data.limits;
+    if(l->vbus_undervoltage_trip_level >= l->vbus_overvoltage_trip_level ||
+       l->max_dq_voltage > l->vbus_undervoltage_trip_level * M_1_SQRT3F ||
+       h->flash_data.encoder.calibration_current > l->max_dq_current)
+        return reject(DEBUG_ERR_OUT_OF_RANGE, "Inconsistent operating limits.");
+    if(operation == FOC_STATE_RUN || operation == FOC_STATE_ANTICOGGING){
+        const struct FLASH_ControllerParameters *c = &h->flash_data.controller;
+        if((c->PID_gains_d.Kp <= 0 && c->PID_gains_d.Ki <= 0) ||
+           (c->PID_gains_q.Kp <= 0 && c->PID_gains_q.Ki <= 0))
+            return reject(DEBUG_ERR_OUT_OF_RANGE, "Configure or tune current PI gains first.");
+        if(operation == FOC_STATE_ANTICOGGING && h->flash_data.anticogging_position_gains.Kp <= 0)
+            return reject(DEBUG_ERR_OUT_OF_RANGE, "Configure anti-cogging position gains first.");
+    }
+    return ok();
+}
+
 /** @brief Applies validated functional targets; USB and CAN share these rules. */
 FOC_ConfigResult FOC_SetValidatedMode(FOC_HandleTypeDef *h, uint8_t mode){
     if((h->state != FOC_STATE_IDLE && h->state != FOC_STATE_RUN) || h->calibration_upload.active)
         return reject(DEBUG_ERR_INVALID_STATE, "Control mode requires IDLE/RUN and no calibration upload.");
     if(h->active_errors || h->latched_errors) return reject(h->active_errors ? DEBUG_ERR_ACTIVE_FAULTS : DEBUG_ERR_LATCHED_FAULTS, "Faults prevent control mode changes.");
+    const PIDValuesTypeDef *gains = mode == CONTROL_MODE_SPEED ? &h->flash_data.controller.PID_gains_speed :
+                                    mode == CONTROL_MODE_POSITION ? &h->flash_data.controller.PID_gains_position : NULL;
+    if(gains && (!isfinite(gains->Kp) || !isfinite(gains->Ki) || !isfinite(gains->Kd) ||
+                 gains->Kp < 0 || gains->Ki < 0 || gains->Kd < 0 ||
+                 (gains->Kp == 0 && gains->Ki == 0)))
+        return reject(DEBUG_ERR_OUT_OF_RANGE, "Configure the selected controller's gains first.");
     if(mode > CONTROL_MODE_SPEED || FOC_SetControlMode(h, (ControlModeTypeDef)mode))
         return reject(DEBUG_ERR_OUT_OF_RANGE, "Unknown control mode.");
     return ok();
@@ -200,12 +259,10 @@ FOC_ConfigResult FOC_SetTarget(FOC_HandleTypeDef *h, uint8_t target, float value
 
 /** @brief Validates a whole PID gain set and invalidates dependent compensation. */
 FOC_ConfigResult FOC_SetValidatedPID(FOC_HandleTypeDef *h, PIDControllerTypeDef *pid, PIDValuesTypeDef gains){
-    if((h->state != FOC_STATE_IDLE && h->state != FOC_STATE_RUN) || h->calibration_upload.active)
+    if((unsigned)h->state >= 32 || !(FOC_PID_WRITABLE_STATES & (1u << h->state)) || h->calibration_upload.active)
         return reject(DEBUG_ERR_INVALID_STATE, "PID tuning requires IDLE/RUN and no calibration upload.");
     if(h->active_errors || h->latched_errors) return reject(h->active_errors ? DEBUG_ERR_ACTIVE_FAULTS : DEBUG_ERR_LATCHED_FAULTS, "Clear faults before PID tuning.");
-    if(!pid || !pid->K || !isfinite(gains.Kp) || !isfinite(gains.Ki) || !isfinite(gains.Kd) ||
-       gains.Kp < CONFIG_ABS_PID_GAIN_MIN || gains.Ki < CONFIG_ABS_PID_GAIN_MIN || gains.Kd < CONFIG_ABS_PID_GAIN_MIN ||
-       gains.Kp > CONFIG_ABS_PID_GAIN_MAX || gains.Ki > CONFIG_ABS_PID_GAIN_MAX || gains.Kd > CONFIG_ABS_PID_GAIN_MAX)
+    if(!pid || !pid->K || !pid_gains_valid(gains))
         return reject(DEBUG_ERR_OUT_OF_RANGE, "PID gains must be finite and within the absolute bounds; stability still requires tuning.");
     PID_SetGains(pid, gains);
     h->flash_data.controller.anticogging_data_valid = h->flash_data.controller.anticogging_FF_enabled = 0;

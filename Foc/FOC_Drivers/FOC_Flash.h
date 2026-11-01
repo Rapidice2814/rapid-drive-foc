@@ -69,7 +69,6 @@ struct FLASH_Limits {
     float max_dq_voltage; // [V], used to limit the output of the PID. Can be at most Vbus/sqrt(3) to avoid overmodulation.
     float max_dq_current; // [A], used to limit the output of the PID.
 
-    
 };
 
 struct FLASH_DriverParameters {
@@ -91,22 +90,13 @@ typedef struct {
     struct FLASH_ControllerParameters controller; // controller parameters
     struct FLASH_Limits limits; // limits
     struct FLASH_DriverParameters node; // driver parameters
-    union { uint8_t reserved[12]; PIDValuesTypeDef anticogging_position_gains; }; // Same version-2 layout.
-
-    uint8_t filler[4]; // Keep the CRC/terminator tail and record 8-byte aligned.
+    PIDValuesTypeDef anticogging_position_gains; // PID gains for the anticogging position controller.
+    // uint8_t filler[4]; // Keep the CRC/terminator tail and record 8-byte aligned.
 
     uint32_t crc;
 
     uint32_t struct_terminator; // Last part of the struct, should be set to FLASH_DATA_STRUCT_TERMINATOR. This is used to detect whether the struct is correctly read from flash.
 } FLASH_DataTypeDef;
-
-static inline void FOC_FLASH_InitAntiCogGains(FLASH_DataTypeDef *data){
-    if(data->filler[0] != 0xAC || data->filler[1] != 0x51){
-        data->anticogging_position_gains = (PIDValuesTypeDef){10.0f, 20.0f, 0.2f};
-        data->filler[0] = 0xAC; data->filler[1] = 0x51;
-    }
-}
-
 
 /** @brief Validates a settings record before any of its configuration is applied. */
 static inline uint8_t FOC_FLASH_RecordValid(const FLASH_DataTypeDef *data){

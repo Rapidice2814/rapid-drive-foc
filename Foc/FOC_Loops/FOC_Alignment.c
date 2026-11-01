@@ -112,7 +112,7 @@ FOC_LoopStatusTypeDef FOC_Alignment_Update(FOC_HandleTypeDef *hfoc){
             break;
         case FOC_ALIGNMENT_SET_ZERO:
             if(FOC_RoutineElapsed(now, ctx->runtime.stage_started_ms, ALIGNMENT_SETTLE_MS)){
-                /* The legacy encoder helper writes configuration. Stage its result
+                /* The encoder helper writes configuration. Stage its result
                    and restore the accepted values until the routine completes. */
                 float previous_offset = hfoc->flash_data.encoder.mechanical_offset;
                 float previous_raw_zero = hfoc->flash_data.encoder.raw_zero;

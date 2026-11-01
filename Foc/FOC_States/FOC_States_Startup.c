@@ -1,4 +1,5 @@
 #include "FOC_States.h"
+#include "FOC_Configuration.h"
 #include "FOC_Handle.h"
 #include "FOC_USB.h"
 #include "FOC_USB_Debug.h"
@@ -62,6 +63,13 @@ void FOC_StateReset(FOC_HandleTypeDef* hfoc){
     hfoc->speed_setpoint = 0.0f;
     hfoc->angle_setpoint = 0.0f;
 
+    if(FOC_ConfigurationReady(hfoc, FOC_STATE_CHECKLIST).code){
+        Debug_SendTextResponse("Motor configuration incomplete. Configure settings before motor setup.\n");
+        DRV8323_SetHighImpedance(&hfoc->hdrv8323);
+        FOC_SetPhaseVoltages(hfoc, (PhaseVoltagesTypeDef){0});
+        FOC_SetState(hfoc, FOC_STATE_STOP, FOC_STATE_NONE);
+        return;
+    }
     DRV8323_ExitHighImpedance(&hfoc->hdrv8323);
 
     FOC_SetState(hfoc, FOC_STATE_BOOTUP_SOUND, FOC_STATE_CHECKLIST);

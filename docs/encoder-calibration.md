@@ -1,11 +1,11 @@
 # Encoder sources and linearization
 
-## Compatibility and storage
+## Storage
 
-USB protocol 6 and flash format 2 are required. Older settings records are not
-migrated: header/version/length/CRC validation rejects them and startup uses
-defaults. Reading does not erase old records; flash save or successful encoder
-calibration replaces them. Existing settings must be backed up before upgrading.
+USB protocol 14 and flash format 3 are required. Only the current record layout
+is accepted; other formats are rejected and startup uses unset defaults. Reading
+does not modify flash. Apply a motor preset and recalibrate after changing the
+flash format.
 
 The record stores source selection, raw/corrected zero, 128 correction floats,
 validity/enabled flags, and calibration D current. CRC-32/ISO-HDLC covers all bytes
@@ -57,8 +57,8 @@ sections, preserving them during regeneration.
 
 Only the selected source is initialized. Failed initialization leaves USB
 available for recovery; applying the source again retries setup. Flash load
-initializes the stored source. Format 2 layout and CRC offsets are unchanged;
-12 unused bytes remain reserved, so existing format-2 records stay readable.
+initializes the stored source. Anti-cogging PID gains are stored directly in the current flash record. No
+per-field migration markers or reserved aliases are used.
 
 Readers return a healthy absolute mechanical angle in radians, independent of
 stored zero/correction. Initialization/read callbacks must not enable motor
@@ -101,16 +101,11 @@ Excitation uses the normal d/q current loop, with an independent generated
 angle for both Park and inverse-Park transforms. The physical encoder still
 supplies raw measurements and remains the selected source. Q current is zero;
 D current ramps up over 200 ms and down over 200 ms on normal completion.
-Faults/STOP disable output immediately. Default D current is 0.25 A
+Faults/STOP disable output immediately. Calibration D current starts unset (zero)
 (`flash_data.encoder.calibration_current`), editable in Calibration > Encoder
 or the discovered Encoder configuration group. It must be positive and no higher
 than `max_dq_current`. Configure valid d/q current PI gains before calibrating.
 Current/voltage limits remain active; this is not a voltage excitation routine.
-
-The former voltage float retains its binary offset, with a new marker in the
-version-2 record's filler bytes. Older voltage settings migrate to 0.25 A rather
-than being reinterpreted as amperes. Other settings/tables and record size are
-preserved; loading does not automatically write flash.
 
 Invalid current limits, phase overcurrent, unhealthy/nonfinite encoder readings,
 source/motor parameter changes, tracking loss, and a watchdog of 120 s per
@@ -118,7 +113,10 @@ configured revolution per direction cause failure. Tracking
 error must stay below min(0.15 rad, pi/(2*pole_pairs)).
 
 Errors are binned by raw absolute angle into 128 entries. Every bin must have
-forward and reverse coverage. Directional disagreement is limited to 0.03 rad.
+forward and reverse coverage. Directional disagreement is limited to 0.03 mechanical radians (about 1.72 degrees).
+On rejection, the retained routine result reports the worst bin's measured
+disagreement, the limit, and the amount above the limit, in radians. The maximum
+is taken across all bins after averaging each direction by its sample count.
 The combined table is mean-centered; entries must be finite and within 0.1 rad.
 Corrected adjacent-angle increments must lie between 0.1 and 2 times the bin
 interval, including the wrap boundary. Runtime lookup uses periodic linear

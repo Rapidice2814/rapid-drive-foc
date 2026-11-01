@@ -33,6 +33,7 @@ typedef enum {FOC_CONFIGURATION_GROUPS(CONFIG_GROUP_ENUM) FOC_CONFIG_GROUP_COUNT
  X(CAL_CURRENT,ENCODER,f,encoder.calibration_current,CONFIG_ABS_CURRENT_MIN,CONFIG_ABS_CURRENT_MAX,"A",CONFIG_IDLE,"Calibration D current")
 
 #define CONFIG_IDLE (1u << FOC_STATE_IDLE)
+#define FOC_PID_WRITABLE_STATES (CONFIG_IDLE | (1u << FOC_STATE_RUN))
 #define CONFIG_IDLE_ERROR (CONFIG_IDLE | (1u << FOC_STATE_ERROR))
 #define CONFIG_FIELD_ENUM(symbol, group, type, member, min, max, unit, states, label) FOC_CONFIG_##symbol,
 typedef enum {FOC_CONFIGURATION_FIELDS(CONFIG_FIELD_ENUM) FOC_CONFIG_FIELD_COUNT} FOC_ConfigField;
@@ -43,6 +44,8 @@ typedef struct {uint16_t code; const char *message;} FOC_ConfigResult;
 typedef enum {FOC_TARGET_CURRENT_D, FOC_TARGET_CURRENT_Q, FOC_TARGET_SPEED,
               FOC_TARGET_POSITION, FOC_TARGET_TORQUE} FOC_Target;
 
+int FOC_PIDFormat(char *out, size_t capacity, uint8_t id, const char *name);
+FOC_ConfigResult FOC_ConfigurationReady(const FOC_HandleTypeDef *hfoc, FOC_StateTypeDef operation);
 const char *FOC_ConfigurationName(uint8_t id);
 int FOC_ConfigurationFormat(char *out, size_t capacity, uint8_t id);
 uint8_t FOC_ConfigurationGroup(uint8_t id);

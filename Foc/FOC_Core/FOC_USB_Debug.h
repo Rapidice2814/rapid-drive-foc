@@ -118,7 +118,7 @@ typedef enum {
     DEBUG_ERR_INTERNAL = 20
 } Debug_ErrorCodeTypeDef;
 
-#define DEBUG_PROTOCOL_VERSION 12
+#define DEBUG_PROTOCOL_VERSION 14
 #define DEBUG_ERROR_MESSAGE_BYTES 160u
 
 Debug_StatusTypeDef FOC_USB_Setup();

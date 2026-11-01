@@ -13,7 +13,7 @@ of the firmware source tree and STM32 build tools.
 ## Documentation
 
 - [USB protocol and command reference](docs/usb-protocol.md): framing, discovery,
-  telemetry, configuration commands, errors, and legacy text commands.
+  telemetry, configuration commands, and errors.
 - [CAN protocol and command reference](docs/can-protocol.md): identifier layout,
   bus settings, payloads, cyclic replies, addressing, and implementation limits.
 - [Calibration controls and editable tables](docs/calibration-tables.md):
@@ -22,22 +22,18 @@ of the firmware source tree and STM32 build tools.
   bounds, atomic group updates, functional targets and production/debug separation.
 - [Plotter installation and use](https://github.com/Rapidice2814/rapid-drive-plotter#readme).
 
-Current firmware version: **0.3.0**. USB protocol version: **11**. Firmware and
-plotter compatibility is determined by the USB protocol version. Earlier USB
-command IDs from versions before 3 have different meanings: 0x00 is the bootloader
-command, not a version request. CAN command numbering is independent of USB.
-Signals, variables, PID controllers, CAN cyclic-rate entries and configuration metadata are discovered
-by the plotter and cached by definitions fingerprint. Compatible catalog additions
-do not require a plotter update. Absolute bounds are editable as `CONFIG_ABS_*`
-in `Foc/FOC_Core/FOC_Config.h`. The updated plotter also accepts protocols 6 and 7
-without validated configuration/target writes. Protocol 6 also lacks cyclic-rate
-controls because it has no CAN catalog discovery.
+Current firmware version: **0.3.0**. USB protocol version: **14**. Firmware and
+plotter must use the same current protocol. Signals, variables, PID controllers,
+CAN cyclic entries and configuration metadata are discovered and cached by
+fingerprint. Catalog additions do not require a plotter update. Absolute bounds
+are editable as `CONFIG_ABS_*` in `Foc/FOC_Core/FOC_Config.h`.
 
 [Encoder sources and calibration](docs/encoder-calibration.md) documents source
-selection, linearization, backend integration and flash compatibility. Encoder
-calibration introduces flash format 2 with CRC validation. Older saved records
-are not loaded; defaults are used. Back up settings before upgrading. Successful
-calibration saves current settings and invalidates anti-cogging.
+selection, linearization, backend integration and storage. Flash format 3 uses
+CRC validation and accepts only the current layout. Other saved formats are
+rejected and the driver starts unconfigured. Reapply a JSON motor preset and
+recalibrate after upgrading from an older format. Successful encoder calibration
+saves current settings and invalidates anti-cogging.
 
 ## Development tools
 

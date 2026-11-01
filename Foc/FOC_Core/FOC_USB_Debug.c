@@ -190,6 +190,7 @@ static uint8_t Debug_DefinitionIdExists(uint8_t kind, uint8_t id){
  */
 static int Debug_FormatDefinition(char *out, size_t capacity, uint8_t kind, uint16_t index,
                                   const DebugDescriptor *entry){
+    if(kind == 2) return FOC_PIDFormat(out, capacity, (uint8_t)index, entry->name);
     if(kind == 4) return FOC_ConfigurationFormat(out, capacity, (uint8_t)index);
     return kind >= 2 ? snprintf(out, capacity, "%u\t%s\n", (unsigned)index, entry->name)
                      : snprintf(out, capacity, "%u\t%s\t%s\n", (unsigned)index, entry->type, entry->name);
@@ -768,7 +769,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
                 "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
-        Debug_ReplyStateTransition(msg_type, FOC_STATE_FLASH_SAVE, FOC_STATE_RUN);
+        Debug_ReplyStateTransition(msg_type, FOC_STATE_FLASH_SAVE, FOC_STATE_NONE);
         break;
 
     case MSG_FLASH_LOAD:
@@ -777,7 +778,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
                 "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
-        Debug_ReplyStateTransition(msg_type, FOC_STATE_FLASH_LOAD, FOC_STATE_RUN);
+        Debug_ReplyStateTransition(msg_type, FOC_STATE_FLASH_LOAD, FOC_STATE_NONE);
         break;
 
     case MSG_FLASH_CLEAR:
@@ -786,7 +787,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
                 "Invalid payload length: received %u bytes.", (unsigned)payload_length);
             break;
         }
-        Debug_ReplyStateTransition(msg_type, FOC_STATE_FLASH_CLEAR, FOC_STATE_RUN);
+        Debug_ReplyStateTransition(msg_type, FOC_STATE_FLASH_CLEAR, FOC_STATE_NONE);
         break;
 
     case MSG_SET_STATE:
@@ -974,7 +975,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
         break;
     case MSG_TEXT_COMMAND:
         if(!FOC_ENABLE_DEBUG_WRITES){
-            Debug_SendCommandError(MSG_ERROR, msg_type, DEBUG_ERR_INVALID_STATE, "Legacy text/debug commands are disabled in this firmware.");
+            Debug_SendCommandError(MSG_ERROR, msg_type, DEBUG_ERR_INVALID_STATE, "Text/debug commands are disabled in this firmware.");
             break;
         }
         Debug_ExecuteTextCommand((const char*)payload, payload_length);
@@ -1110,7 +1111,7 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
 }
 
 /**
- * @brief Executes a bounded legacy text command against the global FOC handle.
+ * @brief Executes a bounded text command against the global FOC handle.
  * @param packet Command bytes, which need not be NUL-terminated.
  * @param length Byte count; commands larger than RX_USB_BUF_SIZE are ignored.
  * @note Copies input to a terminated local buffer before sscanf or look-ahead access.
@@ -1118,10 +1119,10 @@ static void Debug_ExecuteBinaryCommand(MsgTypeTypeDef msg_type, uint8_t* payload
  */
 static void Debug_ExecuteTextCommand(const char *packet, uint16_t length){
     if(!FOC_ENABLE_DEBUG_WRITES){
-        Debug_SendTextResponse("Legacy text/debug commands are disabled. Use validated binary commands.\n");
+        Debug_SendTextResponse("Text/debug commands are disabled. Use validated binary commands.\n");
         return;
     }
-    /* Legacy commands use sscanf and look ahead by one byte. */
+    /* Text commands use sscanf and look ahead by one byte. */
     char terminated[RX_USB_BUF_SIZE + 2] = {0};
     if(length > RX_USB_BUF_SIZE) return;
     memcpy(terminated, packet, length);
@@ -1341,10 +1342,10 @@ uint8_t Debug_SendTextResponse(const char* format, ...){
 }
 
 /**
- * @brief Accumulates receive bytes and dispatches complete binary or legacy text commands.
+ * @brief Accumulates receive bytes and dispatches complete binary or text commands.
  * @param buf Incoming bytes from one receive-queue item.
  * @param len Number of incoming bytes.
- * @note Handles split and concatenated frames. Legacy text requires CR or LF;
+ * @note Handles split and concatenated frames. Text requires CR or LF;
  *       incomplete input is discarded after a receive gap longer than 250 ms.
  */
 void USB_ProcessReceivedPacket(uint8_t* buf, uint16_t len){
@@ -1362,7 +1363,7 @@ void USB_ProcessReceivedPacket(uint8_t* buf, uint16_t len){
                 used = 1;
                 continue;
             }
-            /* Unframed legacy commands are newline terminated. */
+            /* Unframed text commands are newline terminated. */
             if(buf[i] == '\n' || buf[i] == '\r'){
                 Debug_ExecuteTextCommand((const char*)pending, used);
                 used = 0;

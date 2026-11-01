@@ -60,7 +60,7 @@ float PID_Update(PIDControllerTypeDef *pid, float setpoint, float measurement) {
         normalize_angle_pm_pi(&difference); // Normalize the angle difference to [-pi, pi]
     }
 		
-    pid->differentiator = -(2.0f * pid->K->Kd * (difference)	// Note: derivative on measurement, therefore minus sign in front of equation! 
+    pid->differentiator = (-2.0f * pid->K->Kd * (difference)	// Derivative on measurement; the filter history retains its sign.
                         + (2.0f * pid->tau - pid->T) * pid->differentiator)
                         / (2.0f * pid->tau + pid->T);
 

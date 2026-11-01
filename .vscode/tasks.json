@@ -11,6 +11,24 @@
     "tasks": [
         {
             "type": "shell",
+            "label": "CubeProg: Set nSWBOOT0 (SWD)",
+            "command": "STM32_Programmer_CLI",
+            "args": [
+                "--connect",
+                "port=swd",
+                "mode=UR",
+                "-ob",
+                "nSWBOOT0=0",
+                "nBOOT0=1"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "detail": "Configure persistent boot option bytes to boot from main flash independently of the BOOT0 pin. Run once per new board using ST-LINK/SWD."
+        },
+        {
+            "type": "shell",
             "label": "CubeProg: Flash project (SWD)",
             "command": "STM32_Programmer_CLI",
             "args": [

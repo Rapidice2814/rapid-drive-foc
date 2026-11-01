@@ -18,6 +18,7 @@ typedef enum {DRV8323_OK, DRV8323_ERROR} DRV8323_StatusTypeDef;
 typedef struct {int high_impedance;} DRV8323_HandleTypeDef;
 struct FOC_Handle {
     FOC_StateTypeDef state, previous_state, next_state;
+    FOC_StateTypeDef current_calibration_retry_state;
     uint32_t active_errors, latched_errors;
     uint8_t adc_calibrated;
     BiquadFilter dq_current_d_filter, dq_current_q_filter;

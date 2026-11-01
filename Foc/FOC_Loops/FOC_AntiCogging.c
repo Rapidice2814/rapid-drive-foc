@@ -116,7 +116,6 @@ void FOC_AntiCogging_Start(FOC_HandleTypeDef *hfoc){
         .stage = FOC_ANTICOG_START
     };
     hfoc->anticogging.revolutions = hfoc->calibration_revolutions[1] ? hfoc->calibration_revolutions[1] : 1;
-    FOC_FLASH_InitAntiCogGains(&hfoc->flash_data);
     PIDValuesTypeDef gains = hfoc->flash_data.anticogging_position_gains;
     if(!isfinite(gains.Kp) || gains.Kp <= 0 || !isfinite(gains.Ki) || gains.Ki < 0 ||
        !isfinite(gains.Kd) || gains.Kd < 0){

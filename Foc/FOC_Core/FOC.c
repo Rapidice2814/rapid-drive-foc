@@ -167,8 +167,8 @@ void FOC_Setup(){
     hfoc.phfdcan = &hfdcan1; //set the CAN handle pointer
 
     FOC_SetPhaseVoltages(&hfoc, (PhaseVoltagesTypeDef){0.0f, 0.0f, 0.0f});
-    if(encoder_ready) DRV8323_ExitHighImpedance(&hfoc.hdrv8323);
-    else FOC_SetError(&hfoc, FOC_ERROR_ENCODER_FAULT);
+    DRV8323_SetHighImpedance(&hfoc.hdrv8323);
+    if(!encoder_ready) FOC_SetError(&hfoc, FOC_ERROR_ENCODER_FAULT);
 
     uint8_t rand8 = (uint8_t)(hfoc.random_number & 0xFF);
     Debug_SendTextResponse("\nFOC Setup Complete! Here is a random 8-bit number: %d\n", rand8);

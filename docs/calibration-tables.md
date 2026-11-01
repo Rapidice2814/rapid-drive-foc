@@ -1,6 +1,6 @@
 # Calibration control and table transfers
 
-USB protocol 6 adds calibration progress, multi-revolution control and editable
+The USB protocol provides calibration progress, multi-revolution control and editable
 table transfers. Flash format remains 2. All integers/floats use little-endian
 encoding; floats are IEEE-754 binary32. Existing protocol-5 commands retain IDs.
 `kind` is 0 for encoder linearization and 1 for anti-cogging.
@@ -132,6 +132,6 @@ Save all settings and tables to flash is a separate explicit operation.
 The anti-cogging PID is exposed through the existing discovered PID registry and
 GET_PID/SET_PID messages; its ID is never hardcoded by the plotter. Apply gains
 in fault-free IDLE, then save settings to flash for persistence. The three gains
-use the former 12 reserved bytes, preserving version-2 record size and offsets.
-A marker in the former filler bytes distinguishes older records, which receive
-the defaults in RAM when loaded. Loading does not automatically write flash.
+are stored directly in the current flash record. Gains start unset (zero).
+Only the current flash-format version is accepted; loading does not migrate
+individual fields or automatically write flash.

@@ -124,7 +124,7 @@ node settings. There is no separate CAN command to set these periods.
 
 `FOC_CAN_CYCLIC_LIST` in `Foc/FOC_Drivers/FOC_CAN.h` defines the cyclic symbols,
 display names and reply commands once. Array order generates the cyclic IDs and
-the scheduler mapping. USB protocol 7 exposes the names/IDs through definition
+the scheduler mapping. USB discovery exposes the names/IDs through definition
 kind 3; the CAN tab is built from that catalog at startup or from its validated
 fingerprint cache. Adding a cyclic entry requires no Python catalog update.
 Periods use the sample-clock rate reported by device info, not a host constant.

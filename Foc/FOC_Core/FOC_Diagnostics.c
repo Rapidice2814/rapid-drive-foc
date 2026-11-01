@@ -38,22 +38,23 @@ void FOC_CheckErrors(FOC_HandleTypeDef *hfoc){
 
     if(DRV8323_CheckFault(&hfoc->hdrv8323)) active_errors |= FOC_ERROR_DRIVER_FAULT;
     
-    if(hfoc->adc_values.motor_temp > hfoc->flash_data.limits.motor_temp_trip_level) active_errors |= FOC_ERROR_MOTOR_OT;
+    if(hfoc->adc_values.motor_temp > (hfoc->flash_data.limits.motor_temp_trip_level > 0 ? hfoc->flash_data.limits.motor_temp_trip_level : MOTOR_MAX_TEMP)) active_errors |= FOC_ERROR_MOTOR_OT;
     if(hfoc->adc_values.motor_temp < 0.0f) active_errors |= FOC_ERROR_MOTOR_UT;
 
-    if(hfoc->adc_values.mosfet_temp > hfoc->flash_data.limits.mosfet_temp_trip_level) active_errors |= FOC_ERROR_MOSFET_OT;
+    if(hfoc->adc_values.mosfet_temp > (hfoc->flash_data.limits.mosfet_temp_trip_level > 0 ? hfoc->flash_data.limits.mosfet_temp_trip_level : MOSFET_MAX_TEMP)) active_errors |= FOC_ERROR_MOSFET_OT;
     if(hfoc->adc_values.mosfet_temp < 0.0f) active_errors |= FOC_ERROR_MOSFET_UT;
 
-    if(hfoc->adc_values.vbus > hfoc->flash_data.limits.vbus_overvoltage_trip_level) active_errors |= FOC_ERROR_VBUS_OV;
-    if(hfoc->adc_values.vbus < hfoc->flash_data.limits.vbus_undervoltage_trip_level) active_errors |= FOC_ERROR_VBUS_UV;
-    if(hfoc->ibus > hfoc->flash_data.limits.ibus_overcurrent_trip_level) active_errors |= FOC_ERROR_IBUS_OC;
+    if(hfoc->adc_values.vbus > (hfoc->flash_data.limits.vbus_overvoltage_trip_level > 0 ? hfoc->flash_data.limits.vbus_overvoltage_trip_level : MAXIMUM_BUS_VOLTAGE)) active_errors |= FOC_ERROR_VBUS_OV;
+    if(hfoc->adc_values.vbus < (hfoc->flash_data.limits.vbus_undervoltage_trip_level > 0 ? hfoc->flash_data.limits.vbus_undervoltage_trip_level : MINIMUM_BUS_VOLTAGE)) active_errors |= FOC_ERROR_VBUS_UV;
+    if(hfoc->ibus > (hfoc->flash_data.limits.ibus_overcurrent_trip_level > 0 ? hfoc->flash_data.limits.ibus_overcurrent_trip_level : MAXIMUM_PHASE_CURRENT)) active_errors |= FOC_ERROR_IBUS_OC;
 
     /* Raw phase measurements protect voltage-driven routines too. Bus current
        can remain small while winding current exceeds its configured limit. */
     if(hfoc->adc_calibrated){
         float limit = hfoc->flash_data.limits.max_dq_current;
-        if(!isfinite(limit) || limit <= 0) active_errors |= FOC_ERROR_INVALID_CONFIGURATION;
-        else if(!isfinite(hfoc->adc_values.phase_current.a) ||
+        if(!isfinite(limit) || limit < 0) active_errors |= FOC_ERROR_INVALID_CONFIGURATION;
+        if(limit == 0) limit = MAXIMUM_PHASE_CURRENT;
+        if(!isfinite(hfoc->adc_values.phase_current.a) ||
                 !isfinite(hfoc->adc_values.phase_current.b) ||
                 !isfinite(hfoc->adc_values.phase_current.c)) active_errors |= FOC_ERROR_SYSTEM_FAULT;
         else if(fabsf(hfoc->adc_values.phase_current.a) > limit ||
